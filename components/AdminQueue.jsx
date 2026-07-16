@@ -94,6 +94,9 @@ export default function AdminQueue() {
         );
       }
       const data = await resp.json();
+      if (!resp.ok || data.error) {
+        throw new Error(data.detail || data.error || `Sync failed with status ${resp.status}.`);
+      }
       setSyncResult(data.results || null);
       await loadSyncStatus();
       await load();

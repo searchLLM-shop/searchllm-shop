@@ -58,6 +58,17 @@ export async function POST(req) {
   if (!userId) return Response.json({ error: "Not signed in" }, { status: 401 });
   if (!(await isAdmin())) return Response.json({ error: "Forbidden" }, { status: 403 });
 
-  const results = await runFullSync();
-  return Response.json({ results });
+  try {
+    const results = await runFullSync();
+    return Response.json({ results });
+  } catch (err) {
+    // Surface the real error instead of letting the function crash — an
+    // unhandled throw here gets reported by Vercel as a generic
+    // "out of memory" kill, which hides the actual cause.
+    console.error("runFullSync threw:", err);
+    return Response.json(
+      { error: "Sync failed", detail: String(err?.message || err) },
+      { status: 500 }
+    );
+  }
 }
