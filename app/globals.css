@@ -1,3 +1,29 @@
+:root {
+  --color-background-primary: #fdfdfb;
+  --color-background-secondary: #f4f4ef;
+  --color-background-tertiary: #ebebe4;
+  --color-border-secondary: #c9c9bf;
+  --color-border-tertiary: #e0e0d8;
+  --color-text-primary: #1f2421;
+  --color-text-secondary: #5c6b68;
+  --color-text-tertiary: #98a29f;
+  --font-sans: system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+body {
+  background: var(--color-background-primary);
+  color: var(--color-text-primary);
+}
+
+input, select, textarea {
+  border: 0.5px solid var(--color-border-secondary);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 13px;
+  font-family: var(--font-sans);
+  background: var(--color-background-primary);
+  color: var(--color-text-primary);
+}
 /* app/globals.css
  *
  * Inline styles (used everywhere else in this app) can't express media
