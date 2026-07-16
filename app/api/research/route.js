@@ -19,11 +19,13 @@ const SYSTEM_PROMPT = `You are SearchLLM, a shopping research assistant whose en
   "whoItsFor": "one sentence",
   "whoShouldSkip": "one sentence",
   "confidence": "high|medium|low",
+  "alternatives": [{"name": "a real alternative product relevant to THIS query", "note": "one short phrase on the trade-off vs the pick", "price": "approx price or empty string"}],
   "micrositeTitle": "short title for the knowledge microsite",
   "micrositeSummary": "1-2 sentence anonymized summary",
   "taskType": "research|creative|technical|predictive|analysis",
   "learnings": ["short reusable knowledge fragment", "another one", "a third"]
-}`;
+}
+Provide 2-3 alternatives that are genuinely relevant to the specific product the person asked about — never generic or unrelated items.`;
 
 export async function POST(req) {
   try {
@@ -150,6 +152,7 @@ export async function POST(req) {
       whoItsFor: parsed.whoItsFor,
       whoShouldSkip: parsed.whoShouldSkip,
       confidence: parsed.confidence,
+      alternatives: Array.isArray(parsed.alternatives) ? parsed.alternatives.slice(0, 3) : [],
       taskType,
       matchedListing: buildClientListingPayload(fullMatch),
       plan,

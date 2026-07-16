@@ -1,18 +1,8 @@
 "use client";
 
 import { useState, useCallback, useRef } from "react";
-import { ALTERNATIVES_POOL } from "@/lib/constants";
 
 const STEPS = ["Reading your question", "Checking current options", "Weighing trade-offs", "Writing the honest version"];
-
-function pickAlternatives(category) {
-  const pool = ALTERNATIVES_POOL.filter((a) =>
-    (category === "outdoor" && /jacket|pack|hik/i.test(a.name)) ||
-    (category === "electronics" && /headphone|sony|sennheiser/i.test(a.name)) ||
-    (category === "beauty" && /roche|spf/i.test(a.name))
-  );
-  return pool.length ? pool : ALTERNATIVES_POOL.slice(0, 2);
-}
 
 export default function ResearchTab({ maxSearches, searchCount, onSearchComplete, onSavePick }) {
   const [query, setQuery] = useState("");
@@ -55,9 +45,7 @@ export default function ResearchTab({ maxSearches, searchCount, onSearchComplete
         if (!resp.ok) throw new Error("Request failed");
 
         const data = await resp.json();
-        const alternatives = pickAlternatives(data.matchedListing ? data.matchedListing.product : "outdoor");
-
-        setResult({ query: searchQ, ...data, alternatives, id: Date.now() });
+        setResult({ query: searchQ, ...data, alternatives: data.alternatives || [], id: Date.now() });
         onSearchComplete?.();
       } catch (e) {
         console.error(e);
