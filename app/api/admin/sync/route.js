@@ -13,6 +13,12 @@ import { auth, currentUser } from "@clerk/nextjs/server";
 import { runFullSync } from "@/lib/feeds/sync";
 import { getLatestSyncRuns } from "@/lib/db";
 
+// Pulling hundreds of products across multiple feed downloads can exceed
+// the default serverless timeout (often 10s), which makes Vercel return
+// an HTML error page. Ask for more time. (On Hobby the ceiling is 60s;
+// on Pro it's higher — this project's team is Pro.)
+export const maxDuration = 300;
+
 async function isAdmin() {
   const user = await currentUser();
   if (!user) return false;

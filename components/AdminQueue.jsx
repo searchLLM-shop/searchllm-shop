@@ -60,10 +60,23 @@ export default function AdminQueue() {
     setSyncResult(null);
     try {
       const resp = await fetch("/api/admin/sync", { method: "POST" });
+      // The sync can take a while and may hit the serverless time limit,
+      // in which case Vercel returns an HTML error page, not JSON. Guard
+      // against parsing HTML as JSON so the user sees a clear message.
+      const contentType = resp.headers.get("content-type") || "";
+      if (!contentType.includes("application/json")) {
+        const text = await resp.text();
+        const timedOut = resp.status === 504 || /timeout|FUNCTION_INVOCATION/i.test(text);
+        throw new Error(
+          timedOut
+            ? "Sync took too long and timed out. It may still have imported some products — refresh the queue in a moment. If this keeps happening, we can lower the per-run limit."
+            : `Sync failed with status ${resp.status}.`
+        );
+      }
       const data = await resp.json();
       setSyncResult(data.results || null);
       await loadSyncStatus();
-      await load(); // refresh the queue — sync may have added new pending listings
+      await load();
     } catch (e) {
       setErrorMsg("Sync failed: " + e.message);
     } finally {

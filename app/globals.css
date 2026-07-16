@@ -1,3 +1,9 @@
+/* Design tokens. The components style themselves with these variables —
+   in the original prototype environment they were provided by the host
+   page, so the deployed app must define them itself or every background,
+   border, and muted text color silently resolves to nothing (which is
+   exactly how the first live deploy looked). Teal/paper palette matching
+   the #0F6E56 brand accents hardcoded in the components. */
 :root {
   --color-background-primary: #fdfdfb;
   --color-background-secondary: #f4f4ef;
@@ -24,6 +30,7 @@ input, select, textarea {
   background: var(--color-background-primary);
   color: var(--color-text-primary);
 }
+
 /* app/globals.css
  *
  * Inline styles (used everywhere else in this app) can't express media
