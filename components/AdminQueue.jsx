@@ -17,6 +17,26 @@ export default function AdminQueue() {
   const [syncRuns, setSyncRuns] = useState([]);
   const [syncing, setSyncing] = useState(false);
   const [syncResult, setSyncResult] = useState(null);
+  const [bulkBusy, setBulkBusy] = useState(false);
+
+  async function bulkAct(status) {
+    const verb = status === "approved" ? "approve" : "reject";
+    if (!window.confirm(`This will ${verb} ALL ${pending.length} pending listings at once. Continue?`)) return;
+    setBulkBusy(true);
+    try {
+      const resp = await fetch("/api/admin/listings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status }),
+      });
+      if (!resp.ok) throw new Error("Bulk action failed");
+      await load();
+    } catch (e) {
+      setErrorMsg(e.message);
+    } finally {
+      setBulkBusy(false);
+    }
+  }
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -139,6 +159,27 @@ export default function AdminQueue() {
 
       {!loading && pending.length === 0 && !errorMsg && (
         <div style={{ textAlign: "center", padding: 24, color: "var(--color-text-tertiary)", fontSize: 13 }}>No pending submissions.</div>
+      )}
+
+      {!loading && pending.length > 0 && (
+        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", padding: "10px 14px", marginBottom: 12, background: "var(--color-background-tertiary)", borderRadius: 10 }}>
+          <span style={{ fontSize: 13, color: "var(--color-text-secondary)" }}>{pending.length} pending</span>
+          <div style={{ flex: 1 }} />
+          <button
+            onClick={() => bulkAct("approved")}
+            disabled={bulkBusy}
+            style={{ background: "#0F6E56", color: "#fff", border: "none", borderRadius: 7, padding: "6px 14px", cursor: bulkBusy ? "default" : "pointer", fontSize: 12, fontWeight: 500, opacity: bulkBusy ? 0.6 : 1 }}
+          >
+            {bulkBusy ? "Working…" : "Approve all pending"}
+          </button>
+          <button
+            onClick={() => bulkAct("rejected")}
+            disabled={bulkBusy}
+            style={{ background: "none", border: "0.5px solid #E24B4A", color: "#E24B4A", borderRadius: 7, padding: "6px 14px", cursor: bulkBusy ? "default" : "pointer", fontSize: 12 }}
+          >
+            Reject all pending
+          </button>
+        </div>
       )}
 
       {pending.map((l) => (

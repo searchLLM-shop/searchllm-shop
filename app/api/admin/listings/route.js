@@ -6,7 +6,7 @@
 // grows — an env-var allowlist is fine for a single founder running review.
 
 import { auth, currentUser } from "@clerk/nextjs/server";
-import { getPendingListings, setListingStatus } from "@/lib/db";
+import { getPendingListings, setListingStatus, bulkSetPendingStatus } from "@/lib/db";
 
 async function isAdmin() {
   const user = await currentUser();
@@ -40,4 +40,20 @@ export async function PATCH(req) {
 
   await setListingStatus(id, status);
   return Response.json({ id, status });
+}
+
+// Bulk approve/reject. Body: { status: 'approved'|'rejected', network?: 'Awin' }
+// If network is omitted, applies to ALL pending listings.
+export async function POST(req) {
+  const { userId } = await auth();
+  if (!userId) return Response.json({ error: "Not signed in" }, { status: 401 });
+  if (!(await isAdmin())) return Response.json({ error: "Forbidden" }, { status: 403 });
+
+  const { status, network } = await req.json();
+  if (!["approved", "rejected"].includes(status)) {
+    return Response.json({ error: "Invalid status" }, { status: 400 });
+  }
+
+  const count = await bulkSetPendingStatus(status, network || null);
+  return Response.json({ status, network: network || "all", count });
 }
