@@ -110,8 +110,12 @@ export async function POST(req) {
     }
 
     const data = await resp.json();
-    const raw = data.content?.map((c) => c.text || "").join("").trim();
-    let parsed;
+    let raw = data.content?.map((c) => c.text || "").join("").trim();
+    // The model sometimes wraps its JSON in markdown code fences
+    // (```json ... ```). Strip them before parsing.
+    if (raw.startsWith("```")) {
+      raw = raw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "").trim();
+    }    let parsed;
     try {
       parsed = JSON.parse(raw);
     } catch (e) {
