@@ -1,0 +1,57 @@
+/* app/globals.css
+ *
+ * Inline styles (used everywhere else in this app) can't express media
+ * queries, so anything that genuinely needs to behave differently on a
+ * narrow phone screen lives here instead. Keep this file small and only
+ * add to it when a real responsive problem can't be solved with flexbox
+ * wrapping or clamp() in an inline style.
+ */
+
+* {
+  box-sizing: border-box;
+}
+
+/* The app header (logo, email/plan/quota, upgrade button, sign in/out)
+   is a single space-between row by default — fine on desktop, but it
+   overflows or visually collides on a ~375px phone screen once a full
+   email address and three buttons are competing for room. Below 480px,
+   stack it into two rows instead. */
+.sllm-header {
+  flex-wrap: nowrap;
+}
+
+@media (max-width: 480px) {
+  .sllm-header {
+    flex-wrap: wrap;
+    row-gap: 8px;
+  }
+  .sllm-header-right {
+    flex-wrap: wrap;
+    row-gap: 8px;
+    justify-content: flex-end;
+  }
+  /* Full email addresses are the single biggest overflow risk on a small
+     screen — truncate with an ellipsis rather than letting them force
+     horizontal scroll or push buttons off-screen. */
+  .sllm-header-identity {
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
+/* The tab bar (Research / Saved / For brands / Review queue) can overflow
+   its container once the admin tab is present on a narrow screen — allow
+   horizontal scroll rather than letting tabs wrap awkwardly or clip. */
+.sllm-tabs {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+.sllm-tabs::-webkit-scrollbar {
+  display: none;
+}
+.sllm-tabs button {
+  flex-shrink: 0;
+}

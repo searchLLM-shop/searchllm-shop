@@ -1,0 +1,23 @@
+# Dependencies
+node_modules/
+
+# Next.js build output
+.next/
+out/
+
+# Environment variables — NEVER commit real secrets.
+# .env.example is the template and is meant to be committed;
+# everything else below holds real keys and must not be.
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Vercel
+.vercel
+
+# OS/editor noise
+.DS_Store
+*.log
+npm-debug.log*
