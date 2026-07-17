@@ -58,16 +58,25 @@ export async function GET() {
   await step("awin_list_fetch", async () => {
     const key = process.env.AWIN_DATAFEED_API_KEY;
     if (!key) return { skipped: "no AWIN_DATAFEED_API_KEY" };
-    const resp = await fetch(`https://productdata.awin.com/datafeed/list/apikey/${key}`);
-    const text = await resp.text();
-    const lines = text.split("\n");
-    return {
-      status: resp.status,
-      bytes: text.length,
-      lineCount: lines.length,
-      header: lines[0]?.slice(0, 300),
-      firstRow: lines[1]?.slice(0, 300),
-    };
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 20000);
+    try {
+      const resp = await fetch(`https://productdata.awin.com/datafeed/list/apikey/${key}`, { signal: ctrl.signal });
+      const text = await resp.text();
+      const lines = text.split("\n").filter((l) => l.trim());
+      // Show the header and first two data rows so we can see the real
+      // column names and membership values for THIS account.
+      return {
+        status: resp.status,
+        bytes: text.length,
+        feedRows: Math.max(0, lines.length - 1),
+        header: lines[0]?.slice(0, 400),
+        row1: lines[1]?.slice(0, 400),
+        row2: lines[2]?.slice(0, 400),
+      };
+    } finally {
+      clearTimeout(timer);
+    }
   });
 
   return Response.json({ mem: mem(), steps }, { status: 200 });
