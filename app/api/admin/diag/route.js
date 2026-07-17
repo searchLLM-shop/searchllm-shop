@@ -64,15 +64,25 @@ export async function GET() {
       const resp = await fetch(`https://productdata.awin.com/datafeed/list/apikey/${key}`, { signal: ctrl.signal });
       const text = await resp.text();
       const lines = text.split("\n").filter((l) => l.trim());
-      // Show the header and first two data rows so we can see the real
-      // column names and membership values for THIS account.
+      // Parse the Membership Status column (index 3) across all rows and
+      // tally the distinct values, plus surface a few rows that are NOT
+      // "Not Joined" so we can see the exact label your joined feeds use.
+      const statusCounts = {};
+      const joinedSamples = [];
+      for (let i = 1; i < lines.length; i++) {
+        // naive CSV split is fine here — we only need column 3 (status)
+        const cols = lines[i].split(",");
+        const status = (cols[3] || "").replace(/"/g, "").trim();
+        statusCounts[status] = (statusCounts[status] || 0) + 1;
+        if (status && status.toLowerCase() !== "not joined" && joinedSamples.length < 5) {
+          joinedSamples.push({ name: (cols[1] || "").replace(/"/g, ""), status, products: (cols[10] || "").replace(/"/g, "") });
+        }
+      }
       return {
         status: resp.status,
-        bytes: text.length,
         feedRows: Math.max(0, lines.length - 1),
-        header: lines[0]?.slice(0, 400),
-        row1: lines[1]?.slice(0, 400),
-        row2: lines[2]?.slice(0, 400),
+        membershipStatusCounts: statusCounts,
+        joinedFeedSamples: joinedSamples,
       };
     } finally {
       clearTimeout(timer);
