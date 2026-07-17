@@ -60,11 +60,11 @@ export async function POST(req) {
 
   try {
     const results = await runFullSync();
+    // Always return 200 with the per-network results — individual network
+    // errors are carried inside results[].error and shown in the UI, so a
+    // single network's failure doesn't turn into an opaque 500.
     return Response.json({ results });
   } catch (err) {
-    // Surface the real error instead of letting the function crash — an
-    // unhandled throw here gets reported by Vercel as a generic
-    // "out of memory" kill, which hides the actual cause.
     console.error("runFullSync threw:", err);
     return Response.json(
       { error: "Sync failed", detail: String(err?.message || err) },

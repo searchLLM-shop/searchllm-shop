@@ -97,6 +97,12 @@ export default function AdminQueue() {
       if (!resp.ok || data.error) {
         throw new Error(data.detail || data.error || `Sync failed with status ${resp.status}.`);
       }
+      // Surface any per-network error (carried inside results) so a staged
+      // failure like "Awin failed at stage [bulkUpsert]" is visible.
+      const failed = (data.results || []).find((r) => r.status === "error");
+      if (failed) {
+        setErrorMsg(failed.error || `${failed.network} sync failed`);
+      }
       setSyncResult(data.results || null);
       await loadSyncStatus();
       await load();
