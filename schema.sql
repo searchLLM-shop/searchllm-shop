@@ -117,3 +117,11 @@ VALUES
    'Rain cover built in, COD available, the most common complaint with imported packs is no COD option.',
    'pending')
 ON CONFLICT DO NOTHING;
+
+-- Persistent cursor so the Awin sync downloads exactly ONE advertiser feed
+-- per run and advances to the next on the following run. Prevents the
+-- multi-download memory spike that was killing the function.
+CREATE TABLE IF NOT EXISTS sync_state (
+  key TEXT PRIMARY KEY,
+  value INTEGER NOT NULL DEFAULT 0
+);
