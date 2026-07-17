@@ -78,39 +78,46 @@ export default function AdminQueue() {
   async function triggerSync() {
     setSyncing(true);
     setSyncResult(null);
-    try {
-      const resp = await fetch("/api/admin/sync", { method: "POST" });
-      // The sync can take a while and may hit the serverless time limit,
-      // in which case Vercel returns an HTML error page, not JSON. Guard
-      // against parsing HTML as JSON so the user sees a clear message.
-      const contentType = resp.headers.get("content-type") || "";
-      if (!contentType.includes("application/json")) {
-        const text = await resp.text();
-        const timedOut = resp.status === 504 || /timeout|FUNCTION_INVOCATION/i.test(text);
-        throw new Error(
-          timedOut
-            ? "Sync took too long and timed out. It may still have imported some products — refresh the queue in a moment. If this keeps happening, we can lower the per-run limit."
-            : `Sync failed with status ${resp.status}.`
-        );
-      }
-      const data = await resp.json();
-      if (!resp.ok || data.error) {
-        throw new Error(data.detail || data.error || `Sync failed with status ${resp.status}.`);
-      }
-      // Surface any per-network error (carried inside results) so a staged
-      // failure like "Awin failed at stage [bulkUpsert]" is visible.
-      const failed = (data.results || []).find((r) => r.status === "error");
-      if (failed) {
-        setErrorMsg(failed.error || `${failed.network} sync failed`);
-      }
-      setSyncResult(data.results || null);
+    setErrorMsg(null);
+
+    // The sync can run longer than the browser will hold a fetch open,
+    // producing a "Failed to fetch" even when the server is working fine.
+    // So we fire the request but don't depend on its response: we also
+    // poll the queue + sync-status a few times to reflect the real result.
+    const syncCall = fetch("/api/admin/sync", { method: "POST" })
+      .then(async (resp) => {
+        try {
+          const data = await resp.json();
+          if (data.results) {
+            const failed = data.results.find((r) => r.status === "error");
+            if (failed) setErrorMsg(failed.error || `${failed.network} sync failed`);
+            setSyncResult(data.results);
+          }
+        } catch { /* response not JSON / connection dropped — polling covers it */ }
+      })
+      .catch(() => { /* browser gave up waiting — polling covers it */ });
+
+    // Poll the queue for up to ~90s so newly-imported products show up even
+    // if the original request never returns to the browser.
+    const started = Date.now();
+    const poll = async () => {
       await loadSyncStatus();
       await load();
-    } catch (e) {
-      setErrorMsg("Sync failed: " + e.message);
-    } finally {
+      if (Date.now() - started < 90000) {
+        setTimeout(poll, 6000);
+      } else {
+        setSyncing(false);
+      }
+    };
+
+    // Kick off polling shortly after starting, and stop spinning once the
+    // request settles OR the poll window ends.
+    setTimeout(poll, 5000);
+    syncCall.finally(async () => {
+      await loadSyncStatus();
+      await load();
       setSyncing(false);
-    }
+    });
   }
 
   async function act(id, status) {
