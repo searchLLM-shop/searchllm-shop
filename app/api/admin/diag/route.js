@@ -7,6 +7,7 @@
 
 import { auth, currentUser } from "@clerk/nextjs/server";
 import { query, getExistingExternalIds, getFeedCursor } from "@/lib/db";
+import { parseCsv } from "@/lib/feeds/awin";
 
 export const maxDuration = 60;
 
@@ -63,24 +64,26 @@ export async function GET() {
     try {
       const resp = await fetch(`https://productdata.awin.com/datafeed/list/apikey/${key}`, { signal: ctrl.signal });
       const text = await resp.text();
-      const lines = text.split("\n").filter((l) => l.trim());
-      // Parse the Membership Status column (index 3) across all rows and
-      // tally the distinct values, plus surface a few rows that are NOT
-      // "Not Joined" so we can see the exact label your joined feeds use.
+      // Use the REAL quote-aware CSV parser — a naive split(",") breaks on
+      // the commas inside quoted URL fields and misaligns every column.
+      const rows = parseCsv(text);
+      const header = rows[0].map((h) => h.trim());
+      const statusIdx = header.findIndex((h) => h.toLowerCase().includes("membership"));
+      const nameIdx = header.findIndex((h) => h.toLowerCase().includes("advertiser name"));
+      const prodIdx = header.findIndex((h) => h.toLowerCase().includes("no of products"));
       const statusCounts = {};
       const joinedSamples = [];
-      for (let i = 1; i < lines.length; i++) {
-        // naive CSV split is fine here — we only need column 3 (status)
-        const cols = lines[i].split(",");
-        const status = (cols[3] || "").replace(/"/g, "").trim();
+      for (let i = 1; i < rows.length; i++) {
+        const status = (rows[i][statusIdx] || "").trim();
         statusCounts[status] = (statusCounts[status] || 0) + 1;
-        if (status && status.toLowerCase() !== "not joined" && joinedSamples.length < 5) {
-          joinedSamples.push({ name: (cols[1] || "").replace(/"/g, ""), status, products: (cols[10] || "").replace(/"/g, "") });
+        if (status && status.toLowerCase() !== "not joined" && joinedSamples.length < 8) {
+          joinedSamples.push({ name: rows[i][nameIdx], status, products: rows[i][prodIdx] });
         }
       }
       return {
         status: resp.status,
-        feedRows: Math.max(0, lines.length - 1),
+        feedRows: rows.length - 1,
+        header,
         membershipStatusCounts: statusCounts,
         joinedFeedSamples: joinedSamples,
       };
