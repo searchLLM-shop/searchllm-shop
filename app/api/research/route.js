@@ -161,7 +161,12 @@ export async function POST(req) {
     });
   } catch (err) {
     console.error("Research route error:", err);
-    return Response.json({ error: "Unable to complete research" }, { status: 500 });
+    // Include the real message so the UI can show what actually failed
+    // instead of a generic "try rephrasing" that hides the cause.
+    return Response.json(
+      { error: "Unable to complete research", detail: String(err?.message || err) },
+      { status: 500 }
+    );
   }
 }
 

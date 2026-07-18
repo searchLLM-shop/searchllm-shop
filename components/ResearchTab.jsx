@@ -42,14 +42,27 @@ export default function ResearchTab({ maxSearches, searchCount, onSearchComplete
           setProcessing(false);
           return;
         }
-        if (!resp.ok) throw new Error("Request failed");
+        if (!resp.ok) {
+          // Pull the server's real reason so a failure is diagnosable
+          // instead of always reading "try rephrasing the question".
+          let detail = "";
+          try {
+            const errBody = await resp.json();
+            detail = errBody.detail || errBody.error || "";
+          } catch { /* non-JSON error page */ }
+          throw new Error(detail || `Request failed (${resp.status})`);
+        }
 
         const data = await resp.json();
         setResult({ query: searchQ, ...data, alternatives: data.alternatives || [], id: Date.now() });
         onSearchComplete?.();
       } catch (e) {
         console.error(e);
-        setErrorMsg("Couldn't complete the research — try rephrasing the question.");
+        setErrorMsg(
+          e.message && e.message !== "Request failed"
+            ? `Couldn't complete the research: ${e.message}`
+            : "Couldn't complete the research — try rephrasing the question."
+        );
       }
 
       clearInterval(stepTimer);
