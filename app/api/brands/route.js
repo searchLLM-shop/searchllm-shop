@@ -7,7 +7,7 @@
 import { insertListing } from "@/lib/db";
 
 const VALID_NETWORKS = ["Awin", "Impact", "vCommission"];
-const VALID_CATEGORIES = ["outdoor", "electronics", "beauty", "home", "fashion", "services", "other"];
+const VALID_CATEGORIES = ["outdoor", "electronics", "beauty", "home", "fashion", "health", "shopping", "services", "other"];
 
 export async function POST(req) {
   try {
