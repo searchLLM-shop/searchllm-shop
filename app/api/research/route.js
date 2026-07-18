@@ -99,7 +99,7 @@ export async function POST(req) {
       },
       body: JSON.stringify({
         model: "claude-sonnet-4-6",
-        max_tokens: 700,
+        max_tokens: 1600,
         system: SYSTEM_PROMPT,
         messages: [{ role: "user", content: userContent }],
       }),
@@ -112,6 +112,19 @@ export async function POST(req) {
     }
 
     const data = await resp.json();
+
+    // If the model hit the token ceiling, its JSON is cut off mid-object and
+    // will never parse. Say so plainly rather than reporting a vague
+    // "unexpected response" — this exact case broke searches when the
+    // alternatives field was added without raising max_tokens.
+    if (data.stop_reason === "max_tokens") {
+      console.error("Model response truncated at max_tokens — raise the cap.");
+      return Response.json(
+        { error: "Research engine error", detail: "The answer was cut off before it finished. Try a shorter question." },
+        { status: 502 }
+      );
+    }
+
     let raw = data.content?.map((c) => c.text || "").join("").trim();
     // The model sometimes wraps its JSON in markdown code fences
     // (```json ... ```). Strip them before parsing, otherwise JSON.parse
@@ -124,7 +137,13 @@ export async function POST(req) {
       parsed = JSON.parse(raw);
     } catch (e) {
       console.error("Failed to parse model response as JSON:", raw);
-      return Response.json({ error: "Research engine returned an unexpected response" }, { status: 502 });
+      return Response.json(
+        {
+          error: "Research engine returned an unexpected response",
+          detail: `Could not parse the answer (${raw?.length || 0} chars). Starts: ${String(raw).slice(0, 80)}`,
+        },
+        { status: 502 }
+      );
     }
 
     // Validate taskType against the fixed taxonomy — microsite linking

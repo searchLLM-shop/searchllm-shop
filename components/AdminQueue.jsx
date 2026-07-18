@@ -18,6 +18,32 @@ export default function AdminQueue() {
   const [syncing, setSyncing] = useState(false);
   const [syncResult, setSyncResult] = useState(null);
   const [bulkBusy, setBulkBusy] = useState(false);
+  const [enriching, setEnriching] = useState(false);
+  const [enrichMsg, setEnrichMsg] = useState(null);
+
+  // Regenerate keywords with AI. Feed/campaign titles alone produce keywords
+  // no shopper would type ("trunativ", "ecommerce"), so listings never match
+  // real queries. This rewrites them into actual shopper language.
+  async function enrichKeywords() {
+    setEnriching(true);
+    setEnrichMsg(null);
+    setErrorMsg(null);
+    try {
+      const resp = await fetch("/api/admin/enrich-keywords", { method: "POST" });
+      const data = await resp.json();
+      if (!resp.ok) throw new Error(data.detail || data.error || "Failed");
+      setEnrichMsg(
+        data.updated > 0
+          ? `Updated keywords for ${data.updated} of ${data.considered} listings.`
+          : data.message || "No listings needed keywords."
+      );
+      await load();
+    } catch (e) {
+      setErrorMsg("Keyword generation failed: " + e.message);
+    } finally {
+      setEnriching(false);
+    }
+  }
 
   async function bulkAct(status) {
     const verb = status === "approved" ? "approve" : "reject";
@@ -141,6 +167,14 @@ export default function AdminQueue() {
       <div style={{ background: "var(--color-background-secondary)", borderRadius: 12, border: "0.5px solid var(--color-border-tertiary)", padding: 16, marginBottom: 18 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
           <span style={{ fontSize: 12, fontWeight: 500, color: "var(--color-text-secondary)", letterSpacing: "0.04em", textTransform: "uppercase" }}>Product feed sync</span>
+          <button
+            onClick={enrichKeywords}
+            disabled={enriching}
+            title="Use AI to generate search keywords shoppers actually type"
+            style={{ background: "none", border: "0.5px solid var(--color-border-secondary)", color: "var(--color-text-secondary)", borderRadius: 7, padding: "5px 12px", cursor: enriching ? "default" : "pointer", fontSize: 12, marginRight: 8, opacity: enriching ? 0.6 : 1 }}
+          >
+            {enriching ? "Generating…" : "Fix keywords with AI"}
+          </button>
           <button onClick={triggerSync} disabled={syncing} style={{ background: "#0F6E56", color: "#fff", border: "none", borderRadius: 7, padding: "5px 12px", cursor: syncing ? "default" : "pointer", fontSize: 12, fontWeight: 500, opacity: syncing ? 0.6 : 1 }}>
             {syncing ? "Syncing…" : "Sync now"}
           </button>
@@ -175,6 +209,10 @@ export default function AdminQueue() {
 
       {!loading && pending.length === 0 && !errorMsg && (
         <div style={{ textAlign: "center", padding: 24, color: "var(--color-text-tertiary)", fontSize: 13 }}>No pending submissions.</div>
+      )}
+
+      {enrichMsg && (
+        <div style={{ fontSize: 12, color: "var(--color-text-secondary)", marginBottom: 10 }}>{enrichMsg}</div>
       )}
 
       {!loading && pending.length > 0 && (
