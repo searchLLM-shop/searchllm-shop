@@ -22,8 +22,20 @@ export async function POST(req) {
   const keyId = process.env.RAZORPAY_KEY_ID;
   const keySecret = process.env.RAZORPAY_KEY_SECRET;
   const planId = process.env.RAZORPAY_PLAN_ID;
-  if (!keyId || !keySecret || !planId) {
-    return Response.json({ error: "Payments not configured" }, { status: 500 });
+
+  // Name the missing piece rather than failing opaquely — "Payments not
+  // configured" gave no way to tell which of the three values was absent.
+  const missing = [
+    !keyId && "RAZORPAY_KEY_ID",
+    !keySecret && "RAZORPAY_KEY_SECRET",
+    !planId && "RAZORPAY_PLAN_ID",
+  ].filter(Boolean);
+  if (missing.length) {
+    console.error("Razorpay not configured — missing:", missing.join(", "));
+    return Response.json(
+      { error: "Payments not configured", detail: `Missing in Vercel: ${missing.join(", ")}` },
+      { status: 500 }
+    );
   }
 
   const user = await currentUser();
@@ -49,8 +61,14 @@ export async function POST(req) {
     });
 
     if (!resp.ok) {
-      console.error("Razorpay subscription create failed:", resp.status, await resp.text());
-      return Response.json({ error: "Unable to start checkout" }, { status: 502 });
+      const body = await resp.text();
+      console.error("Razorpay subscription create failed:", resp.status, body);
+      let detail = `Razorpay returned ${resp.status}`;
+      try {
+        const parsed = JSON.parse(body);
+        if (parsed?.error?.description) detail = parsed.error.description;
+      } catch { /* keep the status-code fallback */ }
+      return Response.json({ error: "Unable to start checkout", detail }, { status: 502 });
     }
 
     const sub = await resp.json();

@@ -5,8 +5,9 @@
 // to the client. Listing matching also happens here, server-side, against
 // the real approved-listings table instead of in-memory React state.
 
-import { auth } from "@clerk/nextjs/server";
+import { auth, currentUser } from "@clerk/nextjs/server";
 import { getApprovedListings, insertMicrosite, getAndIncrementUsage, getUsageToday, getUserPlan } from "@/lib/db";
+import { isAdminEmail } from "@/lib/isAdmin";
 import { findMatchingListing, buildClientListingPayload } from "@/lib/listingMatcher";
 import { getOrCreateGuestId } from "@/lib/guestId";
 import { PLANS } from "@/lib/constants";
@@ -38,8 +39,15 @@ export async function POST(req) {
 
     // --- Real quota check, backed by the database, scoped per identity ---
     const identity = userId || (await getOrCreateGuestId());
-    const plan = userId ? await getUserPlan(userId) : "free";
-    const limit = PLANS[plan]?.searches ?? PLANS.free.searches;
+    const storedPlan = userId ? await getUserPlan(userId) : "free";
+
+    // Admins get unlimited picks. Testing the product shouldn't require
+    // burning a paid subscription or waiting for the daily reset.
+    const user = userId ? await currentUser() : null;
+    const admin = isAdminEmail(user?.emailAddresses?.[0]?.emailAddress);
+
+    const plan = admin ? "plus" : storedPlan;
+    const limit = admin ? -1 : (PLANS[plan]?.searches ?? PLANS.free.searches);
 
     if (limit !== -1) {
       // Check BEFORE incrementing — a request that's about to be blocked
@@ -91,7 +99,24 @@ export async function POST(req) {
     }
 
     // --- Build the model request. Only product/brand/price ever go in. ---
-    const userContent = `Query: ${query}${
+    // Tell the model where the shopper is, so it recommends products they can
+    // actually buy, priced in their currency. Without this it defaults to US/UK
+    // brands and dollar prices — useless advice for a shopper in India.
+    const COUNTRY_NAMES = {
+      IN: "India", US: "the United States", GB: "the United Kingdom",
+      CA: "Canada", AU: "Australia", DE: "Germany", FR: "France",
+      SG: "Singapore", AE: "the UAE", NZ: "New Zealand", IE: "Ireland",
+    };
+    const CURRENCIES = {
+      IN: "INR (₹)", US: "USD ($)", GB: "GBP (£)", CA: "CAD ($)",
+      AU: "AUD ($)", DE: "EUR (€)", FR: "EUR (€)", SG: "SGD ($)",
+      AE: "AED", NZ: "NZD ($)", IE: "EUR (€)",
+    };
+    const locationContext = userCountry
+      ? `\n\nThe shopper is in ${COUNTRY_NAMES[userCountry] || userCountry}. Recommend products that are genuinely available to buy there, from brands that sell in that market, and give prices in ${CURRENCIES[userCountry] || "the local currency"}. Do not recommend products the person cannot realistically buy or receive. Apply the same rule to the alternatives.`
+      : "";
+
+    const userContent = `Query: ${query}${locationContext}${
       attachment ? `\nAttachment: "${attachment.name}" (${attachment.type})` : ""
     }${
       strippedMatch

@@ -32,6 +32,7 @@ export default function Home() {
   const [savedPicks, setSavedPicks] = useState([]);
   const [usage, setUsage] = useState(null); // { plan, limit, used }
   const [upgrading, setUpgrading] = useState(false);
+  const [checkoutError, setCheckoutError] = useState(null);
   const { isSignedIn, user } = useUser();
   const isAdminHint = useIsAdminClientHint();
 
@@ -79,9 +80,16 @@ export default function Home() {
     try {
       const resp = await fetch("/api/checkout", { method: "POST" });
       const data = await resp.json();
-      if (data.url) window.location.href = data.url;
+      if (data.url) {
+        window.location.href = data.url;
+        return;
+      }
+      // Previously this branch did nothing at all, so a misconfigured or
+      // failing checkout looked like a dead button. Surface the reason.
+      throw new Error(data.detail || data.error || "Checkout did not return a payment link");
     } catch (e) {
       console.error("Checkout failed", e);
+      setCheckoutError(e.message || "Couldn't start checkout. Please try again.");
       setUpgrading(false);
     }
   }
@@ -107,6 +115,13 @@ export default function Home() {
 
   return (
     <div style={{ minHeight: 600, display: "flex", flexDirection: "column", border: "0.5px solid var(--color-border-tertiary)", borderRadius: 16, overflow: "hidden", background: "var(--color-background-primary)" }}>
+      {checkoutError && (
+        <div style={{ padding: "8px 20px", background: "#FDF3F2", borderBottom: "0.5px solid #E8C9C6", fontSize: 12, color: "#A03530", display: "flex", justifyContent: "space-between", gap: 10 }}>
+          <span>Upgrade unavailable: {checkoutError}</span>
+          <button onClick={() => setCheckoutError(null)} style={{ background: "none", border: "none", cursor: "pointer", color: "#A03530", fontSize: 12 }}>Dismiss</button>
+        </div>
+      )}
+
       <div className="sllm-header" style={{ padding: "12px 20px", borderBottom: "0.5px solid var(--color-border-tertiary)", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
         <span style={{ fontSize: 13, fontWeight: 500, color: "#0F6E56", letterSpacing: "0.04em", textTransform: "uppercase" }}>SearchLLM</span>
         <div className="sllm-header-right" style={{ display: "flex", alignItems: "center", gap: 14 }}>
