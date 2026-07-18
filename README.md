@@ -1,3 +1,32 @@
+# SearchLLM.shop — LIVE
+
+Deployed and working at searchllm-shop-live.vercel.app (custom domain
+searchllm.shop connects via GoDaddy DNS per the deployment section below).
+
+## Current status (as of this build)
+
+WORKING END TO END:
+- Live site with consent gate, honest AI recommendations, real alternatives
+- Clerk auth, per-user daily quota, Razorpay Plus subscription + webhook
+- Postgres database (Prisma Postgres on Vercel), all tables live
+- Admin review queue with bulk approve, source badges, placeholder-link warnings
+- Product feed sync: memory-safe, one advertiser feed per run via a
+  persistent cursor, 12MB download cap, batch DB insert, non-blocking UI
+- Impact site verification, Awin/Impact/vCommission adapters
+
+THE ONE REMAINING ACTION (not code — a dashboard task):
+- You must JOIN Awin advertiser programmes. A diagnostic confirmed all 607
+  feeds in the account currently show "Not Joined", which is why sync pulls
+  0 products. This is expected — you have to apply to and be approved for
+  advertiser programmes in the Awin dashboard (Advertisers -> Join
+  Programme). Once even one shows "Joined", hit "Sync now" and its products
+  flow into the review queue with real, revenue-earning tracking links.
+- The 210 products currently in the database came from a manually-uploaded
+  sample feed during testing; they are real products but not from a joined
+  programme, so treat them as test data until you're joined for real.
+
+---
+
 # SearchLLM.shop — real Next.js codebase
 
 Phase 2 (working codebase), Phase 3 (real auth/payments/database), and
