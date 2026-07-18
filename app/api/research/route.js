@@ -8,6 +8,7 @@
 import { auth, currentUser } from "@clerk/nextjs/server";
 import { getApprovedListings, insertMicrosite, getAndIncrementUsage, getUsageToday, getUserPlan } from "@/lib/db";
 import { isAdminEmail } from "@/lib/isAdmin";
+import { checkQuery } from "@/lib/contentFilter";
 import { findMatchingListing, buildClientListingPayload } from "@/lib/listingMatcher";
 import { getOrCreateGuestId } from "@/lib/guestId";
 import { PLANS } from "@/lib/constants";
@@ -31,6 +32,13 @@ Provide 2-3 alternatives that are genuinely relevant to the specific product the
 export async function POST(req) {
   try {
     const { query, attachment } = await req.json();
+
+    // Enforce the acceptable-use rules from the Terms before doing anything
+    // else — no model call, no quota consumed, no record written.
+    const contentCheck = checkQuery(query);
+    if (contentCheck.blocked) {
+      return Response.json({ error: contentCheck.reason }, { status: 400 });
+    }
     if (!query || typeof query !== "string" || !query.trim()) {
       return Response.json({ error: "Missing query" }, { status: 400 });
     }

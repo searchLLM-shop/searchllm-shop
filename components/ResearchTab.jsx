@@ -186,6 +186,14 @@ export default function ResearchTab({ maxSearches, searchCount, onSearchComplete
             </div>
           )}
 
+          {/* The Terms require users to verify before buying; saying it once in
+              a policy nobody reads isn't enough, so it appears with every answer. */}
+          <p style={{ fontSize: 11, color: "var(--color-text-tertiary)", lineHeight: 1.6, margin: "0 0 14px" }}>
+            AI can make mistakes. Check the price, availability and specifications on the
+            retailer's own page before buying. We don't sell or ship anything — purchases,
+            delivery and returns are between you and the retailer.
+          </p>
+
           <div style={{ display: "flex", gap: 10 }}>
             <button onClick={() => onSavePick?.(result)} style={{ background: "none", border: "0.5px solid var(--color-border-secondary)", borderRadius: 8, padding: "8px 14px", cursor: "pointer", fontSize: 13, color: "var(--color-text-secondary)" }}>Save this pick</button>
             <button onClick={() => { setResult(null); setQuery(""); setAttachment(null); }} style={{ background: "none", border: "0.5px solid var(--color-border-secondary)", borderRadius: 8, padding: "8px 14px", cursor: "pointer", fontSize: 13, color: "var(--color-text-secondary)" }}>New question</button>

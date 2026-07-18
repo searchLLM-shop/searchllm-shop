@@ -187,7 +187,17 @@ export default function Home() {
 
       <div style={{ padding: "9px 20px", borderTop: "0.5px solid var(--color-border-tertiary)", display: "flex", justifyContent: "space-between" }}>
         <span style={{ fontSize: 11, color: "var(--color-text-tertiary)" }}>searchllm.shop</span>
-        <span style={{ fontSize: 11, color: "var(--color-text-tertiary)" }}>Honest recommendations, always disclosed</span>
+        {/* Policy links must be reachable from the site itself — payment
+            providers check for them, and a shopper shouldn't have to hunt
+            for the terms they agreed to. */}
+        <span style={{ fontSize: 11, color: "var(--color-text-tertiary)", display: "flex", gap: 10, flexWrap: "wrap" }}>
+          <a href="/privacy" style={{ color: "inherit", textDecoration: "none" }}>Privacy</a>
+          <a href="/terms" style={{ color: "inherit", textDecoration: "none" }}>Terms</a>
+          <a href="/refunds" style={{ color: "inherit", textDecoration: "none" }}>Refunds</a>
+          <a href="/pricing" style={{ color: "inherit", textDecoration: "none" }}>Pricing</a>
+          <a href="/contact" style={{ color: "inherit", textDecoration: "none" }}>Contact</a>
+        </span>
+        <span className="sllm-footer-tag" style={{ fontSize: 11, color: "var(--color-text-tertiary)" }}>Honest recommendations, always disclosed</span>
       </div>
     </div>
   );
