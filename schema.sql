@@ -125,3 +125,11 @@ CREATE TABLE IF NOT EXISTS sync_state (
   key TEXT PRIMARY KEY,
   value INTEGER NOT NULL DEFAULT 0
 );
+
+-- Geography: which countries a listing is valid for (ISO-2 codes, e.g.
+-- {IN}, {GB}, {US}). Affiliate offers are almost always geo-restricted —
+-- a UK Awin merchant priced in GBP is useless (and often non-shipping) to a
+-- shopper in India, and vCommission campaigns carry an explicit countries
+-- list. NULL/empty means "no restriction known", which we treat as global.
+ALTER TABLE listings ADD COLUMN IF NOT EXISTS regions TEXT[];
+CREATE INDEX IF NOT EXISTS idx_listings_regions ON listings USING GIN (regions);

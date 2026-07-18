@@ -64,7 +64,16 @@ export async function POST(req) {
 
     // --- Listing match (runs in plain code, never inside the AI call) ---
     const approvedListings = await getApprovedListings();
-    const strippedMatch = findMatchingListing(query, approvedListings);
+    // Shopper's country, from Vercel's edge geo headers (no external IP
+    // lookup needed, no PII stored — we only read the 2-letter country and
+    // use it to filter offers, never persist it). Falls back to null, which
+    // disables geo filtering rather than guessing wrong.
+    const userCountry =
+      req.headers.get("x-vercel-ip-country") ||
+      req.headers.get("cf-ipcountry") ||
+      null;
+
+    const strippedMatch = findMatchingListing(query, approvedListings, userCountry);
     const fullMatch = strippedMatch
       ? approvedListings.find((l) => l.id === strippedMatch.id)
       : null;
