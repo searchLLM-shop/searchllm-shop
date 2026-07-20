@@ -133,3 +133,141 @@ CREATE TABLE IF NOT EXISTS sync_state (
 -- list. NULL/empty means "no restriction known", which we treat as global.
 ALTER TABLE listings ADD COLUMN IF NOT EXISTS regions TEXT[];
 CREATE INDEX IF NOT EXISTS idx_listings_regions ON listings USING GIN (regions);
+
+-- Makes the keyword-overlap search in findCandidateListings fast enough to
+-- run on every query once the listings table holds six figures of products.
+CREATE INDEX IF NOT EXISTS idx_listings_keywords ON listings USING GIN (keywords);
+CREATE INDEX IF NOT EXISTS idx_listings_status_approved ON listings (status) WHERE status = 'approved';
+
+-- Product presentation fields. An image makes a shopping recommendation
+-- concrete rather than abstract, and showing the destination domain lets a
+-- shopper see where an affiliate link goes before they click it.
+ALTER TABLE listings ADD COLUMN IF NOT EXISTS image_url TEXT;
+ALTER TABLE listings ADD COLUMN IF NOT EXISTS merchant_domain TEXT;
+ALTER TABLE listings ADD COLUMN IF NOT EXISTS discount TEXT;
+
+-- Analytics events. Deliberately coarse: we record that something happened,
+-- with a rotating identity for counting unique visitors, but never the query
+-- text or anything that would build a shopping profile — consistent with the
+-- Privacy Policy. Search counts already live in usage_daily; this table adds
+-- the things that weren't recorded anywhere: visits, affiliate clicks, and
+-- searches that found no relevant partner product.
+CREATE TABLE IF NOT EXISTS events (
+  id BIGSERIAL PRIMARY KEY,
+  event_type TEXT NOT NULL,          -- visit | affiliate_click | no_match | limit_reached
+  identity TEXT,                     -- guest id or Clerk user id, for unique counts
+  day DATE NOT NULL DEFAULT (now() AT TIME ZONE 'utc')::date,
+  listing_id INTEGER,
+  network TEXT,
+  country TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_events_type_day ON events (event_type, day);
+CREATE INDEX IF NOT EXISTS idx_events_day ON events (day);
+CREATE INDEX IF NOT EXISTS idx_events_identity ON events (identity, day);
+
+-- =========================================================================
+-- DIRECT ADVERTISER PROGRAMME
+-- Brands that work with us directly rather than through Awin/Impact/
+-- vCommission. We issue the tracking links, record the clicks, receive a
+-- conversion postback from the advertiser, and bill the commission.
+-- =========================================================================
+
+CREATE TABLE IF NOT EXISTS advertisers (
+  id SERIAL PRIMARY KEY,
+  company_name TEXT NOT NULL,
+  website TEXT NOT NULL,
+  contact_name TEXT,
+  contact_email TEXT NOT NULL,
+  phone TEXT,
+  gst_number TEXT,
+  billing_address TEXT,
+  -- 'cps' = percent of sale value, 'cpa' = flat fee per conversion
+  commission_model TEXT NOT NULL DEFAULT 'cps',
+  commission_rate NUMERIC(10,2) NOT NULL DEFAULT 0,
+  currency TEXT NOT NULL DEFAULT 'INR',
+  cookie_days INTEGER NOT NULL DEFAULT 30,
+  -- Shared secret the advertiser sends with each conversion postback, so a
+  -- third party can't fabricate sales (or suppress them) on their behalf.
+  postback_secret TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending',   -- pending | approved | paused | rejected
+  notes TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_advertisers_status ON advertisers (status);
+
+-- Products an advertiser wants promoted. These become listings in the normal
+-- review queue, so a direct advertiser gets no shortcut past human review.
+CREATE TABLE IF NOT EXISTS advertiser_products (
+  id SERIAL PRIMARY KEY,
+  advertiser_id INTEGER NOT NULL REFERENCES advertisers(id) ON DELETE CASCADE,
+  listing_id INTEGER REFERENCES listings(id) ON DELETE SET NULL,
+  product_name TEXT NOT NULL,
+  destination_url TEXT NOT NULL,     -- where the shopper should land
+  price TEXT,
+  category TEXT,
+  image_url TEXT,
+  description TEXT,
+  tracking_id TEXT UNIQUE NOT NULL,  -- public id used in /go/{tracking_id}
+  status TEXT NOT NULL DEFAULT 'pending',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_adv_products_advertiser ON advertiser_products (advertiser_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_adv_products_tracking ON advertiser_products (tracking_id);
+
+-- One row per outbound click. click_id is what the advertiser echoes back in
+-- the conversion postback, which is how a sale gets attributed.
+CREATE TABLE IF NOT EXISTS advertiser_clicks (
+  click_id TEXT PRIMARY KEY,
+  advertiser_id INTEGER NOT NULL REFERENCES advertisers(id) ON DELETE CASCADE,
+  product_id INTEGER REFERENCES advertiser_products(id) ON DELETE SET NULL,
+  country TEXT,
+  clicked_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_adv_clicks_advertiser ON advertiser_clicks (advertiser_id, clicked_at);
+
+CREATE TABLE IF NOT EXISTS advertiser_conversions (
+  id SERIAL PRIMARY KEY,
+  click_id TEXT REFERENCES advertiser_clicks(click_id) ON DELETE SET NULL,
+  advertiser_id INTEGER NOT NULL REFERENCES advertisers(id) ON DELETE CASCADE,
+  order_id TEXT,
+  order_value NUMERIC(12,2),
+  currency TEXT DEFAULT 'INR',
+  commission NUMERIC(12,2),
+  status TEXT NOT NULL DEFAULT 'pending',  -- pending | approved | rejected | paid
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  -- An advertiser must not be able to report the same order twice.
+  UNIQUE (advertiser_id, order_id)
+);
+CREATE INDEX IF NOT EXISTS idx_adv_conv_advertiser ON advertiser_conversions (advertiser_id, status);
+
+-- Campaign attribution. Captured first-party from the landing URL so paid
+-- traffic can be measured without embedding third-party trackers, which the
+-- Privacy Policy rules out.
+ALTER TABLE events ADD COLUMN IF NOT EXISTS utm_source TEXT;
+ALTER TABLE events ADD COLUMN IF NOT EXISTS utm_medium TEXT;
+ALTER TABLE events ADD COLUMN IF NOT EXISTS utm_campaign TEXT;
+ALTER TABLE events ADD COLUMN IF NOT EXISTS referrer_host TEXT;
+CREATE INDEX IF NOT EXISTS idx_events_utm ON events (utm_source, day);
+
+-- =========================================================================
+-- PUBLISHED ANSWERS (SEO)
+-- Every research answer is already stored as an anonymised microsite record.
+-- These columns hold a publishable version: a generic topic and slug, the
+-- answer body, and a status so nothing goes public without review — the same
+-- gate every listing passes through.
+-- =========================================================================
+ALTER TABLE microsites ADD COLUMN IF NOT EXISTS slug TEXT;
+ALTER TABLE microsites ADD COLUMN IF NOT EXISTS topic TEXT;
+ALTER TABLE microsites ADD COLUMN IF NOT EXISTS headline TEXT;
+ALTER TABLE microsites ADD COLUMN IF NOT EXISTS body TEXT;
+ALTER TABLE microsites ADD COLUMN IF NOT EXISTS who_for TEXT;
+ALTER TABLE microsites ADD COLUMN IF NOT EXISTS who_skip TEXT;
+ALTER TABLE microsites ADD COLUMN IF NOT EXISTS alternatives JSONB DEFAULT '[]';
+ALTER TABLE microsites ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'draft';
+ALTER TABLE microsites ADD COLUMN IF NOT EXISTS country TEXT;
+ALTER TABLE microsites ADD COLUMN IF NOT EXISTS views INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE microsites ADD COLUMN IF NOT EXISTS published_at TIMESTAMPTZ;
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_microsites_slug ON microsites (slug) WHERE slug IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_microsites_status ON microsites (status, published_at DESC);

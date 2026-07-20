@@ -26,7 +26,7 @@ export default function Page() {
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 8 }}>
               <span style={{ fontSize: 15, fontWeight: 600, color: "var(--color-text-primary)" }}>{plan.name}</span>
               <span style={{ fontSize: 15, fontWeight: 600, color: "#0F6E56" }}>
-                {plan.price === 0 ? "Free" : `₹${plan.price === 6 ? 500 : plan.price}/month`}
+                {plan.price === 0 ? "Free" : `₹${plan.price}/month`}
               </span>
             </div>
             <ul style={{ margin: 0, paddingLeft: 18, fontSize: 13 }}>

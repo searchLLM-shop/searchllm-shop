@@ -6,15 +6,20 @@
 // the real approved-listings table instead of in-memory React state.
 
 import { auth, currentUser } from "@clerk/nextjs/server";
-import { getApprovedListings, insertMicrosite, getAndIncrementUsage, getUsageToday, getUserPlan } from "@/lib/db";
+import { findCandidateListings, insertMicrosite, getAndIncrementUsage, getUsageToday, getUserPlan, reserveSlug } from "@/lib/db";
 import { isAdminEmail } from "@/lib/isAdmin";
 import { checkQuery } from "@/lib/contentFilter";
-import { findMatchingListing, buildClientListingPayload } from "@/lib/listingMatcher";
+import { slugify } from "@/lib/slug";
+import { recordEvent } from "@/lib/db";
+import { identifyProductFromImage } from "@/lib/visionSearch";
+import { findMatchingListing, buildClientListingPayload, extractQueryTerms } from "@/lib/listingMatcher";
 import { getOrCreateGuestId } from "@/lib/guestId";
 import { PLANS } from "@/lib/constants";
 import { shouldSearch, braveSearch, formatSearchContext } from "@/lib/braveSearch";
 
-const SYSTEM_PROMPT = `You are SearchLLM, a shopping research assistant whose entire reputation rests on being honest, not on maximizing affiliate revenue. Given a shopping question, produce a single clear recommendation with real reasoning — trade-offs, who it's for, who should skip it. Be specific and a little opinionated, like a knowledgeable friend, not a generic listicle. You may sometimes receive current web search results as additional context — use them for anything time-sensitive (current prices, availability, newest releases), but still reason independently rather than just repeating them. Respond ONLY with valid JSON:
+const SYSTEM_PROMPT = `You are SearchLLM, a shopping research assistant whose entire reputation rests on being honest, not on maximizing affiliate revenue.
+
+Price is not quality. A cheap product that does the job well is a legitimate recommendation, not a compromise — say so plainly when it's true, and say when spending more is genuinely wasted. Equally, when a budget option will fail at what the person actually needs, say that too. Judge every product by whether it does the job the person is asking about, never by what it costs. Given a shopping question, produce a single clear recommendation with real reasoning — trade-offs, who it's for, who should skip it. Be specific and a little opinionated, like a knowledgeable friend, not a generic listicle. You may sometimes receive current web search results as additional context — use them for anything time-sensitive (current prices, availability, newest releases), but still reason independently rather than just repeating them. Respond ONLY with valid JSON:
 {
   "headline": "one sentence framing of the actual decision the person is making",
   "reasoning": "2-4 sentences of real trade-off reasoning, specific, not generic marketing language",
@@ -31,7 +36,7 @@ Provide 2-3 alternatives that are genuinely relevant to the specific product the
 
 export async function POST(req) {
   try {
-    const { query, attachment } = await req.json();
+    const { query, attachment, geoOverride } = await req.json();
 
     // Enforce the acceptable-use rules from the Terms before doing anything
     // else — no model call, no quota consumed, no record written.
@@ -73,23 +78,65 @@ export async function POST(req) {
       // INSERT ... ON CONFLICT with a WHERE clause checking the count.
       const usedSoFar = await getUsageToday(identity);
       if (usedSoFar >= limit) {
+        // Track how often people run out of picks — the signal that tells us
+        // whether the daily limit is doing anything, or just adding friction.
+        recordEvent({ eventType: "limit_reached", identity }).catch(() => {});
         return Response.json({ error: "Daily free limit reached" }, { status: 429 });
       }
       await getAndIncrementUsage(identity);
     }
 
     // --- Listing match (runs in plain code, never inside the AI call) ---
-    const approvedListings = await getApprovedListings();
     // Shopper's country, from Vercel's edge geo headers (no external IP
     // lookup needed, no PII stored — we only read the 2-letter country and
     // use it to filter offers, never persist it). Falls back to null, which
     // disables geo filtering rather than guessing wrong.
-    const userCountry =
+    const detectedCountry =
       req.headers.get("x-vercel-ip-country") ||
       req.headers.get("cf-ipcountry") ||
       null;
 
-    const strippedMatch = findMatchingListing(query, approvedListings, userCountry);
+    // Admins may simulate another country so they can test offers that are
+    // geo-restricted to markets they aren't in (e.g. checking UK Awin
+    // merchants from India). Ignored entirely for non-admins, so a normal
+    // user can't unlock offers that aren't available where they are.
+    const userCountry = admin && geoOverride ? String(geoOverride).toUpperCase() : detectedCountry;
+
+    // Narrow in the database (indexed), then score the small candidate set
+    // precisely here. Loading every approved listing per request does not
+    // survive a marketplace feed with six figures of products.
+    // If an image was attached, identify the product first — its terms feed
+    // both the listing search and the recommendation context. Failure here is
+    // non-fatal: the user still gets a text-based answer.
+    let vision = null;
+    if (attachment?.data && attachment?.mediaType?.startsWith("image/")) {
+      try {
+        vision = await identifyProductFromImage({
+          data: attachment.data,
+          mediaType: attachment.mediaType,
+        });
+      } catch (err) {
+        console.error("Vision analysis failed:", err.message);
+      }
+    }
+
+    // Search terms come from the typed query and, when present, from what the
+    // image turned out to be. A photo with no typed question still searches.
+    const queryTerms = [
+      ...extractQueryTerms(query),
+      ...(vision?.isProduct ? vision.searchTerms : []),
+      ...(vision?.productType ? extractQueryTerms(vision.productType) : []),
+    ];
+    const candidates = await findCandidateListings(Array.from(new Set(queryTerms)), userCountry);
+    const matchText = [query, vision?.description, vision?.productType].filter(Boolean).join(" ");
+    const strippedMatch = findMatchingListing(matchText, candidates, userCountry);
+
+    // A search with no relevant partner product is an inventory gap worth
+    // measuring — it tells us which categories to go and get merchants for.
+    // Recorded as a bare count with no query text attached.
+    if (!strippedMatch) {
+      recordEvent({ eventType: "no_match", identity, country: userCountry }).catch(() => {});
+    }
     const fullMatch = strippedMatch
       ? approvedListings.find((l) => l.id === strippedMatch.id)
       : null;
@@ -125,7 +172,13 @@ export async function POST(req) {
       : "";
 
     const userContent = `Query: ${query}${locationContext}${
-      attachment ? `\nAttachment: "${attachment.name}" (${attachment.type})` : ""
+      vision?.isProduct && vision.description
+        ? `\n\nThe shopper attached a photo of a product. It shows: ${vision.description}${vision.visibleBrand ? ` (visible brand: ${vision.visibleBrand})` : ""}. Treat this as what they are looking for or looking to match, and say what you can see in it so they know you understood the photo.`
+        : vision && !vision.isProduct
+        ? `\n\nThe shopper attached an image, but no product could be identified in it. Say so plainly and ask what they are looking for.`
+        : attachment?.name
+        ? `\nAttachment: "${attachment.name}"`
+        : ""
     }${
       strippedMatch
         ? `\n\nA relevant product exists: ${strippedMatch.product} by ${strippedMatch.brand}, ${strippedMatch.price}. Reason about whether this is genuinely a good fit, don't just assume yes.`
@@ -198,6 +251,18 @@ export async function POST(req) {
     // --- Write the microsite record. Note: queryHash, not the raw query, ---
     // --- is stored, so no individual user's question is ever retained.  ---
     const queryHash = await hashQuery(query);
+    // Build a publishable page from the answer — but only when the model was
+    // able to reduce the question to a generic shopping topic. A question too
+    // personal to generalise gets stored as before and never becomes a page.
+    const publicTopic = typeof parsed.publicTopic === "string" ? parsed.publicTopic.trim() : "";
+    let slug = null;
+    if (publicTopic.length > 8) {
+      const base = slugify(publicTopic);
+      if (base) {
+        try { slug = await reserveSlug(base); } catch { slug = null; }
+      }
+    }
+
     await insertMicrosite({
       title: parsed.micrositeTitle,
       summary: parsed.micrositeSummary,
@@ -205,6 +270,14 @@ export async function POST(req) {
       learnings: parsed.learnings,
       listingId: fullMatch?.id || null,
       queryHash,
+      slug,
+      topic: publicTopic || null,
+      headline: parsed.headline,
+      body: parsed.reasoning,
+      whoFor: parsed.whoItsFor,
+      whoSkip: parsed.whoShouldSkip,
+      alternatives: parsed.alternatives || [],
+      country: userCountry,
     });
 
     return Response.json({
@@ -213,6 +286,7 @@ export async function POST(req) {
       whoItsFor: parsed.whoItsFor,
       whoShouldSkip: parsed.whoShouldSkip,
       confidence: parsed.confidence,
+      imageUnderstanding: vision?.isProduct ? vision.description : null,
       alternatives: Array.isArray(parsed.alternatives) ? parsed.alternatives.slice(0, 3) : [],
       taskType,
       matchedListing: buildClientListingPayload(fullMatch),

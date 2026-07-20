@@ -1,0 +1,254 @@
+"use client";
+
+import { useState, useEffect, useCallback } from "react";
+
+// Small presentational helpers -------------------------------------------
+
+function Stat({ label, value, sub, accent }) {
+  return (
+    <div style={{ background: "var(--color-background-secondary)", border: "0.5px solid var(--color-border-tertiary)", borderRadius: 10, padding: "14px 16px" }}>
+      <div style={{ fontSize: 11, color: "var(--color-text-tertiary)", marginBottom: 6 }}>{label}</div>
+      <div style={{ fontSize: 22, fontWeight: 600, color: accent || "var(--color-text-primary)", lineHeight: 1.1 }}>{value}</div>
+      {sub && <div style={{ fontSize: 11, color: "var(--color-text-tertiary)", marginTop: 4 }}>{sub}</div>}
+    </div>
+  );
+}
+
+function Section({ title, note, children }) {
+  return (
+    <div style={{ marginBottom: 26 }}>
+      <div style={{ fontSize: 13, fontWeight: 500, marginBottom: 2 }}>{title}</div>
+      {note && <div style={{ fontSize: 11, color: "var(--color-text-tertiary)", marginBottom: 10 }}>{note}</div>}
+      {children}
+    </div>
+  );
+}
+
+function Bar({ value, max, color = "#0F6E56" }) {
+  const pct = max > 0 ? Math.round((value / max) * 100) : 0;
+  return (
+    <div style={{ background: "var(--color-background-tertiary)", borderRadius: 3, height: 6, overflow: "hidden", minWidth: 60 }}>
+      <div style={{ width: `${pct}%`, background: color, height: "100%" }} />
+    </div>
+  );
+}
+
+const n = (v) => Number(v || 0).toLocaleString();
+
+export default function ReportsPanel() {
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [days, setDays] = useState(30);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const resp = await fetch(`/api/admin/reports?days=${days}`);
+      const json = await resp.json();
+      if (!resp.ok) throw new Error(json.detail || json.error || "Failed to load");
+      setData(json);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setLoading(false);
+    }
+  }, [days]);
+
+  useEffect(() => { load(); }, [load]);
+
+  if (loading && !data) {
+    return <div style={{ padding: 30, textAlign: "center", color: "var(--color-text-tertiary)", fontSize: 13 }}>Loading reports…</div>;
+  }
+  if (error) {
+    return <div style={{ padding: 14, background: "#FDF3F2", border: "0.5px solid #E8C9C6", borderRadius: 8, color: "#A03530", fontSize: 12 }}>{error}</div>;
+  }
+  if (!data) return null;
+
+  const t = data.totals || {};
+  const a = data.activity || {};
+
+  const searches = Number(t.total_searches || 0);
+  const clicks = Number(t.total_clicks || 0);
+  const noMatch = Number(t.no_match_searches || 0);
+
+  // The metric that actually matters commercially: of the searches we ran,
+  // how many produced a click on a partner product?
+  const clickRate = searches > 0 ? ((clicks / searches) * 100).toFixed(1) : "0.0";
+  // And how often did we have nothing relevant to show at all? That's an
+  // inventory gap, not a user problem.
+  const coverage = searches > 0 ? (100 - (noMatch / searches) * 100).toFixed(0) : "0";
+
+  const maxDaily = Math.max(1, ...data.daily.map((d) => Number(d.searches || 0)));
+  const maxClicks = Math.max(1, ...(data.topProducts || []).map((p) => Number(p.clicks || 0)));
+
+  return (
+    <div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, flexWrap: "wrap", gap: 8 }}>
+        <h2 style={{ fontSize: 16, fontWeight: 500, margin: 0 }}>Reports</h2>
+        <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+          {[7, 30, 90].map((d) => (
+            <button
+              key={d}
+              onClick={() => setDays(d)}
+              style={{
+                background: days === d ? "#0F6E56" : "none",
+                color: days === d ? "#fff" : "var(--color-text-secondary)",
+                border: "0.5px solid var(--color-border-secondary)",
+                borderRadius: 6, padding: "4px 10px", fontSize: 11, cursor: "pointer",
+              }}
+            >
+              {d}d
+            </button>
+          ))}
+          <button onClick={load} style={{ background: "none", border: "0.5px solid var(--color-border-secondary)", borderRadius: 6, padding: "4px 10px", fontSize: 11, cursor: "pointer", color: "var(--color-text-secondary)" }}>
+            Refresh
+          </button>
+        </div>
+      </div>
+
+      <Section title="Audience">
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 10 }}>
+          <Stat label="Total visitors" value={n(t.total_visitors)} sub="unique, all time" />
+          <Stat label="Registered users" value={n(t.registered_users)} />
+          <Stat label="Active today" value={n(a.dau)} sub="ran at least one search" />
+          <Stat label="Active this week" value={n(a.wau)} />
+          <Stat label="Active this month" value={n(a.mau)} sub="MAU" />
+        </div>
+      </Section>
+
+      <Section title="Engagement and revenue" note="Click rate is the number that matters commercially — searches that led someone to a partner product.">
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 10 }}>
+          <Stat label="Total searches" value={n(searches)} />
+          <Stat label="Affiliate clicks" value={n(clicks)} accent="#854F0B" />
+          <Stat label="Click rate" value={`${clickRate}%`} sub="clicks per search" accent="#854F0B" />
+          <Stat label="Inventory coverage" value={`${coverage}%`} sub="searches with a relevant offer" />
+          <Stat label="Hit daily limit" value={n(t.limit_hits)} sub="times users ran out of picks" />
+        </div>
+      </Section>
+
+      <Section title={`Daily activity — last ${days} days`}>
+        <div style={{ border: "0.5px solid var(--color-border-tertiary)", borderRadius: 10, overflow: "hidden" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "90px 1fr 60px 60px 60px", gap: 8, padding: "8px 12px", background: "var(--color-background-tertiary)", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.04em", color: "var(--color-text-tertiary)" }}>
+            <span>Date</span><span>Searches</span><span style={{ textAlign: "right" }}>Search</span><span style={{ textAlign: "right" }}>Users</span><span style={{ textAlign: "right" }}>Clicks</span>
+          </div>
+          <div style={{ maxHeight: 320, overflowY: "auto" }}>
+            {data.daily.map((d) => (
+              <div key={d.day} style={{ display: "grid", gridTemplateColumns: "90px 1fr 60px 60px 60px", gap: 8, padding: "7px 12px", fontSize: 12, alignItems: "center", borderTop: "0.5px solid var(--color-border-tertiary)" }}>
+                <span style={{ color: "var(--color-text-tertiary)", fontSize: 11 }}>
+                  {new Date(d.day).toLocaleDateString(undefined, { day: "2-digit", month: "short" })}
+                </span>
+                <Bar value={Number(d.searches)} max={maxDaily} />
+                <span style={{ textAlign: "right" }}>{n(d.searches)}</span>
+                <span style={{ textAlign: "right", color: "var(--color-text-secondary)" }}>{n(d.active_users)}</span>
+                <span style={{ textAlign: "right", color: Number(d.clicks) > 0 ? "#854F0B" : "var(--color-text-tertiary)" }}>{n(d.clicks)}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </Section>
+
+      <Section title="Most clicked products" note="What people actually click through to buy.">
+        {(!data.topProducts || data.topProducts.length === 0) ? (
+          <div style={{ fontSize: 12, color: "var(--color-text-tertiary)", padding: "12px 0" }}>No affiliate clicks recorded yet.</div>
+        ) : (
+          <div style={{ border: "0.5px solid var(--color-border-tertiary)", borderRadius: 10, overflow: "hidden" }}>
+            {data.topProducts.map((p, i) => (
+              <div key={p.id} style={{ display: "flex", gap: 10, alignItems: "center", padding: "9px 12px", fontSize: 12, borderTop: i === 0 ? "none" : "0.5px solid var(--color-border-tertiary)" }}>
+                <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {p.product}
+                  <span style={{ color: "var(--color-text-tertiary)" }}> · {p.brand}</span>
+                </span>
+                <span style={{ fontSize: 11, color: "var(--color-text-tertiary)", whiteSpace: "nowrap" }}>{p.network}</span>
+                <div style={{ width: 70 }}><Bar value={Number(p.clicks)} max={maxClicks} color="#854F0B" /></div>
+                <span style={{ width: 34, textAlign: "right", fontWeight: 500 }}>{n(p.clicks)}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </Section>
+
+      <Section title="Clicks by network">
+        {(!data.byNetwork || data.byNetwork.length === 0) ? (
+          <div style={{ fontSize: 12, color: "var(--color-text-tertiary)" }}>No clicks yet.</div>
+        ) : (
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+            {data.byNetwork.map((x) => (
+              <div key={x.network} style={{ background: "var(--color-background-secondary)", border: "0.5px solid var(--color-border-tertiary)", borderRadius: 8, padding: "8px 14px", fontSize: 12 }}>
+                <span style={{ color: "var(--color-text-secondary)" }}>{x.network}</span>
+                <span style={{ fontWeight: 600, marginLeft: 8 }}>{n(x.clicks)}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </Section>
+
+      <Section title="Most active users" note="Identified by account or anonymous session token — no shopping history is stored against either.">
+        <div style={{ border: "0.5px solid var(--color-border-tertiary)", borderRadius: 10, overflow: "hidden", maxHeight: 300, overflowY: "auto" }}>
+          {data.topUsers.map((u, i) => (
+            <div key={u.identity} style={{ display: "grid", gridTemplateColumns: "1fr 70px 70px 90px", gap: 8, padding: "7px 12px", fontSize: 12, borderTop: i === 0 ? "none" : "0.5px solid var(--color-border-tertiary)" }}>
+              <span style={{ fontFamily: "monospace", fontSize: 11, color: "var(--color-text-secondary)", overflow: "hidden", textOverflow: "ellipsis" }}>
+                {String(u.identity).startsWith("user_") ? "registered" : "guest"} · {String(u.identity).slice(-8)}
+              </span>
+              <span style={{ textAlign: "right" }}>{n(u.searches)}</span>
+              <span style={{ textAlign: "right", color: "var(--color-text-tertiary)" }}>{n(u.active_days)}d</span>
+              <span style={{ textAlign: "right", fontSize: 11, color: "var(--color-text-tertiary)" }}>
+                {new Date(u.last_seen).toLocaleDateString(undefined, { day: "2-digit", month: "short" })}
+              </span>
+            </div>
+          ))}
+        </div>
+      </Section>
+
+      <Section title="Where visitors come from" note="First-party attribution — no third-party trackers involved.">
+        {(!data.sources || data.sources.length === 0) ? (
+          <div style={{ fontSize: 12, color: "var(--color-text-tertiary)" }}>No visits recorded yet.</div>
+        ) : (
+          <div style={{ border: "0.5px solid var(--color-border-tertiary)", borderRadius: 10, overflow: "hidden" }}>
+            {data.sources.map((s, i) => (
+              <div key={i} style={{ display: "grid", gridTemplateColumns: "1fr 100px 70px 60px", gap: 8, padding: "8px 12px", fontSize: 12, borderTop: i === 0 ? "none" : "0.5px solid var(--color-border-tertiary)" }}>
+                <span>{s.source}</span>
+                <span style={{ color: "var(--color-text-tertiary)", fontSize: 11 }}>{s.campaign || s.medium || "—"}</span>
+                <span style={{ textAlign: "right" }}>{n(s.visitors)}</span>
+                <span style={{ textAlign: "right", color: "var(--color-text-tertiary)" }}>{n(s.visits)}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </Section>
+
+      <Section title="Campaign performance" note="Visitors, the searches they ran, and the partner clicks they produced — what an ad campaign actually returned.">
+        {(!data.campaigns || data.campaigns.length === 0) ? (
+          <div style={{ fontSize: 12, color: "var(--color-text-tertiary)" }}>Nothing to show yet.</div>
+        ) : (
+          <div style={{ border: "0.5px solid var(--color-border-tertiary)", borderRadius: 10, overflow: "hidden" }}>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 70px 70px 70px", gap: 8, padding: "8px 12px", background: "var(--color-background-tertiary)", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.04em", color: "var(--color-text-tertiary)" }}>
+              <span>Source</span><span>Campaign</span><span style={{ textAlign: "right" }}>Visitors</span><span style={{ textAlign: "right" }}>Searches</span><span style={{ textAlign: "right" }}>Clicks</span>
+            </div>
+            {data.campaigns.map((c, i) => (
+              <div key={i} style={{ display: "grid", gridTemplateColumns: "1fr 1fr 70px 70px 70px", gap: 8, padding: "8px 12px", fontSize: 12, borderTop: "0.5px solid var(--color-border-tertiary)" }}>
+                <span>{c.source}</span>
+                <span style={{ color: "var(--color-text-tertiary)", fontSize: 11 }}>{c.campaign || "—"}</span>
+                <span style={{ textAlign: "right" }}>{n(c.visitors)}</span>
+                <span style={{ textAlign: "right" }}>{n(c.searches)}</span>
+                <span style={{ textAlign: "right", color: Number(c.affiliate_clicks) > 0 ? "#854F0B" : "var(--color-text-tertiary)" }}>{n(c.affiliate_clicks)}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </Section>
+
+      <Section title="Inventory" note="Approved listings are what can actually be shown to a shopper.">
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          {data.inventory.map((x, i) => (
+            <div key={i} style={{ background: "var(--color-background-secondary)", border: "0.5px solid var(--color-border-tertiary)", borderRadius: 8, padding: "7px 12px", fontSize: 11 }}>
+              <span style={{ color: "var(--color-text-tertiary)" }}>{x.network} · {x.status}</span>
+              <span style={{ fontWeight: 600, marginLeft: 8 }}>{n(x.listings)}</span>
+            </div>
+          ))}
+        </div>
+      </Section>
+    </div>
+  );
+}

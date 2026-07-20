@@ -4,12 +4,45 @@ import { useState, useCallback, useRef } from "react";
 
 const STEPS = ["Reading your question", "Checking current options", "Weighing trade-offs", "Writing the honest version"];
 
-export default function ResearchTab({ maxSearches, searchCount, onSearchComplete, onSavePick }) {
+
+// Reads an image file and downscales it before upload. Phone photos are
+// routinely 4–8MB, and base64 inflates that by a third — enough to make
+// requests slow or fail outright. 1024px on the long edge is plenty for
+// identifying a product, and keeps the payload to a few hundred KB.
+async function prepareImage(file) {
+  const MAX_EDGE = 1024;
+  const dataUrl = await new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(new Error("Could not read that file"));
+    reader.readAsDataURL(file);
+  });
+
+  const img = await new Promise((resolve, reject) => {
+    const el = new Image();
+    el.onload = () => resolve(el);
+    el.onerror = () => reject(new Error("Could not open that image"));
+    el.src = dataUrl;
+  });
+
+  const scale = Math.min(1, MAX_EDGE / Math.max(img.width, img.height));
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.round(img.width * scale);
+  canvas.height = Math.round(img.height * scale);
+  canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
+
+  // Normalise to JPEG so we send one predictable media type.
+  const out = canvas.toDataURL("image/jpeg", 0.82);
+  return { data: out.split(",")[1], mediaType: "image/jpeg" };
+}
+
+export default function ResearchTab({ maxSearches, searchCount, onSearchComplete, onSavePick, isAdmin, savedQueries = [], saveNotice }) {
   const [query, setQuery] = useState("");
   const [processing, setProcessing] = useState(false);
   const [step, setStep] = useState(-1);
   const [result, setResult] = useState(null);
   const [errorMsg, setErrorMsg] = useState(null);
+  const [geoOverride, setGeoOverride] = useState("");
   const fileRef = useRef();
   const [attachment, setAttachment] = useState(null);
 
@@ -32,11 +65,13 @@ export default function ResearchTab({ maxSearches, searchCount, onSearchComplete
         const resp = await fetch("/api/research", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ query: searchQ, attachment }),
+          body: JSON.stringify({ query: searchQ, attachment, geoOverride: geoOverride || undefined }),
         });
 
         if (resp.status === 429) {
-          setErrorMsg("Daily free limit reached. Upgrade to Plus for unlimited picks.");
+          setErrorMsg(
+            "That's your 8 picks for today. The count resets at midnight UTC — come back tomorrow and we'll pick up where you left off. Your saved picks stay available in the meantime."
+          );
           clearInterval(stepTimer);
           setStep(-1);
           setProcessing(false);
@@ -84,6 +119,33 @@ export default function ResearchTab({ maxSearches, searchCount, onSearchComplete
         </div>
       )}
 
+      {isAdmin && (
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10, padding: "7px 12px", background: "var(--color-background-tertiary)", borderRadius: 8, fontSize: 12, color: "var(--color-text-secondary)" }}>
+          <span style={{ fontWeight: 500 }}>Admin</span>
+          <span>· view as</span>
+          <select
+            value={geoOverride}
+            onChange={(e) => setGeoOverride(e.target.value)}
+            style={{ fontSize: 12, padding: "3px 6px", borderRadius: 6, border: "0.5px solid var(--color-border-secondary)", background: "var(--color-background-primary)", color: "var(--color-text-primary)" }}
+          >
+            <option value="">My location (detected)</option>
+            <option value="IN">India</option>
+            <option value="GB">United Kingdom</option>
+            <option value="US">United States</option>
+            <option value="AE">UAE</option>
+            <option value="AU">Australia</option>
+            <option value="CA">Canada</option>
+            <option value="DE">Germany</option>
+            <option value="SG">Singapore</option>
+          </select>
+          {geoOverride && (
+            <span style={{ color: "#0F6E56" }}>
+              simulating {geoOverride} — offers and prices will match that market
+            </span>
+          )}
+        </div>
+      )}
+
       <div style={{ background: "var(--color-background-secondary)", borderRadius: 12, border: "0.5px solid var(--color-border-tertiary)", padding: 14, marginBottom: 16 }}>
         <textarea
           value={query}
@@ -95,9 +157,24 @@ export default function ResearchTab({ maxSearches, searchCount, onSearchComplete
         />
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8 }}>
           <button onClick={() => fileRef.current?.click()} style={{ background: "none", border: "0.5px solid var(--color-border-secondary)", borderRadius: 7, padding: "5px 10px", cursor: "pointer", fontSize: 11, color: attachment ? "#0F6E56" : "var(--color-text-secondary)" }}>
-            {attachment ? attachment.name : "Attach"}
+            {attachment ? (attachment.preparing ? "Reading…" : attachment.name) : "Attach photo"}
           </button>
-          <input ref={fileRef} type="file" style={{ display: "none" }} onChange={(e) => { const f = e.target.files[0]; if (f) setAttachment({ name: f.name, type: f.type }); }} accept=".pdf,.txt,.docx,.csv,.png,.jpg" />
+          <input ref={fileRef} type="file" style={{ display: "none" }} onChange={async (e) => {
+              const f = e.target.files[0];
+              if (!f) return;
+              if (!f.type.startsWith("image/")) {
+                setAttachment({ name: f.name, type: f.type });
+                return;
+              }
+              setAttachment({ name: f.name, type: f.type, preparing: true });
+              try {
+                const { data, mediaType } = await prepareImage(f);
+                setAttachment({ name: f.name, type: f.type, data, mediaType });
+              } catch (err) {
+                setErrorMsg(err.message);
+                setAttachment(null);
+              }
+            }} accept=".pdf,.txt,.docx,.csv,.png,.jpg" />
           {attachment && <button onClick={() => setAttachment(null)} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 11, color: "#D85A30" }}>✕</button>}
           <div style={{ flex: 1 }} />
           <span style={{ fontSize: 10, color: "var(--color-text-tertiary)" }}>Ctrl+Enter</span>
@@ -144,6 +221,11 @@ export default function ResearchTab({ maxSearches, searchCount, onSearchComplete
               <span style={{ fontSize: 10, fontWeight: 500, color: "#0F6E56", letterSpacing: "0.05em", textTransform: "uppercase" }}>Our pick</span>
               {result.confidence && <span style={{ fontSize: 10, color: "var(--color-text-tertiary)" }}>confidence: {result.confidence}</span>}
             </div>
+            {result.imageUnderstanding && (
+              <div style={{ fontSize: 12, color: "var(--color-text-secondary)", background: "var(--color-background-tertiary)", borderRadius: 8, padding: "8px 10px", marginBottom: 10 }}>
+                From your photo, I can see: {result.imageUnderstanding}
+              </div>
+            )}
             <div style={{ fontSize: 15, fontWeight: 500, marginBottom: 10, lineHeight: 1.4 }}>{result.headline}</div>
             <div style={{ fontSize: 13, color: "var(--color-text-secondary)", lineHeight: 1.7, marginBottom: 12 }}>{result.reasoning}</div>
             {result.whoItsFor && <div style={{ fontSize: 12, color: "var(--color-text-secondary)", marginBottom: 4 }}><strong style={{ fontWeight: 500, color: "var(--color-text-primary)" }}>Good for:</strong> {result.whoItsFor}</div>}
@@ -157,14 +239,61 @@ export default function ResearchTab({ maxSearches, searchCount, onSearchComplete
                   Sponsored match · affiliate link via {result.matchedListing.network}
                 </span>
               </div>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 6 }}>
-                <span style={{ fontSize: 14, fontWeight: 500 }}>{result.matchedListing.product}</span>
-                <span style={{ fontSize: 14, fontWeight: 500 }}>{result.matchedListing.price}</span>
+              <div style={{ display: "flex", gap: 14, alignItems: "flex-start" }}>
+                {/* Product image makes the recommendation concrete. Kept small
+                    and lazily loaded; a broken feed image hides itself rather
+                    than leaving a torn placeholder. */}
+                {result.matchedListing.imageUrl && (
+                  <img
+                    src={result.matchedListing.imageUrl}
+                    alt={result.matchedListing.product}
+                    loading="lazy"
+                    onError={(e) => { e.currentTarget.style.display = "none"; }}
+                    style={{ width: 84, height: 84, objectFit: "contain", borderRadius: 8, background: "#fff", flexShrink: 0, border: "0.5px solid var(--color-border-tertiary)" }}
+                  />
+                )}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 10, marginBottom: 6 }}>
+                    <span style={{ fontSize: 14, fontWeight: 500 }}>{result.matchedListing.product}</span>
+                    <span style={{ fontSize: 14, fontWeight: 500, whiteSpace: "nowrap" }}>
+                      {/* Campaign-level offers have no single price — show
+                          nothing rather than a placeholder or a stand-in. */}
+                      {result.matchedListing.price || ""}
+                      {result.matchedListing.discount && (
+                        <span style={{ fontSize: 11, color: "#0F6E56", marginLeft: 6 }}>{result.matchedListing.discount}</span>
+                      )}
+                    </span>
+                  </div>
+                  <div style={{ fontSize: 12, color: "var(--color-text-secondary)", marginBottom: 10 }}>
+                    {result.matchedListing.brand}{result.matchedListing.pitch ? ` · ${result.matchedListing.pitch}` : ""}
+                  </div>
+                  <a
+                    href={result.matchedListing.networkLink}
+                    target="_blank"
+                    rel="noopener noreferrer sponsored"
+                    onClick={() => {
+                      // sendBeacon is built for exactly this: it survives the
+                      // navigation away, so the click is recorded without
+                      // delaying the user by even a millisecond.
+                      try {
+                        const payload = JSON.stringify({
+                          eventType: "affiliate_click",
+                          listingId: result.matchedListing.id,
+                          network: result.matchedListing.network,
+                        });
+                        if (navigator.sendBeacon) {
+                          navigator.sendBeacon("/api/events", new Blob([payload], { type: "application/json" }));
+                        } else {
+                          fetch("/api/events", { method: "POST", headers: { "Content-Type": "application/json" }, body: payload, keepalive: true }).catch(() => {});
+                        }
+                      } catch { /* never block the click */ }
+                    }} style={{ display: "inline-block", fontSize: 13, fontWeight: 500, color: "#fff", background: "#854F0B", padding: "8px 16px", borderRadius: 8, textDecoration: "none" }}>
+                    {result.matchedListing.merchantDomain
+                      ? `View on ${result.matchedListing.merchantDomain} →`
+                      : "View and buy →"}
+                  </a>
+                </div>
               </div>
-              <div style={{ fontSize: 12, color: "var(--color-text-secondary)", marginBottom: 10 }}>{result.matchedListing.brand} · {result.matchedListing.pitch}</div>
-              <a href={result.matchedListing.networkLink} target="_blank" rel="noopener noreferrer sponsored" style={{ display: "inline-block", fontSize: 13, fontWeight: 500, color: "#fff", background: "#854F0B", padding: "8px 16px", borderRadius: 8, textDecoration: "none" }}>
-                View and buy →
-              </a>
               <div style={{ fontSize: 10, color: "var(--color-text-tertiary)", marginTop: 8 }}>This never changes the price you pay, and it&apos;s never the reason this option was suggested — see alternatives below.</div>
             </div>
           )}
@@ -194,8 +323,33 @@ export default function ResearchTab({ maxSearches, searchCount, onSearchComplete
             delivery and returns are between you and the retailer.
           </p>
 
+          {saveNotice && (
+            <div style={{ fontSize: 12, color: "var(--color-text-secondary)", marginBottom: 8 }}>{saveNotice}</div>
+          )}
+
           <div style={{ display: "flex", gap: 10 }}>
-            <button onClick={() => onSavePick?.(result)} style={{ background: "none", border: "0.5px solid var(--color-border-secondary)", borderRadius: 8, padding: "8px 14px", cursor: "pointer", fontSize: 13, color: "var(--color-text-secondary)" }}>Save this pick</button>
+            {(() => {
+              // The button gave no feedback at all when clicked, so it looked
+              // broken even though the pick was saved. Reflect the state.
+              const isSaved = savedQueries.includes((result.query || "").trim().toLowerCase().replace(/\s+/g, " "));
+              return (
+                <button
+                  onClick={() => onSavePick?.(result)}
+                  disabled={isSaved}
+                  style={{
+                    background: isSaved ? "#0F6E5614" : "none",
+                    border: `0.5px solid ${isSaved ? "#0F6E56" : "var(--color-border-secondary)"}`,
+                    borderRadius: 8,
+                    padding: "8px 14px",
+                    cursor: isSaved ? "default" : "pointer",
+                    fontSize: 13,
+                    color: isSaved ? "#0F6E56" : "var(--color-text-secondary)",
+                  }}
+                >
+                  {isSaved ? "✓ Saved" : "Save this pick"}
+                </button>
+              );
+            })()}
             <button onClick={() => { setResult(null); setQuery(""); setAttachment(null); }} style={{ background: "none", border: "0.5px solid var(--color-border-secondary)", borderRadius: 8, padding: "8px 14px", cursor: "pointer", fontSize: 13, color: "var(--color-text-secondary)" }}>New question</button>
           </div>
         </div>
