@@ -91,8 +91,6 @@ export default function Home() {
     } catch { /* quota exceeded or private mode — saving is best-effort */ }
   }, [savedPicks]);
 
-  const savedLimit = PLANS[plan]?.savedPicks ?? PLANS.free.savedPicks;
-
   function normaliseQuery(q) {
     return (q || "").trim().toLowerCase().replace(/\s+/g, " ");
   }
@@ -200,6 +198,10 @@ export default function Home() {
   const limit = usage?.limit ?? 8;
   const used = usage?.used ?? 0;
   const plan = usage?.plan ?? "free";
+  // Must come after `plan` — computing it earlier referenced `plan` before its
+  // declaration, which threw "Cannot access 'H' before initialization" during
+  // prerendering and failed the build.
+  const savedLimit = PLANS[plan]?.savedPicks ?? PLANS.free.savedPicks;
   const picksLeftLabel = limit === -1 ? "∞" : Math.max(0, limit - used);
 
   return (
