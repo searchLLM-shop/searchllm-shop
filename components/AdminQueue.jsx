@@ -37,20 +37,50 @@ export default function AdminQueue() {
   // real queries. This rewrites them into actual shopper language.
   async function enrichKeywords() {
     setEnriching(true);
-    setEnrichMsg(null);
+    setEnrichMsg("Generating keywords…");
     setErrorMsg(null);
-    try {
-      const resp = await fetch("/api/admin/enrich-keywords", { method: "POST" });
-      const data = await resp.json();
-      if (!resp.ok) throw new Error(data.detail || data.error || "Failed");
-      setEnrichMsg(data.message || `Updated ${data.updated} listings.`);
+
+    // The work continues on the server even if the browser gives up waiting,
+    // and updates commit as they go — so a dropped connection is not a
+    // failure. Poll the remaining count instead of trusting this response.
+    const started = keywordBacklog?.pending ?? null;
+
+    fetch("/api/admin/enrich-keywords", { method: "POST" })
+      .then(async (resp) => {
+        const data = await resp.json().catch(() => null);
+        if (data?.message) setEnrichMsg(data.message);
+      })
+      .catch(() => { /* polling reports the real outcome */ });
+
+    const poll = async (attempt = 0) => {
       await loadKeywordBacklog();
-      await load();
-    } catch (e) {
-      setErrorMsg("Keyword generation failed: " + e.message);
-    } finally {
-      setEnriching(false);
-    }
+      const resp = await fetch("/api/admin/enrich-keywords").catch(() => null);
+      const counts = resp && resp.ok ? await resp.json().catch(() => null) : null;
+
+      if (counts) {
+        const remaining = Number(counts.pending || 0);
+        if (started != null && remaining < started) {
+          setEnrichMsg(
+            remaining > 0
+              ? `Processed ${started - remaining} listings. ${remaining} still to go — run again.`
+              : `Processed ${started - remaining} listings. All listings are now done.`
+          );
+          if (remaining === 0 || remaining < started - 5) {
+            await load();
+            setEnriching(false);
+            return;
+          }
+        }
+      }
+
+      if (attempt < 25) {
+        setTimeout(() => poll(attempt + 1), 4000);
+      } else {
+        setEnrichMsg("Still working — check back in a moment and refresh.");
+        setEnriching(false);
+      }
+    };
+    setTimeout(() => poll(), 5000);
   }
 
   async function bulkAct(status) {

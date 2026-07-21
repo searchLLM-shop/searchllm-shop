@@ -18,7 +18,7 @@ export const maxDuration = 300;
 
 // 300 per run: enough that a large sync clears in a click or two, while
 // staying inside the function time limit at ~15 batched API calls.
-const BATCH_LIMIT = 300;
+const BATCH_LIMIT = 120;
 
 async function isAdmin() {
   const user = await currentUser();
