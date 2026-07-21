@@ -271,3 +271,9 @@ ALTER TABLE microsites ADD COLUMN IF NOT EXISTS published_at TIMESTAMPTZ;
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_microsites_slug ON microsites (slug) WHERE slug IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_microsites_status ON microsites (status, published_at DESC);
+
+-- Shopper ratings from the product feed. A far better quality signal than
+-- price: a 4.3-star product with 900 ratings is demonstrably good at its job,
+-- whatever it costs. Used to break ties when several products match a query.
+ALTER TABLE listings ADD COLUMN IF NOT EXISTS rating NUMERIC(3,2);
+ALTER TABLE listings ADD COLUMN IF NOT EXISTS rating_count INTEGER;

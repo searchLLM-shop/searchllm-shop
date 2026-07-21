@@ -137,8 +137,12 @@ export async function POST(req) {
     if (!strippedMatch) {
       recordEvent({ eventType: "no_match", identity, country: userCountry }).catch(() => {});
     }
+    // Look the full record up in `candidates` — the DB-side search results.
+    // This referenced `approvedListings`, which stopped existing when search
+    // moved into Postgres, so any search that DID find a match threw a
+    // ReferenceError. It stayed hidden only because matches were rare.
     const fullMatch = strippedMatch
-      ? approvedListings.find((l) => l.id === strippedMatch.id)
+      ? candidates.find((l) => l.id === strippedMatch.id) || null
       : null;
 
     // --- Search-or-skip: only call Brave for genuinely time-sensitive ---
@@ -181,7 +185,9 @@ export async function POST(req) {
         : ""
     }${
       strippedMatch
-        ? `\n\nA relevant product exists: ${strippedMatch.product} by ${strippedMatch.brand}, ${strippedMatch.price}. Reason about whether this is genuinely a good fit, don't just assume yes.`
+        ? `\n\nA relevant product exists: ${strippedMatch.product} by ${strippedMatch.brand}, ${strippedMatch.price}${
+            fullMatch?.rating ? `, rated ${fullMatch.rating}/5 by ${fullMatch.ratingCount || "some"} shoppers` : ""
+          }. Reason about whether this is genuinely a good fit, don't just assume yes.`
         : ""
     }${searchContext}`;
 

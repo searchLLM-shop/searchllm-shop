@@ -265,7 +265,19 @@ export default function ResearchTab({ maxSearches, searchCount, onSearchComplete
                     </span>
                   </div>
                   <div style={{ fontSize: 12, color: "var(--color-text-secondary)", marginBottom: 10 }}>
-                    {result.matchedListing.brand}{result.matchedListing.pitch ? ` · ${result.matchedListing.pitch}` : ""}
+                    {result.matchedListing.brand}
+                    {/* Real shopper ratings from the feed — shown because they're
+                        genuinely useful, and because they're the reason this
+                        product was chosen over other equally relevant ones. */}
+                    {result.matchedListing.rating != null && (
+                      <span style={{ marginLeft: 6 }}>
+                        · ★ {result.matchedListing.rating}
+                        {result.matchedListing.ratingCount
+                          ? ` (${Number(result.matchedListing.ratingCount).toLocaleString()})`
+                          : ""}
+                      </span>
+                    )}
+                    {result.matchedListing.pitch ? ` · ${result.matchedListing.pitch}` : ""}
                   </div>
                   <a
                     href={result.matchedListing.networkLink}
