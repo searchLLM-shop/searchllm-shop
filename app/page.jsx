@@ -8,6 +8,7 @@ import BrandForm from "@/components/BrandForm";
 import AdminQueue from "@/components/AdminQueue";
 import ReportsPanel from "@/components/ReportsPanel";
 import { PLANS, SHOW_UPGRADE, SHOW_ADVERTISERS, SHOW_BRANDS_FORM } from "@/lib/constants";
+import { LOCALES, DEFAULT_LOCALE, resolveLocale, t } from "@/lib/i18n";
 import AdvertiserPanel from "@/components/AdvertiserPanel";
 import AdvertiserAdmin from "@/components/AdvertiserAdmin";
 import AnswersAdmin from "@/components/AnswersAdmin";
@@ -99,7 +100,7 @@ export default function Home() {
     const key = normaliseQuery(pick.query);
     const already = savedPicks.some((p) => normaliseQuery(p.query) === key);
     if (already) {
-      setSaveNotice("Already saved — find it in the Saved tab.");
+      setSaveNotice(tr("alreadySaved"));
       setTimeout(() => setSaveNotice(null), 3000);
       return;
     }
@@ -109,7 +110,7 @@ export default function Home() {
       return;
     }
     setSavedPicks((p) => [{ ...pick, savedAt: Date.now() }, ...p]);
-    setSaveNotice("Saved.");
+    setSaveNotice(tr("savedOk"));
     setTimeout(() => setSaveNotice(null), 2500);
   }
 
@@ -120,6 +121,34 @@ export default function Home() {
   const [usage, setUsage] = useState(null); // { plan, limit, used }
   const [upgrading, setUpgrading] = useState(false);
   const [checkoutError, setCheckoutError] = useState(null);
+  const [locale, setLocale] = useState(DEFAULT_LOCALE);
+
+  // Resolve language once on mount: an explicit past choice wins, then a
+  // ?lang= link, then the browser's own preference. Country is handled
+  // server-side, where the visitor's location is actually known.
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem("sllm_locale");
+      const urlParam = new URLSearchParams(window.location.search).get("lang");
+      const resolved = resolveLocale({
+        stored,
+        urlParam,
+        acceptLanguage: navigator.language || "",
+      });
+      setLocale(resolved);
+      document.documentElement.lang = LOCALES[resolved]?.htmlLang || "en";
+    } catch { /* storage unavailable — English is a safe default */ }
+  }, []);
+
+  function changeLocale(next) {
+    setLocale(next);
+    try {
+      localStorage.setItem("sllm_locale", next);
+      document.documentElement.lang = LOCALES[next]?.htmlLang || "en";
+    } catch { /* non-critical */ }
+  }
+
+  const tr = t(locale);
   const { isSignedIn, user } = useUser();
   const isAdminHint = useIsAdminClientHint();
 
@@ -190,7 +219,7 @@ export default function Home() {
   if (!consented) {
     return (
       <div style={{ minHeight: 600, display: "flex", flexDirection: "column", border: "0.5px solid var(--color-border-tertiary)", borderRadius: 16, overflow: "hidden", background: "var(--color-background-primary)" }}>
-        <ConsentGate onAccept={handleAccept} />
+        <ConsentGate locale={locale} onAccept={handleAccept} />
       </div>
     );
   }
@@ -217,8 +246,21 @@ export default function Home() {
         <span style={{ fontSize: 13, fontWeight: 500, color: "#0F6E56", letterSpacing: "0.04em", textTransform: "uppercase" }}>SearchLLM</span>
         <div className="sllm-header-right" style={{ display: "flex", alignItems: "center", gap: 14 }}>
           <span className="sllm-header-identity" style={{ fontSize: 12, color: "var(--color-text-secondary)" }}>
-            {isSignedIn ? user?.primaryEmailAddress?.emailAddress : "Guest"} · {plan === "plus" ? "Plus" : "Free"} · {picksLeftLabel} picks left
+            {isSignedIn ? user?.primaryEmailAddress?.emailAddress : tr("guest")} · {plan === "plus" ? tr("plus") : tr("free")} · {picksLeftLabel} {tr("picksLeft")}
           </span>
+          {/* Language switcher. Sits beside the account details so a German
+              visitor can correct an auto-detected language immediately. */}
+          <select
+            value={locale}
+            onChange={(e) => changeLocale(e.target.value)}
+            aria-label="Language"
+            style={{ fontSize: 11, padding: "3px 6px", borderRadius: 6, border: "0.5px solid var(--color-border-secondary)", background: "var(--color-background-primary)", color: "var(--color-text-secondary)", marginRight: 8, cursor: "pointer" }}
+          >
+            {Object.values(LOCALES).map((l) => (
+              <option key={l.code} value={l.code}>{l.name}</option>
+            ))}
+          </select>
+
           {SHOW_UPGRADE && plan === "free" && isSignedIn && (
             <button onClick={handleUpgrade} disabled={upgrading} style={{ background: "#0F6E56", border: "none", borderRadius: 6, padding: "5px 12px", cursor: upgrading ? "default" : "pointer", fontSize: 11, color: "#fff", fontWeight: 500, opacity: upgrading ? 0.6 : 1 }}>
               {upgrading ? "Redirecting…" : "Upgrade to Plus"}
@@ -243,7 +285,16 @@ export default function Home() {
             onClick={() => setActiveTab(t)}
             style={{ padding: "9px 16px", border: "none", background: "none", cursor: "pointer", fontSize: 13, fontWeight: activeTab === t ? 500 : 400, color: activeTab === t ? "#0F6E56" : "var(--color-text-secondary)", borderBottom: `2px solid ${activeTab === t ? "#0F6E56" : "transparent"}`, textTransform: "capitalize" }}
           >
-            {t === "brands" ? "For brands" : t === "admin" ? "Review queue" : t}
+            {/* Shopper-facing tabs are translated; admin tabs stay English. */}
+            {t === "research"
+              ? tr("tabResearch")
+              : t === "saved"
+              ? tr("tabSaved")
+              : t === "brands"
+              ? "For brands"
+              : t === "admin"
+              ? "Review queue"
+              : t}
           </button>
         ))}
       </div>
@@ -252,6 +303,7 @@ export default function Home() {
         {activeTab === "research" && (
           <ResearchTab
             isAdmin={isAdminHint}
+            locale={locale}
             maxSearches={limit}
             searchCount={used}
             onSearchComplete={loadUsage}
@@ -263,9 +315,9 @@ export default function Home() {
         {activeTab === "saved" && (
           <div>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", margin: "0 0 12px" }}>
-              <h2 style={{ fontSize: 16, fontWeight: 500, margin: 0 }}>Saved picks</h2>
+              <h2 style={{ fontSize: 16, fontWeight: 500, margin: 0 }}>{tr("savedPicks")}</h2>
               <span style={{ fontSize: 11, color: "var(--color-text-tertiary)" }}>
-                {savedLimit === -1 ? `${savedPicks.length} saved` : `${savedPicks.length} of ${savedLimit} saved`}
+                {savedLimit === -1 ? `${savedPicks.length} ${tr("savedCount")}` : `${savedPicks.length} ${tr("savedOf")} ${savedLimit} ${tr("savedCount")}`}
               </span>
             </div>
             {savedPicks.length === 0 ? (
@@ -284,7 +336,7 @@ export default function Home() {
                         <div style={{ fontSize: 13, fontWeight: 500 }}>{p.headline}</div>
                       </div>
                       <span style={{ fontSize: 11, color: "var(--color-text-tertiary)", whiteSpace: "nowrap" }}>
-                        {open ? "Hide ▲" : "View ▼"}
+                        {open ? `${tr("hide")} ▲` : `${tr("view")} ▼`}
                       </span>
                     </div>
 
@@ -297,12 +349,12 @@ export default function Home() {
                         )}
                         {p.whoItsFor && (
                           <div style={{ fontSize: 12, color: "var(--color-text-secondary)", marginBottom: 4 }}>
-                            <strong style={{ fontWeight: 500, color: "var(--color-text-primary)" }}>Good for:</strong> {p.whoItsFor}
+                            <strong style={{ fontWeight: 500, color: "var(--color-text-primary)" }}>{tr("goodFor")}</strong> {p.whoItsFor}
                           </div>
                         )}
                         {p.whoShouldSkip && (
                           <div style={{ fontSize: 12, color: "var(--color-text-secondary)", marginBottom: 10 }}>
-                            <strong style={{ fontWeight: 500, color: "var(--color-text-primary)" }}>Skip if:</strong> {p.whoShouldSkip}
+                            <strong style={{ fontWeight: 500, color: "var(--color-text-primary)" }}>{tr("skipIf")}</strong> {p.whoShouldSkip}
                           </div>
                         )}
 
@@ -326,7 +378,7 @@ export default function Home() {
                         {p.alternatives?.length > 0 && (
                           <div style={{ marginBottom: 10 }}>
                             <div style={{ fontSize: 10, letterSpacing: "0.05em", textTransform: "uppercase", color: "var(--color-text-tertiary)", marginBottom: 6 }}>
-                              Also considered
+                              {tr("alsoConsidered")}
                             </div>
                             {p.alternatives.map((a, i) => (
                               <div key={i} style={{ display: "flex", justifyContent: "space-between", gap: 10, fontSize: 12, color: "var(--color-text-secondary)", padding: "3px 0" }}>
@@ -342,7 +394,7 @@ export default function Home() {
                             {p.savedAt ? `Saved ${new Date(p.savedAt).toLocaleDateString()}` : ""}
                           </span>
                           <button onClick={() => removePick(p.id)} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 11, color: "#D85A30" }}>
-                            Remove
+                            {tr("remove")}
                           </button>
                         </div>
                       </div>
@@ -373,7 +425,7 @@ export default function Home() {
           <a href="/pricing" style={{ color: "inherit", textDecoration: "none" }}>Pricing</a>
           <a href="/contact" style={{ color: "inherit", textDecoration: "none" }}>Contact</a>
         </span>
-        <span className="sllm-footer-tag" style={{ fontSize: 11, color: "var(--color-text-tertiary)" }}>Honest recommendations, always disclosed</span>
+        <span className="sllm-footer-tag" style={{ fontSize: 11, color: "var(--color-text-tertiary)" }}>{tr("honestFooter")}</span>
       </div>
     </div>
   );

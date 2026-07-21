@@ -10,6 +10,7 @@ import { findCandidateListings, insertMicrosite, getAndIncrementUsage, getUsageT
 import { isAdminEmail } from "@/lib/isAdmin";
 import { checkQuery } from "@/lib/contentFilter";
 import { slugify } from "@/lib/slug";
+import { languageForModel, resolveLocale } from "@/lib/i18n";
 import { recordEvent } from "@/lib/db";
 import { identifyProductFromImage } from "@/lib/visionSearch";
 import { findMatchingListing, buildClientListingPayload, extractQueryTerms } from "@/lib/listingMatcher";
@@ -39,7 +40,7 @@ When a product is offered to you, decide honestly whether it answers the questio
 
 export async function POST(req) {
   try {
-    const { query, attachment, geoOverride } = await req.json();
+    const { query, attachment, geoOverride, locale: requestedLocale } = await req.json();
 
     // Enforce the acceptable-use rules from the Terms before doing anything
     // else — no model call, no quota consumed, no record written.
@@ -174,11 +175,25 @@ export async function POST(req) {
       AU: "AUD ($)", DE: "EUR (€)", FR: "EUR (€)", SG: "SGD ($)",
       AE: "AED", NZ: "NZD ($)", IE: "EUR (€)",
     };
+    // Which language to answer in. Translating afterwards reads badly for
+    // anything conversational, so the model writes in the target language
+    // from the start — including the alternatives and the microsite copy.
+    const locale = resolveLocale({
+      stored: requestedLocale,
+      country: userCountry,
+      acceptLanguage: req.headers.get("accept-language"),
+    });
+    const language = languageForModel(locale);
+    const languageContext =
+      language === "English"
+        ? ""
+        : `\n\nWrite your entire response in ${language}, including the headline, reasoning, who it's for, who should skip it, and the alternatives. Use natural, idiomatic ${language} — this is being read by a native speaker, not translated. Keep the JSON field names in English; only the values are in ${language}.`;
+
     const locationContext = userCountry
       ? `\n\nThe shopper is in ${COUNTRY_NAMES[userCountry] || userCountry}. Recommend products that are genuinely available to buy there, from brands that sell in that market, and give prices in ${CURRENCIES[userCountry] || "the local currency"}. Do not recommend products the person cannot realistically buy or receive. Apply the same rule to the alternatives.`
       : "";
 
-    const userContent = `Query: ${query}${locationContext}${
+    const userContent = `Query: ${query}${languageContext}${locationContext}${
       vision?.isProduct && vision.description
         ? `\n\nThe shopper attached a photo of a product. It shows: ${vision.description}${vision.visibleBrand ? ` (visible brand: ${vision.visibleBrand})` : ""}. Treat this as what they are looking for or looking to match, and say what you can see in it so they know you understood the photo.`
         : vision && !vision.isProduct

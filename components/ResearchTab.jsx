@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useCallback, useRef } from "react";
+import { t } from "@/lib/i18n";
 
 const STEPS = ["Reading your question", "Checking current options", "Weighing trade-offs", "Writing the honest version"];
 
@@ -36,7 +37,8 @@ async function prepareImage(file) {
   return { data: out.split(",")[1], mediaType: "image/jpeg" };
 }
 
-export default function ResearchTab({ maxSearches, searchCount, onSearchComplete, onSavePick, isAdmin, savedQueries = [], saveNotice }) {
+export default function ResearchTab({ maxSearches, searchCount, onSearchComplete, onSavePick, isAdmin, savedQueries = [], saveNotice, locale = "en" }) {
+  const tr = t(locale);
   const [query, setQuery] = useState("");
   const [processing, setProcessing] = useState(false);
   const [step, setStep] = useState(-1);
@@ -65,7 +67,7 @@ export default function ResearchTab({ maxSearches, searchCount, onSearchComplete
         const resp = await fetch("/api/research", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ query: searchQ, attachment, geoOverride: geoOverride || undefined }),
+          body: JSON.stringify({ query: searchQ, attachment, geoOverride: geoOverride || undefined, locale }),
         });
 
         if (resp.status === 429) {
@@ -96,7 +98,7 @@ export default function ResearchTab({ maxSearches, searchCount, onSearchComplete
         setErrorMsg(
           e.message && e.message !== "Request failed"
             ? `Couldn't complete the research: ${e.message}`
-            : "Couldn't complete the research — try rephrasing the question."
+            : tr("researchFailed")
         );
       }
 
@@ -157,7 +159,7 @@ export default function ResearchTab({ maxSearches, searchCount, onSearchComplete
         />
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8 }}>
           <button onClick={() => fileRef.current?.click()} style={{ background: "none", border: "0.5px solid var(--color-border-secondary)", borderRadius: 7, padding: "5px 10px", cursor: "pointer", fontSize: 11, color: attachment ? "#0F6E56" : "var(--color-text-secondary)" }}>
-            {attachment ? (attachment.preparing ? "Reading…" : attachment.name) : "Attach photo"}
+            {attachment ? (attachment.preparing ? tr("reading") : attachment.name) : tr("attach")}
           </button>
           <input ref={fileRef} type="file" style={{ display: "none" }} onChange={async (e) => {
               const f = e.target.files[0];
@@ -219,17 +221,17 @@ export default function ResearchTab({ maxSearches, searchCount, onSearchComplete
           <div style={{ background: "var(--color-background-secondary)", borderRadius: 12, border: "1.5px solid #0F6E5644", padding: "18px 20px", marginBottom: 14 }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10 }}>
               <span style={{ fontSize: 10, fontWeight: 500, color: "#0F6E56", letterSpacing: "0.05em", textTransform: "uppercase" }}>Our pick</span>
-              {result.confidence && <span style={{ fontSize: 10, color: "var(--color-text-tertiary)" }}>confidence: {result.confidence}</span>}
+              {result.confidence && <span style={{ fontSize: 10, color: "var(--color-text-tertiary)" }}>{tr("confidence")}: {result.confidence}</span>}
             </div>
             {result.imageUnderstanding && (
               <div style={{ fontSize: 12, color: "var(--color-text-secondary)", background: "var(--color-background-tertiary)", borderRadius: 8, padding: "8px 10px", marginBottom: 10 }}>
-                From your photo, I can see: {result.imageUnderstanding}
+                {tr("fromPhoto")} {result.imageUnderstanding}
               </div>
             )}
             <div style={{ fontSize: 15, fontWeight: 500, marginBottom: 10, lineHeight: 1.4 }}>{result.headline}</div>
             <div style={{ fontSize: 13, color: "var(--color-text-secondary)", lineHeight: 1.7, marginBottom: 12 }}>{result.reasoning}</div>
-            {result.whoItsFor && <div style={{ fontSize: 12, color: "var(--color-text-secondary)", marginBottom: 4 }}><strong style={{ fontWeight: 500, color: "var(--color-text-primary)" }}>Good for:</strong> {result.whoItsFor}</div>}
-            {result.whoShouldSkip && <div style={{ fontSize: 12, color: "var(--color-text-secondary)" }}><strong style={{ fontWeight: 500, color: "var(--color-text-primary)" }}>Skip if:</strong> {result.whoShouldSkip}</div>}
+            {result.whoItsFor && <div style={{ fontSize: 12, color: "var(--color-text-secondary)", marginBottom: 4 }}><strong style={{ fontWeight: 500, color: "var(--color-text-primary)" }}>{tr("goodFor")}</strong> {result.whoItsFor}</div>}
+            {result.whoShouldSkip && <div style={{ fontSize: 12, color: "var(--color-text-secondary)" }}><strong style={{ fontWeight: 500, color: "var(--color-text-primary)" }}>{tr("skipIf")}</strong> {result.whoShouldSkip}</div>}
           </div>
 
           {result.matchedListing && (
@@ -358,11 +360,11 @@ export default function ResearchTab({ maxSearches, searchCount, onSearchComplete
                     color: isSaved ? "#0F6E56" : "var(--color-text-secondary)",
                   }}
                 >
-                  {isSaved ? "✓ Saved" : "Save this pick"}
+                  {isSaved ? tr("saved") : tr("savePick")}
                 </button>
               );
             })()}
-            <button onClick={() => { setResult(null); setQuery(""); setAttachment(null); }} style={{ background: "none", border: "0.5px solid var(--color-border-secondary)", borderRadius: 8, padding: "8px 14px", cursor: "pointer", fontSize: 13, color: "var(--color-text-secondary)" }}>New question</button>
+            <button onClick={() => { setResult(null); setQuery(""); setAttachment(null); }} style={{ background: "none", border: "0.5px solid var(--color-border-secondary)", borderRadius: 8, padding: "8px 14px", cursor: "pointer", fontSize: 13, color: "var(--color-text-secondary)" }}>{tr("newQuestion")}</button>
           </div>
         </div>
       )}
