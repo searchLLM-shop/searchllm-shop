@@ -277,3 +277,10 @@ CREATE INDEX IF NOT EXISTS idx_microsites_status ON microsites (status, publishe
 -- whatever it costs. Used to break ties when several products match a query.
 ALTER TABLE listings ADD COLUMN IF NOT EXISTS rating NUMERIC(3,2);
 ALTER TABLE listings ADD COLUMN IF NOT EXISTS rating_count INTEGER;
+
+-- Marks listings whose keywords have been rewritten by the AI enricher, so
+-- repeated runs move through the backlog instead of reprocessing the newest
+-- rows and burning API calls on work already done.
+ALTER TABLE listings ADD COLUMN IF NOT EXISTS keywords_enriched_at TIMESTAMPTZ;
+CREATE INDEX IF NOT EXISTS idx_listings_needs_keywords
+  ON listings (id DESC) WHERE keywords_enriched_at IS NULL;

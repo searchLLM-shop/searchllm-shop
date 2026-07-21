@@ -20,6 +20,17 @@ export default function AdminQueue() {
   const [bulkBusy, setBulkBusy] = useState(false);
   const [enriching, setEnriching] = useState(false);
   const [enrichMsg, setEnrichMsg] = useState(null);
+  const [keywordBacklog, setKeywordBacklog] = useState(null);
+
+  // Show how many listings still need keywords, so it's obvious whether
+  // another run is needed rather than having to guess.
+  const loadKeywordBacklog = useCallback(async () => {
+    try {
+      const resp = await fetch("/api/admin/enrich-keywords");
+      if (!resp.ok) return;
+      setKeywordBacklog(await resp.json());
+    } catch { /* non-critical */ }
+  }, []);
 
   // Regenerate keywords with AI. Feed/campaign titles alone produce keywords
   // no shopper would type ("trunativ", "ecommerce"), so listings never match
@@ -32,11 +43,8 @@ export default function AdminQueue() {
       const resp = await fetch("/api/admin/enrich-keywords", { method: "POST" });
       const data = await resp.json();
       if (!resp.ok) throw new Error(data.detail || data.error || "Failed");
-      setEnrichMsg(
-        data.updated > 0
-          ? `Updated keywords for ${data.updated} of ${data.considered} listings.`
-          : data.message || "No listings needed keywords."
-      );
+      setEnrichMsg(data.message || `Updated ${data.updated} listings.`);
+      await loadKeywordBacklog();
       await load();
     } catch (e) {
       setErrorMsg("Keyword generation failed: " + e.message);
@@ -99,7 +107,8 @@ export default function AdminQueue() {
   useEffect(() => {
     load();
     loadSyncStatus();
-  }, [load, loadSyncStatus]);
+    loadKeywordBacklog();
+  }, [load, loadSyncStatus, loadKeywordBacklog]);
 
   async function triggerSync() {
     setSyncing(true);
@@ -173,7 +182,11 @@ export default function AdminQueue() {
             title="Use AI to generate search keywords shoppers actually type"
             style={{ background: "none", border: "0.5px solid var(--color-border-secondary)", color: "var(--color-text-secondary)", borderRadius: 7, padding: "5px 12px", cursor: enriching ? "default" : "pointer", fontSize: 12, marginRight: 8, opacity: enriching ? 0.6 : 1 }}
           >
-            {enriching ? "Generating…" : "Fix keywords with AI"}
+            {enriching
+              ? "Generating…"
+              : keywordBacklog?.pending > 0
+              ? `Fix keywords with AI (${keywordBacklog.pending} left)`
+              : "Fix keywords with AI"}
           </button>
           <button onClick={triggerSync} disabled={syncing} style={{ background: "#0F6E56", color: "#fff", border: "none", borderRadius: 7, padding: "5px 12px", cursor: syncing ? "default" : "pointer", fontSize: 12, fontWeight: 500, opacity: syncing ? 0.6 : 1 }}>
             {syncing ? "Syncing…" : "Sync now"}
