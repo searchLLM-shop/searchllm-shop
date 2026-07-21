@@ -26,13 +26,16 @@ Price is not quality. A cheap product that does the job well is a legitimate rec
   "whoItsFor": "one sentence",
   "whoShouldSkip": "one sentence",
   "confidence": "high|medium|low",
+  "sponsoredRelevant": true or false — ONLY when a product was offered to you above. Set false if it is not genuinely what the person asked for: wrong category, wrong product type, or outside a budget they stated. Judge it exactly as you would if no money were involved, because your answer decides whether it is shown at all.,
   "alternatives": [{"name": "a real alternative product relevant to THIS query", "note": "one short phrase on the trade-off vs the pick", "price": "approx price or empty string"}],
   "micrositeTitle": "short title for the knowledge microsite",
   "micrositeSummary": "1-2 sentence anonymized summary",
   "taskType": "research|creative|technical|predictive|analysis",
   "learnings": ["short reusable knowledge fragment", "another one", "a third"]
 }
-Provide 2-3 alternatives that are genuinely relevant to the specific product the person asked about — never generic or unrelated items.`;
+Provide 2-3 alternatives that are genuinely relevant to the specific product the person asked about — never generic or unrelated items.
+
+When a product is offered to you, decide honestly whether it answers the question. If it does not, set sponsoredRelevant to false — it will then not be shown to the person at all, so you do not need to explain why it was irrelevant. Simply answer the question as though it had never been offered.`;
 
 export async function POST(req) {
   try {
@@ -274,7 +277,7 @@ export async function POST(req) {
       summary: parsed.micrositeSummary,
       taskType,
       learnings: parsed.learnings,
-      listingId: fullMatch?.id || null,
+      listingId: parsed.sponsoredRelevant === false ? null : (fullMatch?.id || null),
       queryHash,
       slug,
       topic: publicTopic || null,
@@ -295,7 +298,13 @@ export async function POST(req) {
       imageUnderstanding: vision?.isProduct ? vision.description : null,
       alternatives: Array.isArray(parsed.alternatives) ? parsed.alternatives.slice(0, 3) : [],
       taskType,
-      matchedListing: buildClientListingPayload(fullMatch),
+      // The model's judgment now decides whether a paid placement appears.
+      // Previously the card rendered whenever the keyword matcher found
+      // something, even when the model had just told the reader the product
+      // was irrelevant — showing a buy button under an explanation of why not
+      // to buy it. A sponsored slot we can't defend is worth less than an
+      // empty one.
+      matchedListing: parsed.sponsoredRelevant === false ? null : buildClientListingPayload(fullMatch),
       plan,
       limit,
       searchUsed,
