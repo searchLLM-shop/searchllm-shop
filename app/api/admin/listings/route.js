@@ -6,7 +6,7 @@
 // grows — an env-var allowlist is fine for a single founder running review.
 
 import { auth, currentUser } from "@clerk/nextjs/server";
-import { getPendingListings, setListingStatus, bulkSetPendingStatus } from "@/lib/db";
+import { getPendingListings, countPendingListings, setListingStatus, bulkSetPendingStatus } from "@/lib/db";
 
 async function isAdmin() {
   const user = await currentUser();
@@ -19,13 +19,21 @@ async function isAdmin() {
   return adminEmails.includes(userEmail);
 }
 
-export async function GET() {
+export async function GET(req) {
   const { userId } = await auth();
   if (!userId) return Response.json({ error: "Not signed in" }, { status: 401 });
   if (!(await isAdmin())) return Response.json({ error: "Forbidden" }, { status: 403 });
 
-  const pending = await getPendingListings();
-  return Response.json({ pending });
+  const params = new URL(req.url).searchParams;
+  const limit = Math.min(Number(params.get("limit")) || 50, 200);
+  const offset = Math.max(Number(params.get("offset")) || 0, 0);
+
+  const [listings, counts] = await Promise.all([
+    getPendingListings({ limit, offset }),
+    countPendingListings(),
+  ]);
+
+  return Response.json({ listings, counts, limit, offset });
 }
 
 export async function PATCH(req) {

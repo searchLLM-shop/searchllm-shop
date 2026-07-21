@@ -21,6 +21,9 @@ export default function AdminQueue() {
   const [enriching, setEnriching] = useState(false);
   const [enrichMsg, setEnrichMsg] = useState(null);
   const [keywordBacklog, setKeywordBacklog] = useState(null);
+  const [pendingCounts, setPendingCounts] = useState(null);
+  const [page, setPage] = useState(0);
+  const PAGE_SIZE = 50;
 
   // Show how many listings still need keywords, so it's obvious whether
   // another run is needed rather than having to guess.
@@ -58,7 +61,7 @@ export default function AdminQueue() {
           ? `Processed ${data.updated} listings. ${remaining.toLocaleString()} still to go — the hourly job will clear these automatically, or click again.`
           : `Processed ${data.updated} listings. Nothing left to do.`
       );
-      await load();
+      await load(page);
     } catch (e) {
       setErrorMsg(`${e.message}. Any completed batches are saved.`);
     } finally {
@@ -68,7 +71,7 @@ export default function AdminQueue() {
 
   async function bulkAct(status) {
     const verb = status === "approved" ? "approve" : "reject";
-    if (!window.confirm(`This will ${verb} ALL ${pending.length} pending listings at once. Continue?`)) return;
+    if (!window.confirm(`This will ${verb} ALL ${(pendingCounts?.total ?? pending.length).toLocaleString()} pending listings across every network, not just the ones shown. Continue?`)) return;
     setBulkBusy(true);
     try {
       const resp = await fetch("/api/admin/listings", {
@@ -77,7 +80,7 @@ export default function AdminQueue() {
         body: JSON.stringify({ status }),
       });
       if (!resp.ok) throw new Error("Bulk action failed");
-      await load();
+      await load(page);
     } catch (e) {
       setErrorMsg(e.message);
     } finally {
@@ -85,19 +88,16 @@ export default function AdminQueue() {
     }
   }
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (pageIndex = 0) => {
     setLoading(true);
     try {
-      const resp = await fetch("/api/admin/listings");
-      if (resp.status === 403) {
-        setErrorMsg("You don't have admin access.");
-        setPending([]);
-        return;
-      }
-      if (!resp.ok) throw new Error("Failed to load review queue");
+      const resp = await fetch(`/api/admin/listings?limit=${PAGE_SIZE}&offset=${pageIndex * PAGE_SIZE}`);
       const data = await resp.json();
-      setPending(data.pending || []);
-      setErrorMsg(null);
+      if (!resp.ok) throw new Error(data.error || "Could not load queue");
+      // The queue is paged; counts describe the WHOLE queue, which is what
+      // bulk actions operate on.
+      setPending(data.listings || []);
+      setPendingCounts(data.counts || null);
     } catch (e) {
       setErrorMsg(e.message);
     } finally {
@@ -150,7 +150,7 @@ export default function AdminQueue() {
     const started = Date.now();
     const poll = async () => {
       await loadSyncStatus();
-      await load();
+      await load(page);
       if (Date.now() - started < 90000) {
         setTimeout(poll, 6000);
       } else {
@@ -163,7 +163,7 @@ export default function AdminQueue() {
     setTimeout(poll, 5000);
     syncCall.finally(async () => {
       await loadSyncStatus();
-      await load();
+      await load(page);
       setSyncing(false);
     });
   }
@@ -241,9 +241,16 @@ export default function AdminQueue() {
         <div style={{ fontSize: 12, color: "var(--color-text-secondary)", marginBottom: 10 }}>{enrichMsg}</div>
       )}
 
-      {!loading && pending.length > 0 && (
+      {!loading && (pendingCounts?.total > 0) && (
         <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", padding: "10px 14px", marginBottom: 12, background: "var(--color-background-tertiary)", borderRadius: 10 }}>
-          <span style={{ fontSize: 13, color: "var(--color-text-secondary)" }}>{pending.length} pending</span>
+          <span style={{ fontSize: 13, color: "var(--color-text-secondary)" }}>
+            {pendingCounts.total.toLocaleString()} pending
+            {pendingCounts.total > PAGE_SIZE && (
+              <span style={{ color: "var(--color-text-tertiary)" }}>
+                {" "}· showing {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, pendingCounts.total)}
+              </span>
+            )}
+          </span>
           <div style={{ flex: 1 }} />
           <button
             onClick={() => bulkAct("approved")}
@@ -259,6 +266,24 @@ export default function AdminQueue() {
           >
             Reject all pending
           </button>
+        </div>
+      )}
+
+      {pendingCounts?.total > PAGE_SIZE && (
+        <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 12, fontSize: 12 }}>
+          <button
+            onClick={() => { const p = Math.max(0, page - 1); setPage(p); load(p); }}
+            disabled={page === 0 || loading}
+            style={{ background: "none", border: "0.5px solid var(--color-border-secondary)", borderRadius: 6, padding: "4px 10px", fontSize: 11, cursor: page === 0 ? "default" : "pointer", color: "var(--color-text-secondary)", opacity: page === 0 ? 0.5 : 1 }}
+          >← Previous</button>
+          <span style={{ color: "var(--color-text-tertiary)" }}>
+            Page {page + 1} of {Math.ceil(pendingCounts.total / PAGE_SIZE).toLocaleString()}
+          </span>
+          <button
+            onClick={() => { const p = page + 1; setPage(p); load(p); }}
+            disabled={(page + 1) * PAGE_SIZE >= pendingCounts.total || loading}
+            style={{ background: "none", border: "0.5px solid var(--color-border-secondary)", borderRadius: 6, padding: "4px 10px", fontSize: 11, cursor: "pointer", color: "var(--color-text-secondary)" }}
+          >Next →</button>
         </div>
       )}
 
