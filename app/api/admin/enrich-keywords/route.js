@@ -92,15 +92,65 @@ export async function POST(req) {
 }
 
 
-// Lets the admin UI show how many listings still need keywords, so it's clear
-// whether another run is needed.
-export async function GET() {
-  const { userId } = await auth();
-  if (!userId) return Response.json({ error: "Not signed in" }, { status: 401 });
-  if (!(await isAdmin())) return Response.json({ error: "Forbidden" }, { status: 403 });
-  const counts = await countListingsNeedingKeywords();
-  return Response.json({
-    pending: Number(counts.pending || 0),
-    done: Number(counts.done || 0),
-  });
+// Cron entry point. Vercel Cron issues GET with the project's CRON_SECRET, so
+// this can chew through the backlog unattended — a browser loop was never the
+// right place for an hour of work, and any fetch timeout or closed tab killed
+// it. Runs batches until it approaches the function time limit, then stops
+// cleanly and picks up on the next scheduled run.
+export async function GET(req) {
+  const authHeader = req.headers.get("authorization");
+  const isCron = authHeader === `Bearer ${process.env.CRON_SECRET}`;
+
+  if (!isCron) {
+    // Not cron — treat as the admin UI asking for a progress count.
+    const { userId } = await auth();
+    if (!userId) return Response.json({ error: "Not signed in" }, { status: 401 });
+    if (!(await isAdmin())) return Response.json({ error: "Forbidden" }, { status: 403 });
+    const counts = await countListingsNeedingKeywords();
+    return Response.json({ pending: Number(counts.pending || 0), done: Number(counts.done || 0) });
+  }
+
+  const startedAt = Date.now();
+  const TIME_BUDGET_MS = 240000; // stop well before the 300s ceiling
+  let processed = 0;
+  let batches = 0;
+
+  try {
+    while (Date.now() - startedAt < TIME_BUDGET_MS) {
+      const listings = await getListingsNeedingKeywords(BATCH_LIMIT);
+      if (!listings.length) break;
+
+      const { results } = await generateKeywords(listings);
+      const improved = [];
+      for (const listing of listings) {
+        const kws = results.get(String(listing.id));
+        if (!kws || !kws.length) continue;
+        const merged = Array.from(new Set([...kws, listing.category].filter(Boolean)));
+        await updateListingKeywords(listing.id, merged);
+        improved.push(listing.id);
+      }
+      // Mark the rest attempted so the backlog always moves forward.
+      await markKeywordsAttempted(
+        listings.map((l) => l.id).filter((id) => !improved.includes(id))
+      );
+
+      processed += listings.length;
+      batches += 1;
+    }
+
+    const counts = await countListingsNeedingKeywords();
+    return Response.json({
+      ok: true,
+      processed,
+      batches,
+      remaining: Number(counts.pending || 0),
+      seconds: Math.round((Date.now() - startedAt) / 1000),
+    });
+  } catch (err) {
+    console.error("Cron keyword enrichment failed:", err);
+    return Response.json(
+      { ok: false, processed, error: String(err?.message || err) },
+      { status: 500 }
+    );
+  }
 }

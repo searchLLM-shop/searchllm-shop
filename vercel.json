@@ -7,11 +7,18 @@
     {
       "path": "/api/admin/sync",
       "schedule": "0 */6 * * *"
+    },
+    {
+      "path": "/api/admin/enrich-keywords",
+      "schedule": "15 * * * *"
     }
   ],
   "functions": {
     "app/api/admin/sync/route.js": {
       "memory": 3009,
+      "maxDuration": 300
+    },
+    "app/api/admin/enrich-keywords/route.js": {
       "maxDuration": 300
     }
   }

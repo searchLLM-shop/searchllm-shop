@@ -35,52 +35,35 @@ export default function AdminQueue() {
   // Regenerate keywords with AI. Feed/campaign titles alone produce keywords
   // no shopper would type ("trunativ", "ecommerce"), so listings never match
   // real queries. This rewrites them into actual shopper language.
+  // Runs a single batch. Bulk clearing is handled by the hourly cron job
+  // instead — a browser loop meant one long fetch per batch, which hit fetch
+  // timeouts and required the tab to stay open for an hour.
+  async function runEnrichBatch() {
+    const resp = await fetch("/api/admin/enrich-keywords", { method: "POST" });
+    const data = await resp.json().catch(() => null);
+    if (!resp.ok) throw new Error(data?.detail || data?.error || "Keyword generation failed");
+    return data;
+  }
+
   async function enrichKeywords() {
     setEnriching(true);
-    setEnrichMsg("Generating keywords…");
     setErrorMsg(null);
-
-    // The work continues on the server even if the browser gives up waiting,
-    // and updates commit as they go — so a dropped connection is not a
-    // failure. Poll the remaining count instead of trusting this response.
-    const started = keywordBacklog?.pending ?? null;
-
-    fetch("/api/admin/enrich-keywords", { method: "POST" })
-      .then(async (resp) => {
-        const data = await resp.json().catch(() => null);
-        if (data?.message) setEnrichMsg(data.message);
-      })
-      .catch(() => { /* polling reports the real outcome */ });
-
-    const poll = async (attempt = 0) => {
+    setEnrichMsg("Generating keywords for the next batch…");
+    try {
+      const data = await runEnrichBatch();
       await loadKeywordBacklog();
-      const resp = await fetch("/api/admin/enrich-keywords").catch(() => null);
-      const counts = resp && resp.ok ? await resp.json().catch(() => null) : null;
-
-      if (counts) {
-        const remaining = Number(counts.pending || 0);
-        if (started != null && remaining < started) {
-          setEnrichMsg(
-            remaining > 0
-              ? `Processed ${started - remaining} listings. ${remaining} still to go — run again.`
-              : `Processed ${started - remaining} listings. All listings are now done.`
-          );
-          if (remaining === 0 || remaining < started - 5) {
-            await load();
-            setEnriching(false);
-            return;
-          }
-        }
-      }
-
-      if (attempt < 25) {
-        setTimeout(() => poll(attempt + 1), 4000);
-      } else {
-        setEnrichMsg("Still working — check back in a moment and refresh.");
-        setEnriching(false);
-      }
-    };
-    setTimeout(() => poll(), 5000);
+      const remaining = Number(data.remaining || 0);
+      setEnrichMsg(
+        remaining > 0
+          ? `Processed ${data.updated} listings. ${remaining.toLocaleString()} still to go — the hourly job will clear these automatically, or click again.`
+          : `Processed ${data.updated} listings. Nothing left to do.`
+      );
+      await load();
+    } catch (e) {
+      setErrorMsg(`${e.message}. Any completed batches are saved.`);
+    } finally {
+      setEnriching(false);
+    }
   }
 
   async function bulkAct(status) {
@@ -209,13 +192,13 @@ export default function AdminQueue() {
           <button
             onClick={enrichKeywords}
             disabled={enriching}
-            title="Use AI to generate search keywords shoppers actually type"
-            style={{ background: "none", border: "0.5px solid var(--color-border-secondary)", color: "var(--color-text-secondary)", borderRadius: 7, padding: "5px 12px", cursor: enriching ? "default" : "pointer", fontSize: 12, marginRight: 8, opacity: enriching ? 0.6 : 1 }}
+            title="Process the next batch now. The hourly job clears the rest automatically."
+            style={{ background: "none", border: "0.5px solid var(--color-border-secondary)", color: "var(--color-text-secondary)", borderRadius: 7, padding: "5px 12px", fontSize: 12, cursor: enriching ? "default" : "pointer", marginRight: 8, opacity: enriching ? 0.6 : 1 }}
           >
             {enriching
-              ? "Generating…"
+              ? "Working…"
               : keywordBacklog?.pending > 0
-              ? `Fix keywords with AI (${keywordBacklog.pending} left)`
+              ? `Fix keywords (${keywordBacklog.pending.toLocaleString()} left)`
               : "Fix keywords with AI"}
           </button>
           <button onClick={triggerSync} disabled={syncing} style={{ background: "#0F6E56", color: "#fff", border: "none", borderRadius: 7, padding: "5px 12px", cursor: syncing ? "default" : "pointer", fontSize: 12, fontWeight: 500, opacity: syncing ? 0.6 : 1 }}>
