@@ -88,7 +88,7 @@ export default async function AnswerPage({ params }) {
                 <span style={{ fontSize: 14, fontWeight: 500, whiteSpace: "nowrap" }}>{a.price}</span>
               </div>
               <div style={{ fontSize: 12, color: "var(--color-text-secondary)", marginBottom: 10 }}>{a.brand}</div>
-              <a href={a.networkLink} target="_blank" rel="noopener noreferrer sponsored nofollow"
+              <a href={`/out/${a.listing_id}?ctx=answer`} target="_blank" rel="noopener noreferrer sponsored nofollow"
                  style={{ display: "inline-block", fontSize: 13, fontWeight: 500, color: "#fff", background: "#854F0B", padding: "8px 16px", borderRadius: 8, textDecoration: "none" }}>
                 {a.merchantDomain ? `View on ${a.merchantDomain} →` : "View and buy →"}
               </a>

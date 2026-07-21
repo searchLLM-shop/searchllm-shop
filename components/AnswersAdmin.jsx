@@ -78,12 +78,39 @@ export default function AnswersAdmin() {
               <span style={{ fontSize: 13, fontWeight: 500 }}>{a.topic || a.headline}</span>
               <span style={{ fontSize: 10, color: a.status === "published" ? "#0F6E56" : "var(--color-text-tertiary)", whiteSpace: "nowrap" }}>{a.status}</span>
             </div>
-            <div style={{ fontSize: 11, color: "var(--color-text-tertiary)", marginBottom: 8 }}>/answers/{a.slug}</div>
+            <div style={{ fontSize: 11, color: "var(--color-text-tertiary)", marginBottom: 8 }}>
+              /answers/{a.slug}
+              {a.country ? ` · ${a.country}` : ""}
+              {a.created_at ? ` · ${new Date(a.created_at).toLocaleDateString()}` : ""}
+            </div>
 
             {expanded === a.id && (
               <div style={{ fontSize: 12, color: "var(--color-text-secondary)", lineHeight: 1.7, marginBottom: 10, paddingTop: 8, borderTop: "0.5px solid var(--color-border-tertiary)" }}>
                 <div style={{ fontWeight: 500, color: "var(--color-text-primary)", marginBottom: 6 }}>{a.headline}</div>
-                {a.body}
+                <div style={{ marginBottom: 8 }}>{a.body}</div>
+                {a.who_for && (
+                  <div style={{ marginBottom: 4 }}>
+                    <strong style={{ color: "var(--color-text-primary)", fontWeight: 500 }}>Good for:</strong> {a.who_for}
+                  </div>
+                )}
+                {a.who_skip && (
+                  <div style={{ marginBottom: 8 }}>
+                    <strong style={{ color: "var(--color-text-primary)", fontWeight: 500 }}>Skip if:</strong> {a.who_skip}
+                  </div>
+                )}
+                {Array.isArray(a.alternatives) && a.alternatives.length > 0 && (
+                  <div>
+                    <div style={{ fontSize: 10, letterSpacing: "0.05em", textTransform: "uppercase", color: "var(--color-text-tertiary)", marginBottom: 4 }}>
+                      Alternatives shown (no affiliate links)
+                    </div>
+                    {a.alternatives.map((alt, i) => (
+                      <div key={i} style={{ display: "flex", justifyContent: "space-between", gap: 10, padding: "3px 0" }}>
+                        <span>{alt.name}{alt.note ? <span style={{ color: "var(--color-text-tertiary)" }}> — {alt.note}</span> : null}</span>
+                        <span style={{ whiteSpace: "nowrap", color: "var(--color-text-tertiary)" }}>{alt.price}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
 

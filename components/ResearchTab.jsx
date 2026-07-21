@@ -282,26 +282,15 @@ export default function ResearchTab({ maxSearches, searchCount, onSearchComplete
                     {result.matchedListing.pitch ? ` · ${result.matchedListing.pitch}` : ""}
                   </div>
                   <a
-                    href={result.matchedListing.networkLink}
+                    href={`/out/${result.matchedListing.id}?ctx=research`}
                     target="_blank"
                     rel="noopener noreferrer sponsored"
-                    onClick={() => {
-                      // sendBeacon is built for exactly this: it survives the
-                      // navigation away, so the click is recorded without
-                      // delaying the user by even a millisecond.
-                      try {
-                        const payload = JSON.stringify({
-                          eventType: "affiliate_click",
-                          listingId: result.matchedListing.id,
-                          network: result.matchedListing.network,
-                        });
-                        if (navigator.sendBeacon) {
-                          navigator.sendBeacon("/api/events", new Blob([payload], { type: "application/json" }));
-                        } else {
-                          fetch("/api/events", { method: "POST", headers: { "Content-Type": "application/json" }, body: payload, keepalive: true }).catch(() => {});
-                        }
-                      } catch { /* never block the click */ }
-                    }} style={{ display: "inline-block", fontSize: 13, fontWeight: 500, color: "#fff", background: "#854F0B", padding: "8px 16px", borderRadius: 8, textDecoration: "none" }}>
+                    style={{ display: "inline-block", fontSize: 13, fontWeight: 500, color: "#fff", background: "#854F0B", padding: "8px 16px", borderRadius: 8, textDecoration: "none" }}>
+                    {/* The link goes through /out/, which records the click
+                        server-side (replacing the old sendBeacon — blockers
+                        eat beacons, they don't eat navigations), mints the
+                        click_id for conversion attribution, and 302s to the
+                        tracked network link. */}
                     {result.matchedListing.merchantDomain
                       ? `View on ${result.matchedListing.merchantDomain} →`
                       : "View and buy →"}

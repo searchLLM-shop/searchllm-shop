@@ -3,6 +3,7 @@ export async function GET() {
 Allow: /
 Disallow: /api/
 Disallow: /go/
+Disallow: /out/
 
 Sitemap: https://searchllm.shop/sitemap.xml
 `;

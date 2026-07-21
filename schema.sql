@@ -284,3 +284,47 @@ ALTER TABLE listings ADD COLUMN IF NOT EXISTS rating_count INTEGER;
 ALTER TABLE listings ADD COLUMN IF NOT EXISTS keywords_enriched_at TIMESTAMPTZ;
 CREATE INDEX IF NOT EXISTS idx_listings_needs_keywords
   ON listings (id DESC) WHERE keywords_enriched_at IS NULL;
+
+-- =========================================================================
+-- Network click tracking (sub-ID plumbing).
+--
+-- Every outbound click to an affiliate NETWORK link (vCommission, Awin) now
+-- goes through /out/[listingId], which mints a click_id, records it here,
+-- and appends it to the tracked link as the network's sub-ID parameter
+-- (Awin: clickref; vCommission/Trackier: p1 — VERIFY against a live
+-- conversion report before relying on it). The network echoes the sub-ID
+-- back in its transaction reports, which is what makes per-click conversion
+-- attribution possible — the foundation for the loyalty programme.
+--
+-- Privacy: identity here is the same rotating user/guest identity already
+-- stored with affiliate_click events. The network never receives it — only
+-- the opaque click_id crosses the wire. The conversion columns stay empty
+-- until a future polling cron fills them; joining CONVERSIONS back to a
+-- user identity is loyalty-programme territory and must not ship before
+-- the programme's opt-in consent and the Privacy Policy amendment.
+-- =========================================================================
+CREATE TABLE IF NOT EXISTS network_clicks (
+  id SERIAL PRIMARY KEY,
+  click_id TEXT NOT NULL UNIQUE,
+  listing_id INTEGER REFERENCES listings(id),
+  network TEXT,
+  identity TEXT,                     -- clerk user id or guest id
+  context TEXT,                      -- 'research' | 'answer'
+  country TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  -- Conversion matching, filled by the (future) transaction-polling cron.
+  conversion_status TEXT,            -- pending | approved | declined
+  order_value NUMERIC(12,2),
+  commission NUMERIC(12,2),
+  currency TEXT,
+  network_transaction_id TEXT,       -- the network's own id, for dedupe
+  matched_at TIMESTAMPTZ
+);
+
+CREATE INDEX IF NOT EXISTS idx_network_clicks_identity ON network_clicks (identity, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_network_clicks_listing ON network_clicks (listing_id);
+-- One row per network transaction: the poller upserts on this, so a re-run
+-- can never credit the same sale twice.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_network_clicks_txn
+  ON network_clicks (network, network_transaction_id)
+  WHERE network_transaction_id IS NOT NULL;

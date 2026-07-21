@@ -7,7 +7,7 @@ import ResearchTab from "@/components/ResearchTab";
 import BrandForm from "@/components/BrandForm";
 import AdminQueue from "@/components/AdminQueue";
 import ReportsPanel from "@/components/ReportsPanel";
-import { PLANS, SHOW_UPGRADE, SHOW_ADVERTISERS, SHOW_BRANDS_FORM } from "@/lib/constants";
+import { PLANS, SHOW_UPGRADE, SHOW_ADVERTISERS, SHOW_BRANDS_FORM, ENABLE_GERMAN } from "@/lib/constants";
 import { LOCALES, DEFAULT_LOCALE, resolveLocale, t } from "@/lib/i18n";
 import AdvertiserPanel from "@/components/AdvertiserPanel";
 import AdvertiserAdmin from "@/components/AdvertiserAdmin";
@@ -249,7 +249,10 @@ export default function Home() {
             {isSignedIn ? user?.primaryEmailAddress?.emailAddress : tr("guest")} · {plan === "plus" ? tr("plus") : tr("free")} · {picksLeftLabel} {tr("picksLeft")}
           </span>
           {/* Language switcher. Sits beside the account details so a German
-              visitor can correct an auto-detected language immediately. */}
+              visitor can correct an auto-detected language immediately.
+              Hidden entirely while ENABLE_GERMAN is off — it sets the locale
+              directly, so leaving it visible would bypass the pause. */}
+          {ENABLE_GERMAN && (
           <select
             value={locale}
             onChange={(e) => changeLocale(e.target.value)}
@@ -260,6 +263,7 @@ export default function Home() {
               <option key={l.code} value={l.code}>{l.name}</option>
             ))}
           </select>
+          )}
 
           {SHOW_UPGRADE && plan === "free" && isSignedIn && (
             <button onClick={handleUpgrade} disabled={upgrading} style={{ background: "#0F6E56", border: "none", borderRadius: 6, padding: "5px 12px", cursor: upgrading ? "default" : "pointer", fontSize: 11, color: "#fff", fontWeight: 500, opacity: upgrading ? 0.6 : 1 }}>
@@ -369,7 +373,10 @@ export default function Home() {
                                 {p.matchedListing.price} · sponsored via {p.matchedListing.network}
                               </div>
                             </div>
-                            <a href={p.matchedListing.networkLink} target="_blank" rel="noopener noreferrer sponsored" style={{ fontSize: 11, color: "#854F0B", fontWeight: 500, whiteSpace: "nowrap" }}>
+                            {/* Saved before the /out/ redirect existed may
+                                lack a listing id — those fall back to the raw
+                                network link rather than a dead button. */}
+                            <a href={p.matchedListing.id ? `/out/${p.matchedListing.id}?ctx=research` : p.matchedListing.networkLink} target="_blank" rel="noopener noreferrer sponsored" style={{ fontSize: 11, color: "#854F0B", fontWeight: 500, whiteSpace: "nowrap" }}>
                               View →
                             </a>
                           </div>
