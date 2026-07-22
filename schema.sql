@@ -429,3 +429,11 @@ CREATE INDEX IF NOT EXISTS idx_redemptions_user ON redemptions (user_id, created
 -- live from usage_daily and expire by simply being recomputed tomorrow.
 ALTER TABLE points_ledger ADD COLUMN IF NOT EXISTS source TEXT NOT NULL DEFAULT 'purchase';
 ALTER TABLE points_ledger ADD COLUMN IF NOT EXISTS note TEXT;
+
+-- WhatsApp channel: webhook message dedupe. Meta retries webhooks it
+-- believes unacknowledged; without this, a slow research call would produce
+-- duplicate replies to the same question.
+CREATE TABLE IF NOT EXISTS wa_processed (
+  message_id TEXT PRIMARY KEY,
+  processed_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
