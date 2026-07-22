@@ -9,10 +9,6 @@
       "schedule": "0 * * * *"
     },
     {
-      "path": "/api/admin/enrich-keywords",
-      "schedule": "15 * * * *"
-    },
-    {
       "path": "/api/admin/conversions",
       "schedule": "30 2 * * *"
     }

@@ -13,6 +13,7 @@ import {
   countListingsNeedingKeywords, markKeywordsAttempted,
 } from "@/lib/db";
 import { generateKeywords } from "@/lib/keywordEnricher";
+import { ENABLE_AI_KEYWORDS } from "@/lib/constants";
 
 export const maxDuration = 300;
 
@@ -100,6 +101,17 @@ export async function POST(req) {
 export async function GET(req) {
   const authHeader = req.headers.get("authorization");
   const isCron = authHeader === `Bearer ${process.env.CRON_SECRET}`;
+
+  // AI enrichment is paused (see ENABLE_AI_KEYWORDS in constants.js) —
+  // matching runs on mechanical keywords + full-text search instead. The
+  // cron entry has been removed from vercel.json too; this guard is here in
+  // case one ever comes back. The manual admin POST above stays functional
+  // for deliberate, bounded runs.
+  if (isCron && !ENABLE_AI_KEYWORDS) {
+    return Response.json({
+      skipped: "AI keyword enrichment is disabled (ENABLE_AI_KEYWORDS=false); matching uses mechanical keywords + full-text search.",
+    });
+  }
 
   if (!isCron) {
     // Not cron — treat as the admin UI asking for a progress count.

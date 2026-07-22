@@ -328,3 +328,23 @@ CREATE INDEX IF NOT EXISTS idx_network_clicks_listing ON network_clicks (listing
 CREATE UNIQUE INDEX IF NOT EXISTS idx_network_clicks_txn
   ON network_clicks (network, network_transaction_id)
   WHERE network_transaction_id IS NOT NULL;
+
+-- =========================================================================
+-- Full-text search over listings (zero-cost matching).
+--
+-- Candidate matching previously depended entirely on the keywords array,
+-- which for feed products is derived mechanically from the title and for a
+-- while was "improved" by AI enrichment — an unattended per-product model
+-- spend that descriptive product titles never needed. This generated
+-- tsvector matches directly against title + brand + category with English
+-- stemming ("powders" finds "powder"), so un-enriched listings match well
+-- and the AI enricher becomes a manual, deliberate tool for the few
+-- affiliate-jargon campaign titles that genuinely need it.
+-- NOTE: adding a STORED generated column rewrites the table — on ~200K+
+-- rows expect the ALTER to take a little while. Run it once, off-peak.
+-- =========================================================================
+ALTER TABLE listings ADD COLUMN IF NOT EXISTS search_tsv tsvector
+  GENERATED ALWAYS AS (to_tsvector('english',
+    coalesce(product, '') || ' ' || coalesce(brand, '') || ' ' || coalesce(category, ''))) STORED;
+
+CREATE INDEX IF NOT EXISTS idx_listings_search_tsv ON listings USING GIN (search_tsv);
