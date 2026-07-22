@@ -11,7 +11,7 @@
 
 import { auth, currentUser } from "@clerk/nextjs/server";
 import { runFullSync } from "@/lib/feeds/sync";
-import { getLatestSyncRuns } from "@/lib/db";
+import { getLatestSyncRuns, getInventoryByNetwork } from "@/lib/db";
 
 // Pulling hundreds of products across multiple feed downloads can exceed
 // the default serverless timeout (often 10s), which makes Vercel return
@@ -48,8 +48,8 @@ export async function GET(req) {
   if (!userId) return Response.json({ error: "Not signed in" }, { status: 401 });
   if (!(await isAdmin())) return Response.json({ error: "Forbidden" }, { status: 403 });
 
-  const latest = await getLatestSyncRuns();
-  return Response.json({ latest });
+  const [latest, inventory] = await Promise.all([getLatestSyncRuns(), getInventoryByNetwork()]);
+  return Response.json({ latest, inventory });
 }
 
 // Manual "Sync now" button in the admin dashboard — POST, session-gated.

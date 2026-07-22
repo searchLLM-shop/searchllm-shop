@@ -15,6 +15,7 @@ export default function AdminQueue() {
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState(null);
   const [syncRuns, setSyncRuns] = useState([]);
+  const [inventory, setInventory] = useState([]);
   const [syncing, setSyncing] = useState(false);
   const [syncResult, setSyncResult] = useState(null);
   const [bulkBusy, setBulkBusy] = useState(false);
@@ -111,6 +112,7 @@ export default function AdminQueue() {
       if (resp.ok) {
         const data = await resp.json();
         setSyncRuns(data.latest || []);
+        setInventory(data.inventory || []);
       }
     } catch (e) {
       console.error("Failed to load sync status", e);
@@ -122,6 +124,24 @@ export default function AdminQueue() {
     loadSyncStatus();
     loadKeywordBacklog();
   }, [load, loadSyncStatus, loadKeywordBacklog]);
+
+  // Manual conversion poll — same fire-and-poll pattern as triggerSync so a
+  // slow network API can't strand the button on "Failed to fetch". The poll
+  // is quick (two report reads), so a short status refresh is enough.
+  async function triggerConversionPoll() {
+    setSyncing(true);
+    setErrorMsg(null);
+    fetch("/api/admin/conversions", { method: "POST" })
+      .then(async (resp) => {
+        try {
+          const data = await resp.json();
+          const failed = (data.results || []).find((r) => r.error);
+          if (failed) setErrorMsg(`${failed.network} conversions: ${failed.error}`);
+        } catch { /* covered by status refresh */ }
+      })
+      .catch(() => { /* covered by status refresh */ });
+    setTimeout(async () => { await loadSyncStatus(); setSyncing(false); }, 4000);
+  }
 
   async function triggerSync() {
     setSyncing(true);
@@ -201,6 +221,9 @@ export default function AdminQueue() {
               ? `Fix keywords (${keywordBacklog.pending.toLocaleString()} left)`
               : "Fix keywords with AI"}
           </button>
+          <button onClick={triggerConversionPoll} disabled={syncing} style={{ background: "none", border: "0.5px solid var(--color-border-secondary)", borderRadius: 7, padding: "5px 12px", cursor: syncing ? "default" : "pointer", fontSize: 12, color: "var(--color-text-secondary)", opacity: syncing ? 0.6 : 1 }}>
+            Poll conversions
+          </button>
           <button onClick={triggerSync} disabled={syncing} style={{ background: "#0F6E56", color: "#fff", border: "none", borderRadius: 7, padding: "5px 12px", cursor: syncing ? "default" : "pointer", fontSize: 12, fontWeight: 500, opacity: syncing ? 0.6 : 1 }}>
             {syncing ? "Syncing…" : "Sync now"}
           </button>
@@ -209,16 +232,37 @@ export default function AdminQueue() {
           <div style={{ fontSize: 12, color: "var(--color-text-tertiary)" }}>No sync has run yet. Runs automatically every 6 hours, or trigger one manually.</div>
         ) : (
           syncRuns.map((r) => (
-            <div key={r.network} style={{ display: "flex", justifyContent: "space-between", fontSize: 12, padding: "4px 0", color: r.status === "error" ? "#D85A30" : "var(--color-text-secondary)" }}>
-              <span>{r.network}</span>
-              <span>
+            <div key={r.network} style={{ display: "flex", justifyContent: "space-between", gap: 12, fontSize: 12, padding: "4px 0", color: r.status === "error" ? "#D85A30" : "var(--color-text-secondary)" }}>
+              <span style={{ whiteSpace: "nowrap" }}>{r.network}</span>
+              <span style={{ textAlign: "right" }}>
                 {r.status === "error"
                   ? `Error: ${r.errorMessage}`
-                  : `${r.productsSeen} seen · ${r.newListings} new · ${r.updatedListings} updated`}
+                  : r.status === "skipped"
+                    ? `Skipped — ${r.errorMessage}`
+                    : `${Number(r.productsSeen || 0).toLocaleString()} seen · ${Number(r.newListings || 0).toLocaleString()} new · ${Number(r.updatedListings || 0).toLocaleString()} updated`}
                 {r.finishedAt && ` · ${new Date(r.finishedAt).toLocaleString()}`}
               </span>
             </div>
           ))
+        )}
+        {inventory.length > 0 && (
+          <div style={{ marginTop: 10, paddingTop: 8, borderTop: "0.5px solid var(--color-border-tertiary)" }}>
+            <div style={{ fontSize: 10, letterSpacing: "0.05em", textTransform: "uppercase", color: "var(--color-text-tertiary)", marginBottom: 4 }}>
+              Total inventory by network
+            </div>
+            {inventory.map((x) => (
+              <div key={x.network} style={{ display: "flex", justifyContent: "space-between", gap: 12, fontSize: 12, padding: "3px 0", color: "var(--color-text-secondary)" }}>
+                <span style={{ whiteSpace: "nowrap" }}>{x.network}</span>
+                <span style={{ textAlign: "right" }}>
+                  {Number(x.total).toLocaleString()} total
+                  {" · "}
+                  <span style={{ color: Number(x.approved) > 0 ? "#0F6E56" : "var(--color-text-tertiary)", fontWeight: 500 }}>{Number(x.approved).toLocaleString()} approved</span>
+                  {" · "}{Number(x.pending).toLocaleString()} pending
+                  {Number(x.rejected) > 0 ? ` · ${Number(x.rejected).toLocaleString()} rejected` : ""}
+                </span>
+              </div>
+            ))}
+          </div>
         )}
         {syncResult && (
           <div style={{ fontSize: 11, color: "#0F6E56", marginTop: 8 }}>Sync complete — queue refreshed below.</div>

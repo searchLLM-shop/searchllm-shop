@@ -348,3 +348,25 @@ ALTER TABLE listings ADD COLUMN IF NOT EXISTS search_tsv tsvector
     coalesce(product, '') || ' ' || coalesce(brand, '') || ' ' || coalesce(category, ''))) STORED;
 
 CREATE INDEX IF NOT EXISTS idx_listings_search_tsv ON listings USING GIN (search_tsv);
+
+-- =========================================================================
+-- Anonymous search-query log (demand signal for inventory).
+--
+-- Records WHAT is being searched — deliberately never WHO searched it.
+-- There is no identity column by design: the live privacy posture promises
+-- no per-user shopping history, and this table must never quietly become
+-- one. What it gives us is the aggregate demand signal: the top unmatched
+-- queries are precisely the feeds to request from the networks next.
+-- Content-filtered (prohibited) queries are never recorded at all.
+-- =========================================================================
+CREATE TABLE IF NOT EXISTS search_queries (
+  id SERIAL PRIMARY KEY,
+  query TEXT NOT NULL,
+  matched BOOLEAN NOT NULL DEFAULT false,
+  listing_id INTEGER,
+  network TEXT,
+  country TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_search_queries_created ON search_queries (created_at DESC);

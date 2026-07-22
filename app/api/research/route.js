@@ -11,7 +11,7 @@ import { isAdminEmail } from "@/lib/isAdmin";
 import { checkQuery } from "@/lib/contentFilter";
 import { slugify } from "@/lib/slug";
 import { languageForModel, resolveLocale } from "@/lib/i18n";
-import { recordEvent } from "@/lib/db";
+import { recordEvent, recordSearchQuery } from "@/lib/db";
 import { identifyProductFromImage } from "@/lib/visionSearch";
 import { findMatchingListing, buildClientListingPayload, extractQueryTerms } from "@/lib/listingMatcher";
 import { getOrCreateGuestId } from "@/lib/guestId";
@@ -149,6 +149,21 @@ export async function POST(req) {
     const fullMatch = strippedMatch
       ? candidates.find((l) => l.id === strippedMatch.id) || null
       : null;
+
+    // Log the query text ANONYMOUSLY — no identity, ever (see search_queries
+    // DDL). This runs after the content filter, so prohibited queries are
+    // never recorded, and only when something was actually typed — an
+    // image-only search has no query text worth aggregating. The unmatched
+    // rows are the feed shopping-list for the networks.
+    if (query && query.trim()) {
+      recordSearchQuery({
+        queryText: query,
+        matched: !!fullMatch,
+        listingId: fullMatch?.id || null,
+        network: fullMatch?.network || null,
+        country: userCountry,
+      }).catch(() => {});
+    }
 
     // --- Search-or-skip: only call Brave for genuinely time-sensitive ---
     // --- questions, mirroring the original bosonic layer's behavior.   ---
