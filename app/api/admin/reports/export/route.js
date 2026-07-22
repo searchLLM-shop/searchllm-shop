@@ -115,6 +115,14 @@ export async function GET(req) {
     network: x.network, status: x.status, listings: num(x.listings),
   })));
 
+  addSheet("Inventory by country", (r.inventoryByCountry || []).map((c) => ({
+    country: c.country, total: num(c.total), approved: num(c.approved), pending: num(c.pending),
+  })));
+
+  addSheet("Inventory by category", (r.inventoryByCategory || []).map((c) => ({
+    category: c.category, total: num(c.total), approved: num(c.approved), pending: num(c.pending),
+  })));
+
   const buf = XLSX.write(wb, { type: "buffer", bookType: "xlsx" });
   const filename = `searchllm-report-${days}d-${new Date().toISOString().slice(0, 10)}.xlsx`;
 

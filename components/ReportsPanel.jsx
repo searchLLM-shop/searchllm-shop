@@ -297,6 +297,47 @@ export default function ReportsPanel() {
             </div>
           ))}
         </div>
+      
+        {(data.inventoryByCountry || []).length > 0 && (
+          <div style={{ marginTop: 14 }}>
+            <div style={{ fontSize: 11, color: "var(--color-text-tertiary)", marginBottom: 8 }}>
+              By country. A listing serving several countries counts once per country; listings with no region data are unrestricted (servable anywhere).
+            </div>
+            <div style={{ border: "0.5px solid var(--color-border-tertiary)", borderRadius: 10, overflow: "hidden" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 90px 90px 90px", gap: 8, padding: "8px 12px", background: "var(--color-background-tertiary)", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.04em", color: "var(--color-text-tertiary)" }}>
+                <span>Country</span><span style={{ textAlign: "right" }}>Total</span><span style={{ textAlign: "right" }}>Approved</span><span style={{ textAlign: "right" }}>Pending</span>
+              </div>
+              {data.inventoryByCountry.map((c, i) => (
+                <div key={i} style={{ display: "grid", gridTemplateColumns: "1fr 90px 90px 90px", gap: 8, padding: "7px 12px", fontSize: 12, borderTop: "0.5px solid var(--color-border-tertiary)" }}>
+                  <span>{c.country}</span>
+                  <span style={{ textAlign: "right" }}>{n(c.total)}</span>
+                  <span style={{ textAlign: "right", fontWeight: 500, color: Number(c.approved) > 0 ? "#0F6E56" : "var(--color-text-tertiary)" }}>{n(c.approved)}</span>
+                  <span style={{ textAlign: "right", color: "var(--color-text-tertiary)" }}>{n(c.pending)}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+        {(data.inventoryByCategory || []).length > 0 && (
+          <div style={{ marginTop: 14 }}>
+            <div style={{ fontSize: 11, color: "var(--color-text-tertiary)", marginBottom: 8 }}>
+              By category — the site's own taxonomy, assigned at sync time.
+            </div>
+            <div style={{ border: "0.5px solid var(--color-border-tertiary)", borderRadius: 10, overflow: "hidden" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 90px 90px 90px", gap: 8, padding: "8px 12px", background: "var(--color-background-tertiary)", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.04em", color: "var(--color-text-tertiary)" }}>
+                <span>Category</span><span style={{ textAlign: "right" }}>Total</span><span style={{ textAlign: "right" }}>Approved</span><span style={{ textAlign: "right" }}>Pending</span>
+              </div>
+              {data.inventoryByCategory.map((c, i) => (
+                <div key={i} style={{ display: "grid", gridTemplateColumns: "1fr 90px 90px 90px", gap: 8, padding: "7px 12px", fontSize: 12, borderTop: "0.5px solid var(--color-border-tertiary)" }}>
+                  <span style={{ textTransform: "capitalize" }}>{c.category}</span>
+                  <span style={{ textAlign: "right" }}>{n(c.total)}</span>
+                  <span style={{ textAlign: "right", fontWeight: 500, color: Number(c.approved) > 0 ? "#0F6E56" : "var(--color-text-tertiary)" }}>{n(c.approved)}</span>
+                  <span style={{ textAlign: "right", color: "var(--color-text-tertiary)" }}>{n(c.pending)}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </Section>
     </div>
   );

@@ -12,6 +12,9 @@ import { LOCALES, DEFAULT_LOCALE, resolveLocale, t } from "@/lib/i18n";
 import AdvertiserPanel from "@/components/AdvertiserPanel";
 import AdvertiserAdmin from "@/components/AdvertiserAdmin";
 import AnswersAdmin from "@/components/AnswersAdmin";
+import ProductsBrowser from "@/components/ProductsBrowser";
+import QueriesPanel from "@/components/QueriesPanel";
+import PerformancePanel from "@/components/PerformancePanel";
 
 // Bump this whenever the Privacy Policy or Terms of Use changes materially
 // — it invalidates stored consent and forces the gate to show again, which
@@ -283,7 +286,7 @@ export default function Home() {
       </div>
 
       <div className="sllm-tabs" style={{ display: "flex", borderBottom: "0.5px solid var(--color-border-tertiary)" }}>
-        {["research", "saved", ...(SHOW_BRANDS_FORM ? ["brands"] : []), ...(SHOW_ADVERTISERS ? ["advertise"] : []), ...(isAdminHint ? ["admin", "answers", "reports", ...(SHOW_ADVERTISERS ? ["advertisers"] : [])] : [])].map((t) => (
+        {["research", "saved", ...(SHOW_BRANDS_FORM ? ["brands"] : []), ...(SHOW_ADVERTISERS ? ["advertise"] : []), ...(isAdminHint ? ["admin", "products", "queries", "performance", "answers", "reports", ...(SHOW_ADVERTISERS ? ["advertisers"] : [])] : [])].map((t) => (
           <button
             key={t}
             onClick={() => setActiveTab(t)}
@@ -416,6 +419,9 @@ export default function Home() {
         {activeTab === "advertise" && SHOW_ADVERTISERS && <AdvertiserPanel />}
         {activeTab === "advertisers" && isAdminHint && SHOW_ADVERTISERS && <AdvertiserAdmin />}
         {activeTab === "admin" && isAdminHint && <AdminQueue />}
+        {activeTab === "products" && isAdminHint && <ProductsBrowser />}
+        {activeTab === "queries" && isAdminHint && <QueriesPanel />}
+        {activeTab === "performance" && isAdminHint && <PerformancePanel />}
         {activeTab === "answers" && isAdminHint && <AnswersAdmin />}
         {activeTab === "reports" && isAdminHint && <ReportsPanel />}
       </div>
