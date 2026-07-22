@@ -137,7 +137,11 @@ export async function POST(req) {
     // Top few plausible candidates — the MODEL chooses which one (if any)
     // genuinely answers the question. Mechanical scoring is the recall gate;
     // the model is the precision gate. See findTopMatchingListings.
-    const topMatches = findTopMatchingListings(matchText, candidates, userCountry, 4);
+    // 8, not 4: the model is a far better judge than the mechanical score
+    // is a ranker, so give it a wider shortlist to choose from. At ~30
+    // tokens per candidate line this costs almost nothing, and it makes
+    // "the real product was #5 in mechanical order" a non-event.
+    const topMatches = findTopMatchingListings(matchText, candidates, userCountry, 8);
 
     // A search with no relevant partner product is an inventory gap worth
     // measuring — it tells us which categories to go and get merchants for.
