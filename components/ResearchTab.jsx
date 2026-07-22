@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import { t } from "@/lib/i18n";
 
 const STEPS = ["Reading your question", "Checking current options", "Weighing trade-offs", "Writing the honest version"];
@@ -40,6 +40,24 @@ async function prepareImage(file) {
 export default function ResearchTab({ maxSearches, searchCount, onSearchComplete, onSavePick, isAdmin, savedQueries = [], saveNotice, locale = "en" }) {
   const tr = t(locale);
   const [query, setQuery] = useState("");
+  // Rotating placeholder examples. Each models the ideal query shape —
+  // product + attribute + budget — so users learn what a good question
+  // looks like by osmosis instead of a form. Rotation pauses the moment
+  // they start typing (placeholder disappears anyway once query is set).
+  const PLACEHOLDER_EXAMPLES = [
+    "ubtan face wash under ₹300 for oily skin",
+    "55-inch smart TV around ₹1L for a bright living room",
+    "gamepad for PC games under ₹1,500",
+    "whey protein under ₹2,000 for beginners",
+    "maroon ethnic dress under ₹800 for a festive occasion",
+    "mixer grinder around ₹3,000 for a small kitchen",
+  ];
+  const [placeholderIdx, setPlaceholderIdx] = useState(0);
+  useEffect(() => {
+    if (query) return; // don't churn the interval while they type
+    const t = setInterval(() => setPlaceholderIdx((i) => (i + 1) % PLACEHOLDER_EXAMPLES.length), 3500);
+    return () => clearInterval(t);
+  }, [query, PLACEHOLDER_EXAMPLES.length]);
   const [processing, setProcessing] = useState(false);
   const [step, setStep] = useState(-1);
   const [result, setResult] = useState(null);
@@ -153,7 +171,7 @@ export default function ResearchTab({ maxSearches, searchCount, onSearchComplete
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           onKeyDown={(e) => { if (e.key === "Enter" && e.ctrlKey) handleSearch(); }}
-          placeholder="What's the best rain jacket for a 3-day hike under $200?"
+          placeholder={`e.g. ${PLACEHOLDER_EXAMPLES[placeholderIdx]}`}
           rows={3}
           style={{ width: "100%", boxSizing: "border-box", border: "none", background: "transparent", fontSize: 14, resize: "none", outline: "none", color: "var(--color-text-primary)", fontFamily: "var(--font-sans)", lineHeight: 1.6 }}
         />
@@ -319,6 +337,28 @@ export default function ResearchTab({ maxSearches, searchCount, onSearchComplete
             </div>
           )}
 
+          {/* Model-suggested refinement chips: one tap appends the phrase to
+              the query and re-runs. This is the honest version of a filter
+              dropdown — structure offered as a follow-up, never a gate, and
+              suggested by the model with full context of THIS question. */}
+          {result.refinements?.length > 0 && !processing && (
+            <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", margin: "12px 0" }}>
+              <span style={{ fontSize: 11, color: "var(--color-text-tertiary)" }}>Sharpen this pick:</span>
+              {result.refinements.map((r, i) => (
+                <button
+                  key={i}
+                  onClick={() => {
+                    const refined = `${result.query} ${r}`.replace(/\s+/g, " ").trim();
+                    setQuery(refined);
+                    handleSearch(refined);
+                  }}
+                  style={{ background: "none", border: "0.5px solid var(--color-border-secondary)", borderRadius: 12, padding: "4px 11px", fontSize: 12, color: "#0F6E56", cursor: "pointer" }}
+                >
+                  ＋ {r}
+                </button>
+              ))}
+            </div>
+          )}
           {result.alternatives?.length > 0 && (
             <div style={{ marginBottom: 16 }}>
               <div style={{ fontSize: 11, fontWeight: 500, color: "var(--color-text-secondary)", marginBottom: 10, letterSpacing: "0.04em", textTransform: "uppercase" }}>

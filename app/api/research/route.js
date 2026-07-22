@@ -27,17 +27,18 @@ Price is not quality. A cheap product that does the job well is a legitimate rec
   "whoItsFor": "one sentence",
   "whoShouldSkip": "one sentence",
   "confidence": "high|medium|low",
-  "sponsoredChoiceId": the numeric id of the ONE offered partner product that genuinely answers the question, or null — ONLY when products were offered to you above. Null if none truly fits: wrong category, wrong product type, priced ABOVE a budget the person stated, or something a reasonable shopper with this query would regret buying. A stated budget is a CEILING, not a target: a product priced well under it still qualifies — select the best genuinely suitable candidate and use your answer text to say better options exist at higher spend, rather than suppressing a suitable product because the person could afford more. Judge exactly as you would if no money were involved.,
+  "sponsoredChoiceId": the numeric id of the ONE offered partner product that genuinely answers the question, or null — ONLY when products were offered to you above. Null if none truly fits: wrong category, wrong product type, priced above what the person stated, or a product too poor for any reasonable shopper with this query to be satisfied buying. The bar is "would a knowledgeable friend be comfortable saying: this one is a solid buy for what you asked" — NOT "is this the single best product on the market at this price". Comparing the offered products to better market alternatives belongs in your answer text, where you should do it freely and honestly; it is not a reason to suppress a genuinely good offered product. Likewise a budget phrased as a maximum is a ceiling, not a target: priced-under still qualifies. Judge exactly as you would if no money were involved.,
   "alternatives": [{"name": "a real alternative product relevant to THIS query", "note": "one short phrase on the trade-off vs the pick", "price": "approx price or empty string"}],
   "micrositeTitle": "short title for the knowledge microsite",
   "micrositeSummary": "1-2 sentence anonymized summary",
   "publicTopic": "the question rephrased as a generic, searchable shopping topic many different people would type (e.g. 'best whey protein under ₹2000'), in the same language as the rest of your answer. Empty string if the question is too personal, niche, or situation-specific to be useful as a public page",
+  "refinements": ["up to 3 SHORT phrases (each under 6 words) the person could APPEND to their query to get a sharper, more personal answer — e.g. a budget ('under ₹500'), a use case ('for oily skin'), a form/spec ('resin form'). Each must read naturally when appended to their exact query text. Empty array when the query is already specific enough that refining would not change the answer"],
   "taskType": "research|creative|technical|predictive|analysis",
   "learnings": ["short reusable knowledge fragment", "another one", "a third"]
 }
 Provide 2-3 alternatives that are genuinely relevant to the specific product the person asked about — never generic or unrelated items.
 
-When partner products are offered to you, decide honestly which single one — if any — answers the question, and return its id as sponsoredChoiceId. Remember a stated budget is a ceiling: cheaper-than-budget is not a reason to reject, it is something to contextualize in your answer. If none genuinely fits, return null — nothing will then be shown to the person at all, so you do not need to explain why. Simply answer the question as though nothing had been offered. Never invent an id that was not in the offered list.`;
+When partner products are offered to you, decide honestly which single one — if any — answers the question, and return its id as sponsoredChoiceId. Two things are never rejection reasons: being cheaper than a stated budget, and not being the absolute best value on the wider market — both belong in your answer text as honest context, alongside the pick. Reject only what a knowledgeable friend would tell someone NOT to buy for this question. If none genuinely fits, return null — nothing will then be shown to the person at all, so you do not need to explain why. Simply answer the question as though nothing had been offered. Never invent an id that was not in the offered list.`;
 
 export async function POST(req) {
   try {
@@ -358,6 +359,11 @@ export async function POST(req) {
       // to buy it. A sponsored slot we can't defend is worth less than an
       // empty one.
       matchedListing: buildClientListingPayload(chosenMatch),
+      // Model-suggested refinements, hard-capped and length-limited — these
+      // render as tappable chips that append to the query and re-run.
+      refinements: Array.isArray(parsed.refinements)
+        ? parsed.refinements.filter((r) => typeof r === "string" && r.trim() && r.length <= 40).slice(0, 3)
+        : [],
       // Admins only: what the matcher offered and what the model chose, so
       // "why is there no card" is answerable by looking, not by inference.
       // Never sent to regular users — it names inventory they weren't shown.
