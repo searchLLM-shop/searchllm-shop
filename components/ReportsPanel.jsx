@@ -105,6 +105,11 @@ export default function ReportsPanel() {
           <button onClick={load} style={{ background: "none", border: "0.5px solid var(--color-border-secondary)", borderRadius: 6, padding: "4px 10px", fontSize: 11, cursor: "pointer", color: "var(--color-text-secondary)" }}>
             Refresh
           </button>
+          {/* A plain link, not a fetch: the browser handles the download and
+              the admin session cookie rides along automatically. */}
+          <a href={`/api/admin/reports/export?days=${days}`} style={{ background: "#0F6E56", color: "#fff", border: "none", borderRadius: 6, padding: "5px 12px", fontSize: 11, fontWeight: 500, textDecoration: "none" }}>
+            Export XLSX
+          </a>
         </div>
       </div>
 
@@ -126,6 +131,50 @@ export default function ReportsPanel() {
           <Stat label="Inventory coverage" value={`${coverage}%`} sub="searches with a relevant offer" />
           <Stat label="Hit daily limit" value={n(t.limit_hits)} sub="times users ran out of picks" />
         </div>
+      </Section>
+
+      <Section
+        title={`Revenue — last ${days} days`}
+        note="Conversions are matched to outbound clicks by sub-ID and settle over 30–90 days: pending means inside the return window; approved means the commission is confirmed payable. Amounts are per network and currency — they are deliberately never summed across currencies."
+      >
+        {(() => {
+          const rv = data.revenue || {};
+          const rt = rv.totals || {};
+          const convRate = Number(rt.out_clicks) > 0 ? ((Number(rt.conversions) / Number(rt.out_clicks)) * 100).toFixed(1) : "0.0";
+          return (
+            <>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 10, marginBottom: 12 }}>
+                <Stat label="Outbound clicks" value={n(rt.out_clicks)} sub="tracked via /out/" accent="#854F0B" />
+                <Stat label="Conversions" value={n(rt.conversions)} sub={`${convRate}% of clicks`} accent="#854F0B" />
+                <Stat label="Pending" value={n(rt.pending)} sub="inside return window" />
+                <Stat label="Approved" value={n(rt.approved)} accent="#0F6E56" />
+                <Stat label="Declined" value={n(rt.declined)} sub="returned / cancelled" />
+              </div>
+              {(!rv.byNetwork || rv.byNetwork.length === 0) ? (
+                <div style={{ fontSize: 12, color: "var(--color-text-tertiary)" }}>
+                  No tracked clicks in this window yet. Rows appear as soon as shoppers click through /out/ links; commission figures appear once the conversion poll matches network transactions back to them.
+                </div>
+              ) : (
+                <div style={{ border: "0.5px solid var(--color-border-tertiary)", borderRadius: 10, overflow: "hidden" }}>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 50px 60px 60px 80px 80px 80px", gap: 8, padding: "8px 12px", background: "var(--color-background-tertiary)", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.04em", color: "var(--color-text-tertiary)" }}>
+                    <span>Network</span><span>Cur</span><span style={{ textAlign: "right" }}>Clicks</span><span style={{ textAlign: "right" }}>Conv</span><span style={{ textAlign: "right" }}>Order value</span><span style={{ textAlign: "right" }}>Comm. pending</span><span style={{ textAlign: "right" }}>Comm. approved</span>
+                  </div>
+                  {rv.byNetwork.map((x, i) => (
+                    <div key={i} style={{ display: "grid", gridTemplateColumns: "1fr 50px 60px 60px 80px 80px 80px", gap: 8, padding: "8px 12px", fontSize: 12, borderTop: "0.5px solid var(--color-border-tertiary)" }}>
+                      <span>{x.network || "—"}</span>
+                      <span style={{ color: "var(--color-text-tertiary)", fontSize: 11 }}>{x.currency}</span>
+                      <span style={{ textAlign: "right" }}>{n(x.out_clicks)}</span>
+                      <span style={{ textAlign: "right" }}>{n(x.conversions)}</span>
+                      <span style={{ textAlign: "right", color: "var(--color-text-secondary)" }}>{n(x.order_value)}</span>
+                      <span style={{ textAlign: "right", color: "var(--color-text-secondary)" }}>{n(x.commission_pending)}</span>
+                      <span style={{ textAlign: "right", fontWeight: 500, color: Number(x.commission_approved) > 0 ? "#0F6E56" : "var(--color-text-tertiary)" }}>{n(x.commission_approved)}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </>
+          );
+        })()}
       </Section>
 
       <Section title={`Daily activity — last ${days} days`}>
