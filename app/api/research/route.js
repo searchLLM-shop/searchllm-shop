@@ -38,6 +38,8 @@ Price is not quality. A cheap product that does the job well is a legitimate rec
 }
 Provide 2-3 alternatives that are genuinely relevant to the specific product the person asked about — never generic or unrelated items.
 
+Your entire response must be strictly valid JSON. NEVER use the double-quote inch symbol (") inside any string value — write "55-inch", not 55". An unescaped quote breaks the JSON and the person gets an error instead of your answer.
+
 When partner products are offered to you, decide honestly which single one — if any — answers the question, and return its id as sponsoredChoiceId. Two things are never rejection reasons: being cheaper than a stated budget, and not being the absolute best value on the wider market — both belong in your answer text as honest context, alongside the pick. Reject only what a knowledgeable friend would tell someone NOT to buy for this question. If none genuinely fits, return null — nothing will then be shown to the person at all, so you do not need to explain why. Simply answer the question as though nothing had been offered. Never invent an id that was not in the offered list.`;
 
 export async function POST(req) {
@@ -279,7 +281,17 @@ export async function POST(req) {
     let parsed;
     try {
       parsed = JSON.parse(raw);
-    } catch (e) {
+    } catch (firstErr) {
+      // Repair the classic shopping-content malformation before failing:
+      // an inch mark inside a string ('At ₹1 lakh for a 55"+ TV...') is an
+      // unescaped quote to JSON.parse. A digit + quote NOT followed by a
+      // JSON structural character (, } ] :) is an inch symbol — rewrite it
+      // as "-inch" and retry. Seen in production 2026-07-22.
+      try {
+        const repaired = raw.replace(/(\d)\s*"(?=\s*[^,}\]:\s]|\s+[a-zA-Z+&(₹])/g, "$1-inch");
+        parsed = JSON.parse(repaired);
+        console.warn("Model JSON needed inch-mark repair; recovered.");
+      } catch (e) {
       console.error("Failed to parse model response as JSON:", raw);
       return Response.json(
         {
@@ -288,6 +300,7 @@ export async function POST(req) {
         },
         { status: 502 }
       );
+      }
     }
 
     // Resolve the model's sponsored choice. The id must be one we actually
