@@ -234,6 +234,24 @@ export default function ResearchTab({ maxSearches, searchCount, onSearchComplete
             {result.whoShouldSkip && <div style={{ fontSize: 12, color: "var(--color-text-secondary)" }}><strong style={{ fontWeight: 500, color: "var(--color-text-primary)" }}>{tr("skipIf")}</strong> {result.whoShouldSkip}</div>}
           </div>
 
+          {/* Admin-only matcher transparency: what was offered to the model
+              and what it chose. Present only when the API included it (it
+              never does for regular users). Turns "why is there no card"
+              into a glance instead of a debugging session. */}
+          {result.sponsoredDebug && (
+            <div style={{ fontSize: 11, color: "var(--color-text-tertiary)", background: "var(--color-background-secondary)", border: "0.5px dashed var(--color-border-secondary)", borderRadius: 8, padding: "8px 12px", marginBottom: 10 }}>
+              <strong style={{ fontWeight: 500 }}>Admin — matcher:</strong>{" "}
+              {result.sponsoredDebug.offered.length === 0
+                ? "no inventory candidates cleared the retrieval gate (score ≥2 after budget/geo filters)."
+                : `offered ${result.sponsoredDebug.offered.length}: ${result.sponsoredDebug.offered
+                    .map((o) => `${o.product.slice(0, 40)} (${o.price}, s${o.score})`)
+                    .join(" · ")} → model chose ${
+                    result.sponsoredDebug.chosenId
+                      ? `#${result.sponsoredDebug.chosenId}`
+                      : "none (judged not genuinely suitable)"
+                  }`}
+            </div>
+          )}
           {result.matchedListing && (
             <div style={{ background: "#BA75171A", borderRadius: 12, border: "1px solid #BA751744", padding: "16px 18px", marginBottom: 14 }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>

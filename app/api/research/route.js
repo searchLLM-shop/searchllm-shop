@@ -27,7 +27,7 @@ Price is not quality. A cheap product that does the job well is a legitimate rec
   "whoItsFor": "one sentence",
   "whoShouldSkip": "one sentence",
   "confidence": "high|medium|low",
-  "sponsoredChoiceId": the numeric id of the ONE offered partner product that genuinely answers the question, or null — ONLY when products were offered to you above. Null if none truly fits: wrong category, wrong product type, or outside a budget the person stated. Judge exactly as you would if no money were involved, because your choice decides what is shown at all.,
+  "sponsoredChoiceId": the numeric id of the ONE offered partner product that genuinely answers the question, or null — ONLY when products were offered to you above. Null if none truly fits: wrong category, wrong product type, priced ABOVE a budget the person stated, or something a reasonable shopper with this query would regret buying. A stated budget is a CEILING, not a target: a product priced well under it still qualifies — select the best genuinely suitable candidate and use your answer text to say better options exist at higher spend, rather than suppressing a suitable product because the person could afford more. Judge exactly as you would if no money were involved.,
   "alternatives": [{"name": "a real alternative product relevant to THIS query", "note": "one short phrase on the trade-off vs the pick", "price": "approx price or empty string"}],
   "micrositeTitle": "short title for the knowledge microsite",
   "micrositeSummary": "1-2 sentence anonymized summary",
@@ -37,7 +37,7 @@ Price is not quality. A cheap product that does the job well is a legitimate rec
 }
 Provide 2-3 alternatives that are genuinely relevant to the specific product the person asked about — never generic or unrelated items.
 
-When partner products are offered to you, decide honestly which single one — if any — answers the question, and return its id as sponsoredChoiceId. If none genuinely fits, return null — nothing will then be shown to the person at all, so you do not need to explain why. Simply answer the question as though nothing had been offered. Never invent an id that was not in the offered list.`;
+When partner products are offered to you, decide honestly which single one — if any — answers the question, and return its id as sponsoredChoiceId. Remember a stated budget is a ceiling: cheaper-than-budget is not a reason to reject, it is something to contextualize in your answer. If none genuinely fits, return null — nothing will then be shown to the person at all, so you do not need to explain why. Simply answer the question as though nothing had been offered. Never invent an id that was not in the offered list.`;
 
 export async function POST(req) {
   try {
@@ -354,6 +354,17 @@ export async function POST(req) {
       // to buy it. A sponsored slot we can't defend is worth less than an
       // empty one.
       matchedListing: buildClientListingPayload(chosenMatch),
+      // Admins only: what the matcher offered and what the model chose, so
+      // "why is there no card" is answerable by looking, not by inference.
+      // Never sent to regular users — it names inventory they weren't shown.
+      ...(admin
+        ? {
+            sponsoredDebug: {
+              offered: topMatches.map((m) => ({ id: m.listing.id, product: m.listing.product, price: m.listing.price, score: Number(m.score.toFixed(1)) })),
+              chosenId: chosenMatch?.id || null,
+            },
+          }
+        : {}),
       plan,
       limit,
       searchUsed,
