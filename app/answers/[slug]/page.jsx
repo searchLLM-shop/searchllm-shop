@@ -51,7 +51,11 @@ export default async function AnswerPage({ params }) {
 
   return (
     <main style={{ maxWidth: 760, margin: "0 auto", padding: "8px 4px 48px" }}>
-      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
+      {/* JSON.stringify does NOT escape "</script>" — and this content derives
+          from model output influenced by user queries, on a public page. The
+          \u003c replacement is the standard, complete fix for script-context
+          JSON injection. */}
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd).replace(/</g, "\\u003c") }} />
 
       <Link href="/" style={{ fontSize: 12, color: "#0F6E56", textDecoration: "none" }}>← SearchLLM</Link>
 

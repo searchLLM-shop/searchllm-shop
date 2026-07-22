@@ -124,6 +124,15 @@ export async function POST(req) {
     // If an image was attached, identify the product first — its terms feed
     // both the listing search and the recommendation context. Failure here is
     // non-fatal: the user still gets a text-based answer.
+    // Server-side upload cap. The client resizes to 1024px JPEG (~200KB),
+    // but a scripted client bypasses the browser entirely — without this
+    // check, oversized base64 payloads flow straight into vision-call cost
+    // and function memory. 3MB base64 ≈ 2.2MB image: far above anything the
+    // legitimate client produces, low enough to bound abuse.
+    if (attachment?.data && attachment.data.length > 3_000_000) {
+      return Response.json({ error: "Image too large — please attach a photo under 2MB." }, { status: 413 });
+    }
+
     let vision = null;
     if (attachment?.data && attachment?.mediaType?.startsWith("image/")) {
       try {
