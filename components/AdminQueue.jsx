@@ -278,7 +278,14 @@ export default function AdminQueue() {
       {loading && <div style={{ textAlign: "center", padding: 24, color: "var(--color-text-tertiary)", fontSize: 13 }}>Loading…</div>}
 
       {!loading && pending.length === 0 && !errorMsg && (
-        <div style={{ textAlign: "center", padding: 24, color: "var(--color-text-tertiary)", fontSize: 13 }}>No pending submissions.</div>
+        <div style={{ textAlign: "center", padding: 24, color: "var(--color-text-tertiary)", fontSize: 13 }}>
+          No pending submissions.
+          {pendingCounts?.pausedGerman > 0 && (
+            <div style={{ marginTop: 6, fontSize: 12 }}>
+              ({pendingCounts.pausedGerman.toLocaleString()} German-market listings are held out of review while German support is paused — they return here untouched when it re-enables.)
+            </div>
+          )}
+        </div>
       )}
 
       {enrichMsg && (
@@ -289,6 +296,11 @@ export default function AdminQueue() {
         <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", padding: "10px 14px", marginBottom: 12, background: "var(--color-background-tertiary)", borderRadius: 10 }}>
           <span style={{ fontSize: 13, color: "var(--color-text-secondary)" }}>
             {pendingCounts.total.toLocaleString()} pending
+            {pendingCounts.pausedGerman > 0 && (
+              <span style={{ color: "var(--color-text-tertiary)", fontWeight: 400 }}>
+                {" "}· {pendingCounts.pausedGerman.toLocaleString()} German-market listings held out of review while German support is paused — they return here untouched when it re-enables
+              </span>
+            )}
             {pendingCounts.total > PAGE_SIZE && (
               <span style={{ color: "var(--color-text-tertiary)" }}>
                 {" "}· showing {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, pendingCounts.total)}
