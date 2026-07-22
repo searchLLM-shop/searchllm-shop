@@ -341,6 +341,20 @@ export default function ResearchTab({ maxSearches, searchCount, onSearchComplete
               the query and re-runs. This is the honest version of a filter
               dropdown — structure offered as a follow-up, never a gate, and
               suggested by the model with full context of THIS question. */}
+          {/* Points earned message — the retention loop made visible. Guests
+              see the day-expiring figure with the signup nudge; users see
+              earned-this-pick and today's running total. */}
+          {result.rewards && (
+            <div style={{ fontSize: 12, color: "#854F0B", background: "#FDF8EF", border: "0.5px solid #EADFC8", borderRadius: 8, padding: "8px 12px", margin: "10px 0" }}>
+              {result.rewards.kind === "user" ? (
+                result.rewards.earned > 0
+                  ? <>✨ You earned <strong>{result.rewards.earned} points</strong> for this pick — {result.rewards.todayTotal} today. <a href="/points" style={{ color: "#854F0B", textDecoration: "underline" }}>How points work</a></>
+                  : <>You&apos;ve earned today&apos;s maximum search points ({result.rewards.todayTotal}) — purchases through recommendations keep earning without limits.</>
+              ) : (
+                <>✨ You&apos;ve earned <strong>{result.rewards.guestToday} points</strong> today as a guest — they expire at midnight. <strong>Sign up free to keep them</strong>, and they&apos;ll keep adding up.</>
+              )}
+            </div>
+          )}
           {result.refinements?.length > 0 && !processing && (
             <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", margin: "12px 0" }}>
               <span style={{ fontSize: 11, color: "var(--color-text-tertiary)" }}>Sharpen this pick:</span>

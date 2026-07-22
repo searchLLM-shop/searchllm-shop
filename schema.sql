@@ -377,3 +377,55 @@ CREATE TABLE IF NOT EXISTS search_queries (
 );
 
 CREATE INDEX IF NOT EXISTS idx_search_queries_created ON search_queries (created_at DESC);
+
+-- =========================================================================
+-- Loyalty programme (opt-in).
+--
+-- Members earn points on purchases made through our tracked links, computed
+-- from the commission the network CONFIRMS — never a flat per-order amount,
+-- so the programme mathematically cannot pay out more than it earns. The
+-- ledger mirrors the network conversion lifecycle exactly: pending inside
+-- the return window, confirmed when the commission is approved, reversed on
+-- decline. Only clicks made AFTER the member consented ever accrue — the
+-- consent boundary is enforced in the earning query itself, not by policy.
+-- =========================================================================
+CREATE TABLE IF NOT EXISTS loyalty_members (
+  user_id TEXT PRIMARY KEY,               -- Clerk user id; accounts only, never guests
+  consented_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS points_ledger (
+  id SERIAL PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  click_id TEXT UNIQUE,                   -- one entry per converted click; re-polls update in place
+  points NUMERIC(12,2) NOT NULL,
+  status TEXT NOT NULL,                   -- pending | confirmed | reversed
+  commission NUMERIC(12,2),
+  currency TEXT,
+  network TEXT,
+  listing_id INTEGER,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ
+);
+
+CREATE INDEX IF NOT EXISTS idx_points_ledger_user ON points_ledger (user_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS redemptions (
+  id SERIAL PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  points INTEGER NOT NULL,
+  voucher_type TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'requested', -- requested | fulfilled | rejected
+  voucher_code TEXT,                        -- filled by admin on manual fulfilment
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  fulfilled_at TIMESTAMPTZ
+);
+
+CREATE INDEX IF NOT EXISTS idx_redemptions_user ON redemptions (user_id, created_at DESC);
+
+-- Loyalty v2 additions: points now come from two sources — 'purchase'
+-- (commission-derived, self-funding) and 'search' (engagement credit,
+-- capped in code). Guest day-points are never stored: they're computed
+-- live from usage_daily and expire by simply being recomputed tomorrow.
+ALTER TABLE points_ledger ADD COLUMN IF NOT EXISTS source TEXT NOT NULL DEFAULT 'purchase';
+ALTER TABLE points_ledger ADD COLUMN IF NOT EXISTS note TEXT;

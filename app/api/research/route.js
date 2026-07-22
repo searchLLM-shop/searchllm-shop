@@ -14,6 +14,7 @@ import { languageForModel, resolveLocale } from "@/lib/i18n";
 import { recordEvent, recordSearchQuery } from "@/lib/db";
 import { identifyProductFromImage } from "@/lib/visionSearch";
 import { findTopMatchingListings, buildClientListingPayload, extractQueryTerms } from "@/lib/listingMatcher";
+import { creditSearchPoints, getGuestDayPoints } from "@/lib/db";
 import { getOrCreateGuestId } from "@/lib/guestId";
 import { PLANS } from "@/lib/constants";
 import { shouldSearch, braveSearch, formatSearchContext } from "@/lib/braveSearch";
@@ -421,6 +422,22 @@ export async function POST(req) {
       // to buy it. A sponsored slot we can't defend is worth less than an
       // empty one.
       matchedListing: buildClientListingPayload(chosenMatch),
+      // Search points: registered users earn per pick under a daily cap;
+      // guests see a day-expiring figure computed from today's picks (never
+      // stored — vanishes at midnight unless they sign up and claim). Both
+      // are best-effort: a rewards hiccup must never fail a search.
+      rewards: await (async () => {
+        try {
+          if (userId) {
+            const sp = await creditSearchPoints(userId);
+            return { kind: "user", ...sp };
+          }
+          return { kind: "guest", guestToday: await getGuestDayPoints(identity), perPick: 10 };
+        } catch (e) {
+          console.error("Search points failed:", e.message);
+          return null;
+        }
+      })(),
       // Model-suggested refinements, hard-capped and length-limited — these
       // render as tappable chips that append to the query and re-run.
       refinements: Array.isArray(parsed.refinements)

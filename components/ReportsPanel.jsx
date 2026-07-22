@@ -307,6 +307,34 @@ export default function ReportsPanel() {
         )}
       </Section>
 
+      {data.rewards && (
+        <Section title="Rewards programme" note={`${n(data.rewards.members)} members · outstanding liability: ${n(data.rewards.outstandingPoints)} points (₹${n(data.rewards.outstandingPoints)})`}>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
+            {data.rewards.issuance.map((x, i) => (
+              <div key={i} style={{ background: "var(--color-background-secondary)", border: "0.5px solid var(--color-border-tertiary)", borderRadius: 8, padding: "7px 12px", fontSize: 11 }}>
+                <span style={{ color: "var(--color-text-tertiary)" }}>{x.source} · {x.status}</span>
+                <span style={{ fontWeight: 600, marginLeft: 8 }}>{n(Math.floor(x.points))} pts</span>
+              </div>
+            ))}
+          </div>
+          {data.rewards.byVoucher.length > 0 && (
+            <div style={{ border: "0.5px solid var(--color-border-tertiary)", borderRadius: 10, overflow: "hidden" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 90px 90px 110px", gap: 8, padding: "8px 12px", background: "var(--color-background-tertiary)", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.04em", color: "var(--color-text-tertiary)" }}>
+                <span>Voucher</span><span style={{ textAlign: "right" }}>Status</span><span style={{ textAlign: "right" }}>Count</span><span style={{ textAlign: "right" }}>Value (₹)</span>
+              </div>
+              {data.rewards.byVoucher.map((v, i) => (
+                <div key={i} style={{ display: "grid", gridTemplateColumns: "1fr 90px 90px 110px", gap: 8, padding: "7px 12px", fontSize: 12, borderTop: "0.5px solid var(--color-border-tertiary)" }}>
+                  <span>{v.voucher_type}</span>
+                  <span style={{ textAlign: "right", fontSize: 11, color: "var(--color-text-tertiary)" }}>{v.status}</span>
+                  <span style={{ textAlign: "right" }}>{n(v.redemptions)}</span>
+                  <span style={{ textAlign: "right", fontWeight: 500 }}>{n(v.points_value)}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </Section>
+      )}
+
       <Section title="Inventory" note="Approved listings are what can actually be shown to a shopper.">
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           {data.inventory.map((x, i) => (

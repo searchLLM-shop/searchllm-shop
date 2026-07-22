@@ -127,6 +127,14 @@ export async function GET(req) {
     category: c.category, total: num(c.total), approved: num(c.approved), pending: num(c.pending),
   })));
 
+  addSheet("Rewards issuance", (r.rewards?.issuance || []).map((x) => ({
+    source: x.source, status: x.status, entries: num(x.entries), points: num(x.points),
+  })));
+
+  addSheet("Rewards redemptions", (r.rewards?.byVoucher || []).map((v) => ({
+    voucher: v.voucher_type, status: v.status, count: num(v.redemptions), value_inr: num(v.points_value),
+  })));
+
   const buf = XLSX.write(wb, { type: "buffer", bookType: "xlsx" });
   const rangeLabel = r.range ? `${r.range.from}_to_${r.range.to}` : `${days}d`;
   const filename = `searchllm-report-${rangeLabel}.xlsx`;

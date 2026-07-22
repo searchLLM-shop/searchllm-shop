@@ -16,6 +16,7 @@ export default function AdminQueue() {
   const [errorMsg, setErrorMsg] = useState(null);
   const [syncRuns, setSyncRuns] = useState([]);
   const [inventory, setInventory] = useState([]);
+  const [redemptions, setRedemptions] = useState([]);
   const [syncing, setSyncing] = useState(false);
   const [syncResult, setSyncResult] = useState(null);
   const [bulkBusy, setBulkBusy] = useState(false);
@@ -113,6 +114,11 @@ export default function AdminQueue() {
         const data = await resp.json();
         setSyncRuns(data.latest || []);
         setInventory(data.inventory || []);
+      }
+      const rResp = await fetch("/api/admin/redemptions");
+      if (rResp.ok) {
+        const rData = await rResp.json();
+        setRedemptions(rData.queue || []);
       }
     } catch (e) {
       console.error("Failed to load sync status", e);
@@ -259,6 +265,41 @@ export default function AdminQueue() {
                   <span style={{ color: Number(x.approved) > 0 ? "#0F6E56" : "var(--color-text-tertiary)", fontWeight: 500 }}>{Number(x.approved).toLocaleString()} approved</span>
                   {" · "}{Number(x.pending).toLocaleString()} pending
                   {Number(x.rejected) > 0 ? ` · ${Number(x.rejected).toLocaleString()} rejected` : ""}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+        {redemptions.filter((r) => r.status === "requested").length > 0 && (
+          <div style={{ marginTop: 10, paddingTop: 8, borderTop: "0.5px solid var(--color-border-tertiary)" }}>
+            <div style={{ fontSize: 10, letterSpacing: "0.05em", textTransform: "uppercase", color: "#854F0B", marginBottom: 4 }}>
+              Voucher redemptions awaiting fulfilment
+            </div>
+            {redemptions.filter((r) => r.status === "requested").map((r) => (
+              <div key={r.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, fontSize: 12, padding: "4px 0", color: "var(--color-text-secondary)" }}>
+                <span>{Number(r.points).toLocaleString()} pts → {r.voucher_type} · {r.user_id.slice(0, 14)}… · {new Date(r.created_at).toLocaleDateString()}</span>
+                <span style={{ display: "flex", gap: 6 }}>
+                  <button
+                    onClick={async () => {
+                      const code = window.prompt(`Voucher code for ${r.points} pts ${r.voucher_type}:`);
+                      if (!code) return;
+                      await fetch("/api/admin/redemptions", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: r.id, action: "fulfill", voucherCode: code.trim() }) });
+                      loadSyncStatus();
+                    }}
+                    style={{ background: "#0F6E56", color: "#fff", border: "none", borderRadius: 6, padding: "3px 10px", fontSize: 11, cursor: "pointer" }}
+                  >
+                    Fulfil
+                  </button>
+                  <button
+                    onClick={async () => {
+                      if (!window.confirm("Reject this redemption? Points return to the member.")) return;
+                      await fetch("/api/admin/redemptions", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: r.id, action: "reject" }) });
+                      loadSyncStatus();
+                    }}
+                    style={{ background: "none", border: "0.5px solid var(--color-border-secondary)", borderRadius: 6, padding: "3px 10px", fontSize: 11, cursor: "pointer", color: "var(--color-text-secondary)" }}
+                  >
+                    Reject
+                  </button>
                 </span>
               </div>
             ))}

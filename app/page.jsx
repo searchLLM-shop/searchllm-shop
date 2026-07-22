@@ -15,6 +15,7 @@ import AnswersAdmin from "@/components/AnswersAdmin";
 import ProductsBrowser from "@/components/ProductsBrowser";
 import QueriesPanel from "@/components/QueriesPanel";
 import PerformancePanel from "@/components/PerformancePanel";
+import RewardsTab from "@/components/RewardsTab";
 
 // Bump this whenever the Privacy Policy or Terms of Use changes materially
 // — it invalidates stored consent and forces the gate to show again, which
@@ -286,7 +287,7 @@ export default function Home() {
       </div>
 
       <div className="sllm-tabs" style={{ display: "flex", borderBottom: "0.5px solid var(--color-border-tertiary)" }}>
-        {["research", "saved", ...(SHOW_BRANDS_FORM ? ["brands"] : []), ...(SHOW_ADVERTISERS ? ["advertise"] : []), ...(isAdminHint ? ["admin", "products", "queries", "performance", "answers", "reports", ...(SHOW_ADVERTISERS ? ["advertisers"] : [])] : [])].map((t) => (
+        {["research", "saved", "rewards", ...(SHOW_BRANDS_FORM ? ["brands"] : []), ...(SHOW_ADVERTISERS ? ["advertise"] : []), ...(isAdminHint ? ["admin", "products", "queries", "performance", "answers", "reports", ...(SHOW_ADVERTISERS ? ["advertisers"] : [])] : [])].map((t) => (
           <button
             key={t}
             onClick={() => setActiveTab(t)}
@@ -297,6 +298,8 @@ export default function Home() {
               ? tr("tabResearch")
               : t === "saved"
               ? tr("tabSaved")
+              : t === "rewards"
+              ? "Rewards"
               : t === "brands"
               ? "For brands"
               : t === "admin"
@@ -319,6 +322,7 @@ export default function Home() {
             saveNotice={saveNotice}
           />
         )}
+        {activeTab === "rewards" && <RewardsTab />}
         {activeTab === "saved" && (
           <div>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", margin: "0 0 12px" }}>
