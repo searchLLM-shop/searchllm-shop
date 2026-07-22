@@ -18,10 +18,16 @@ export async function GET(req) {
     return Response.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  const days = Math.min(Number(new URL(req.url).searchParams.get("days")) || 30, 90);
+  const params = new URL(req.url).searchParams;
+  const days = Math.min(Number(params.get("days")) || 30, 90);
+  // Optional custom range: ?from=YYYY-MM-DD&to=YYYY-MM-DD overrides the
+  // preset. Validation and span-capping happen in normalizeRange.
+  const range = params.get("from") && params.get("to")
+    ? { from: params.get("from"), to: params.get("to") }
+    : null;
 
   try {
-    const report = await getReportSummary(days);
+    const report = await getReportSummary(days, range);
     return Response.json(report);
   } catch (err) {
     console.error("Reports failed:", err);

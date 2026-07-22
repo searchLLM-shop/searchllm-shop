@@ -40,12 +40,19 @@ export default function ReportsPanel() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [days, setDays] = useState(30);
+  // Custom date range. When applied, it overrides the preset; picking a
+  // preset clears it. draft* hold the inputs until Apply so typing a date
+  // doesn't fire a fetch per keystroke.
+  const [customRange, setCustomRange] = useState(null);
+  const [draftFrom, setDraftFrom] = useState("");
+  const [draftTo, setDraftTo] = useState("");
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const resp = await fetch(`/api/admin/reports?days=${days}`);
+      const rangeQ = customRange ? `&from=${customRange.from}&to=${customRange.to}` : "";
+      const resp = await fetch(`/api/admin/reports?days=${days}${rangeQ}`);
       const json = await resp.json();
       if (!resp.ok) throw new Error(json.detail || json.error || "Failed to load");
       setData(json);
@@ -54,7 +61,7 @@ export default function ReportsPanel() {
     } finally {
       setLoading(false);
     }
-  }, [days]);
+  }, [days, customRange]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -88,13 +95,23 @@ export default function ReportsPanel() {
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, flexWrap: "wrap", gap: 8 }}>
         <h2 style={{ fontSize: 16, fontWeight: 500, margin: 0 }}>Reports</h2>
         <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+          <input type="date" value={draftFrom} onChange={(e) => setDraftFrom(e.target.value)} style={{ border: "0.5px solid var(--color-border-secondary)", borderRadius: 6, padding: "3px 6px", fontSize: 11, color: "var(--color-text-secondary)", background: "none" }} />
+          <span style={{ fontSize: 11, color: "var(--color-text-tertiary)" }}>to</span>
+          <input type="date" value={draftTo} onChange={(e) => setDraftTo(e.target.value)} style={{ border: "0.5px solid var(--color-border-secondary)", borderRadius: 6, padding: "3px 6px", fontSize: 11, color: "var(--color-text-secondary)", background: "none" }} />
+          <button
+            disabled={!draftFrom || !draftTo}
+            onClick={() => setCustomRange({ from: draftFrom, to: draftTo })}
+            style={{ background: customRange ? "#0F6E56" : "none", color: customRange ? "#fff" : "var(--color-text-secondary)", border: "0.5px solid var(--color-border-secondary)", borderRadius: 6, padding: "4px 10px", fontSize: 11, cursor: (!draftFrom || !draftTo) ? "default" : "pointer", opacity: (!draftFrom || !draftTo) ? 0.5 : 1 }}
+          >
+            Apply
+          </button>
           {[7, 30, 90].map((d) => (
             <button
               key={d}
-              onClick={() => setDays(d)}
+              onClick={() => { setDays(d); setCustomRange(null); setDraftFrom(""); setDraftTo(""); }}
               style={{
-                background: days === d ? "#0F6E56" : "none",
-                color: days === d ? "#fff" : "var(--color-text-secondary)",
+                background: !customRange && days === d ? "#0F6E56" : "none",
+                color: !customRange && days === d ? "#fff" : "var(--color-text-secondary)",
                 border: "0.5px solid var(--color-border-secondary)",
                 borderRadius: 6, padding: "4px 10px", fontSize: 11, cursor: "pointer",
               }}
@@ -107,7 +124,7 @@ export default function ReportsPanel() {
           </button>
           {/* A plain link, not a fetch: the browser handles the download and
               the admin session cookie rides along automatically. */}
-          <a href={`/api/admin/reports/export?days=${days}`} style={{ background: "#0F6E56", color: "#fff", border: "none", borderRadius: 6, padding: "5px 12px", fontSize: 11, fontWeight: 500, textDecoration: "none" }}>
+          <a href={`/api/admin/reports/export?days=${days}${customRange ? `&from=${customRange.from}&to=${customRange.to}` : ""}`} style={{ background: "#0F6E56", color: "#fff", border: "none", borderRadius: 6, padding: "5px 12px", fontSize: 11, fontWeight: 500, textDecoration: "none" }}>
             Export XLSX
           </a>
         </div>
@@ -134,7 +151,7 @@ export default function ReportsPanel() {
       </Section>
 
       <Section
-        title={`Revenue — last ${days} days`}
+        title={customRange ? `Revenue — ${customRange.from} to ${customRange.to}` : `Revenue — last ${days} days`}
         note="Conversions are matched to outbound clicks by sub-ID and settle over 30–90 days: pending means inside the return window; approved means the commission is confirmed payable. Amounts are per network and currency — they are deliberately never summed across currencies."
       >
         {(() => {
@@ -179,7 +196,7 @@ export default function ReportsPanel() {
         })()}
       </Section>
 
-      <Section title={`Daily activity — last ${days} days`}>
+      <Section title={customRange ? `Daily activity — ${customRange.from} to ${customRange.to}` : `Daily activity — last ${days} days`}>
         <div style={{ border: "0.5px solid var(--color-border-tertiary)", borderRadius: 10, overflow: "hidden" }}>
           <div style={{ display: "grid", gridTemplateColumns: "90px 1fr 60px 60px 60px", gap: 8, padding: "8px 12px", background: "var(--color-background-tertiary)", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.04em", color: "var(--color-text-tertiary)" }}>
             <span>Date</span><span>Searches</span><span style={{ textAlign: "right" }}>Search</span><span style={{ textAlign: "right" }}>Users</span><span style={{ textAlign: "right" }}>Clicks</span>

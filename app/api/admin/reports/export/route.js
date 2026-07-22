@@ -26,11 +26,15 @@ export async function GET(req) {
     return Response.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  const days = Math.min(Number(new URL(req.url).searchParams.get("days")) || 30, 90);
+  const params = new URL(req.url).searchParams;
+  const days = Math.min(Number(params.get("days")) || 30, 90);
+  const range = params.get("from") && params.get("to")
+    ? { from: params.get("from"), to: params.get("to") }
+    : null;
 
   let r;
   try {
-    r = await getReportSummary(days);
+    r = await getReportSummary(days, range);
   } catch (err) {
     console.error("Export failed:", err);
     return Response.json({ error: "Could not build export", detail: String(err?.message || err) }, { status: 500 });
@@ -49,7 +53,7 @@ export async function GET(req) {
   const rt = rev.totals || {};
 
   addSheet("Overview", [
-    { metric: "Report window (days)", value: days },
+    { metric: "Report window", value: r.range ? `${r.range.from} to ${r.range.to}` : `last ${days} days` },
     { metric: "Generated (UTC)", value: new Date().toISOString() },
     { metric: "Total visitors (all time)", value: num(t.total_visitors) },
     { metric: "Registered users", value: num(t.registered_users) },
@@ -124,7 +128,8 @@ export async function GET(req) {
   })));
 
   const buf = XLSX.write(wb, { type: "buffer", bookType: "xlsx" });
-  const filename = `searchllm-report-${days}d-${new Date().toISOString().slice(0, 10)}.xlsx`;
+  const rangeLabel = r.range ? `${r.range.from}_to_${r.range.to}` : `${days}d`;
+  const filename = `searchllm-report-${rangeLabel}.xlsx`;
 
   return new Response(buf, {
     headers: {

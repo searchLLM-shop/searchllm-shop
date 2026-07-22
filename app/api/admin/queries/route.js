@@ -25,9 +25,12 @@ export async function GET(req) {
   const page = Math.max(1, Number(url.searchParams.get("page")) || 1);
 
   try {
+    const range = url.searchParams.get("from") && url.searchParams.get("to")
+      ? { from: url.searchParams.get("from"), to: url.searchParams.get("to") }
+      : null;
     const [stats, recent] = await Promise.all([
-      getSearchQueryStats(days),
-      getRecentSearchQueries(days, page, PAGE_SIZE),
+      getSearchQueryStats(days, range),
+      getRecentSearchQueries(days, page, PAGE_SIZE, range),
     ]);
     return Response.json({ ...stats, recent, page, pageSize: PAGE_SIZE });
   } catch (err) {
