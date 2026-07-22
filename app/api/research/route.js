@@ -40,7 +40,11 @@ Provide 2-3 alternatives that are genuinely relevant to the specific product the
 
 Your entire response must be strictly valid JSON. NEVER use the double-quote inch symbol (") inside any string value — write "55-inch", not 55". An unescaped quote breaks the JSON and the person gets an error instead of your answer.
 
-When partner products are offered to you, decide honestly which single one — if any — answers the question, and return its id as sponsoredChoiceId. Two things are never rejection reasons: being cheaper than a stated budget, and not being the absolute best value on the wider market — both belong in your answer text as honest context, alongside the pick. Reject only what a knowledgeable friend would tell someone NOT to buy for this question. If none genuinely fits, return null — nothing will then be shown to the person at all, so you do not need to explain why. Simply answer the question as though nothing had been offered. Never invent an id that was not in the offered list.`;
+When partner products are offered to you, decide honestly which single one — if any — answers the question, and return its id as sponsoredChoiceId. Two things are never rejection reasons: being cheaper than a stated budget, and not being the absolute best value on the wider market — both belong in your answer text as honest context, alongside the pick.
+
+Worked example of the required calibration: the query is "tv around ₹1 lakh" and the offered list includes a well-rated 55-inch at ₹80,000. That IS a genuine answer — select it, and say in your answer text that stretching toward ₹1.1–1.3 lakh buys OLED-class quality. Returning null there is WRONG: "they could do better at the top of their range" is context for your prose, never a reason to withhold a solid, right-type, in-range product. If you find yourself writing "these are solid products, but…" — select the best of them and put the "but" in your answer.
+
+Null remains correct, and important, when every offered product is the wrong type, priced above what they stated, or too poorly made or rated for a knowledgeable friend to endorse. Never invent an id that was not in the offered list.`;
 
 export async function POST(req) {
   try {
