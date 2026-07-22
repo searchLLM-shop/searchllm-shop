@@ -134,6 +134,38 @@ export async function POST(req) {
       } catch (err) {
         console.error("Vision analysis failed:", err.message);
       }
+
+      // The vision call doubles as the image content gate. A restricted
+      // image stops the request HERE: no candidate search, no main model
+      // call, no microsite, no query log — the same posture as blocked text
+      // queries. The image itself was never stored (it travels in the
+      // request body only) and is discarded with the request.
+      if (vision?.restricted) {
+        const IMAGE_BLOCK_MESSAGES = {
+          adult: "We can't process this image. Please attach a photo of a product you'd like researched.",
+          minors: "We can't process this image.",
+          weapons: "We don't cover weapons or ammunition — including in photos. Try a different shopping question.",
+          drugs: "We can't process this image. Try a different shopping question.",
+          medicines:
+            "We don't research or recommend medicines of any kind — including from photos. Health decisions belong with a doctor or a licensed pharmacist.",
+          other: "We can't process this image. Please attach a clear photo of a product.",
+        };
+        return Response.json(
+          { error: IMAGE_BLOCK_MESSAGES[vision.restricted] || IMAGE_BLOCK_MESSAGES.other },
+          { status: 400 }
+        );
+      }
+
+      // Backstop: whatever the image turned out to be, its derived text
+      // must pass the same query filter as typed text — a photo of a
+      // product is a query in picture form.
+      const derived = `${vision?.productType || ""} ${vision?.description || ""}`.trim();
+      if (derived) {
+        const imageCheck = checkQuery(derived);
+        if (imageCheck.blocked) {
+          return Response.json({ error: imageCheck.reason }, { status: 400 });
+        }
+      }
     }
 
     // Search terms come from the typed query and, when present, from what the
