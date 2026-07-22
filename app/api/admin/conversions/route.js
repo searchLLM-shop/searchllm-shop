@@ -12,7 +12,7 @@
 //      echo field is unverified until seen in a real conversion).
 
 import { auth, currentUser } from "@clerk/nextjs/server";
-import { pollConversions, diagConversions } from "@/lib/conversions";
+import { pollConversions, diagConversions, fetchVcommissionPerformanceReport } from "@/lib/conversions";
 import { getLatestSyncRuns } from "@/lib/db";
 import { isAdminEmail } from "@/lib/isAdmin";
 
@@ -38,8 +38,21 @@ export async function GET(req) {
   if (!userId) return Response.json({ error: "Not signed in" }, { status: 401 });
   if (!(await isAdmin())) return Response.json({ error: "Forbidden" }, { status: 403 });
 
-  if (new URL(req.url).searchParams.get("diag") === "1") {
+  const params = new URL(req.url).searchParams;
+  if (params.get("diag") === "1") {
     return Response.json({ diag: await diagConversions() });
+  }
+
+  // ?report=1 — the documented AGGREGATE vCommission performance report
+  // (campaign-level clicks/conversions/payout). Real revenue numbers,
+  // available before per-click matching works; read-only, nothing stored.
+  if (params.get("report") === "1") {
+    try {
+      const days = Math.min(Number(params.get("days")) || 30, 90);
+      return Response.json(await fetchVcommissionPerformanceReport({ lookbackDays: days }));
+    } catch (err) {
+      return Response.json({ error: String(err?.message || err) }, { status: 502 });
+    }
   }
 
   // Default admin read: latest run per network (the conversion polls log
