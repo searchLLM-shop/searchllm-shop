@@ -155,7 +155,8 @@ export default function ReportsPanel() {
                   No tracked clicks in this window yet. Rows appear as soon as shoppers click through /out/ links; commission figures appear once the conversion poll matches network transactions back to them.
                 </div>
               ) : (
-                <div style={{ border: "0.5px solid var(--color-border-tertiary)", borderRadius: 10, overflow: "hidden" }}>
+                <div style={{ overflowX: "auto" }}>
+                <div style={{ minWidth: 560, border: "0.5px solid var(--color-border-tertiary)", borderRadius: 10, overflow: "hidden" }}>
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 50px 60px 60px 80px 80px 80px", gap: 8, padding: "8px 12px", background: "var(--color-background-tertiary)", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.04em", color: "var(--color-text-tertiary)" }}>
                     <span>Network</span><span>Cur</span><span style={{ textAlign: "right" }}>Clicks</span><span style={{ textAlign: "right" }}>Conv</span><span style={{ textAlign: "right" }}>Order value</span><span style={{ textAlign: "right" }}>Comm. pending</span><span style={{ textAlign: "right" }}>Comm. approved</span>
                   </div>
@@ -170,6 +171,7 @@ export default function ReportsPanel() {
                       <span style={{ textAlign: "right", fontWeight: 500, color: Number(x.commission_approved) > 0 ? "#0F6E56" : "var(--color-text-tertiary)" }}>{n(x.commission_approved)}</span>
                     </div>
                   ))}
+                </div>
                 </div>
               )}
             </>

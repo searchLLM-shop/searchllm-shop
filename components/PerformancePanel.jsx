@@ -88,7 +88,8 @@ export default function PerformancePanel() {
             <button disabled={page >= pages || loading} onClick={() => setPage((p) => p + 1)} style={{ border: "0.5px solid var(--color-border-secondary)", background: "none", borderRadius: 6, padding: "3px 9px", fontSize: 11, cursor: page >= pages ? "default" : "pointer", opacity: page >= pages ? 0.4 : 1 }}>Next ›</button>
           </div>
 
-          <div style={{ border: "0.5px solid var(--color-border-tertiary)", borderRadius: 10, overflow: "hidden" }}>
+          <div style={{ overflowX: "auto" }}>
+          <div style={{ minWidth: 520, border: "0.5px solid var(--color-border-tertiary)", borderRadius: 10, overflow: "hidden" }}>
             <div style={{ display: "grid", gridTemplateColumns: "34px 1fr 55px 55px 70px 90px", gap: 8, padding: "8px 12px", background: "var(--color-background-tertiary)", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.04em", color: "var(--color-text-tertiary)" }}>
               <span></span><span>Product</span><span style={{ textAlign: "right" }}>Clicks</span><span style={{ textAlign: "right" }}>Conv</span><span style={{ textAlign: "right" }}>Status</span><span style={{ textAlign: "right" }}>Commission</span>
             </div>
@@ -116,6 +117,7 @@ export default function PerformancePanel() {
                 </span>
               </div>
             ))}
+          </div>
           </div>
         </>
       )}
