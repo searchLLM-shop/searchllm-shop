@@ -343,9 +343,16 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_network_clicks_txn
 -- NOTE: adding a STORED generated column rewrites the table — on ~200K+
 -- rows expect the ALTER to take a little while. Run it once, off-peak.
 -- =========================================================================
+-- Weighted: title+brand rank highest (A), category next (B), and the
+-- product description/pitch lowest (C) — a query word appearing only in a
+-- description is a real but weak signal ("compatible with TV" in a cable's
+-- blurb must never outrank an actual TV), and ts_rank respects the weights.
 ALTER TABLE listings ADD COLUMN IF NOT EXISTS search_tsv tsvector
-  GENERATED ALWAYS AS (to_tsvector('english',
-    coalesce(product, '') || ' ' || coalesce(brand, '') || ' ' || coalesce(category, ''))) STORED;
+  GENERATED ALWAYS AS (
+    setweight(to_tsvector('english', coalesce(product, '') || ' ' || coalesce(brand, '')), 'A') ||
+    setweight(to_tsvector('english', coalesce(category, '')), 'B') ||
+    setweight(to_tsvector('english', coalesce(pitch, '')), 'C')
+  ) STORED;
 
 CREATE INDEX IF NOT EXISTS idx_listings_search_tsv ON listings USING GIN (search_tsv);
 

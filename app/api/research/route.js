@@ -13,7 +13,7 @@ import { slugify } from "@/lib/slug";
 import { languageForModel, resolveLocale } from "@/lib/i18n";
 import { recordEvent, recordSearchQuery } from "@/lib/db";
 import { identifyProductFromImage } from "@/lib/visionSearch";
-import { findMatchingListing, buildClientListingPayload, extractQueryTerms } from "@/lib/listingMatcher";
+import { findTopMatchingListings, buildClientListingPayload, extractQueryTerms } from "@/lib/listingMatcher";
 import { getOrCreateGuestId } from "@/lib/guestId";
 import { PLANS } from "@/lib/constants";
 import { shouldSearch, braveSearch, formatSearchContext } from "@/lib/braveSearch";
@@ -27,7 +27,7 @@ Price is not quality. A cheap product that does the job well is a legitimate rec
   "whoItsFor": "one sentence",
   "whoShouldSkip": "one sentence",
   "confidence": "high|medium|low",
-  "sponsoredRelevant": true or false — ONLY when a product was offered to you above. Set false if it is not genuinely what the person asked for: wrong category, wrong product type, or outside a budget they stated. Judge it exactly as you would if no money were involved, because your answer decides whether it is shown at all.,
+  "sponsoredChoiceId": the numeric id of the ONE offered partner product that genuinely answers the question, or null — ONLY when products were offered to you above. Null if none truly fits: wrong category, wrong product type, or outside a budget the person stated. Judge exactly as you would if no money were involved, because your choice decides what is shown at all.,
   "alternatives": [{"name": "a real alternative product relevant to THIS query", "note": "one short phrase on the trade-off vs the pick", "price": "approx price or empty string"}],
   "micrositeTitle": "short title for the knowledge microsite",
   "micrositeSummary": "1-2 sentence anonymized summary",
@@ -37,7 +37,7 @@ Price is not quality. A cheap product that does the job well is a legitimate rec
 }
 Provide 2-3 alternatives that are genuinely relevant to the specific product the person asked about — never generic or unrelated items.
 
-When a product is offered to you, decide honestly whether it answers the question. If it does not, set sponsoredRelevant to false — it will then not be shown to the person at all, so you do not need to explain why it was irrelevant. Simply answer the question as though it had never been offered.`;
+When partner products are offered to you, decide honestly which single one — if any — answers the question, and return its id as sponsoredChoiceId. If none genuinely fits, return null — nothing will then be shown to the person at all, so you do not need to explain why. Simply answer the question as though nothing had been offered. Never invent an id that was not in the offered list.`;
 
 export async function POST(req) {
   try {
@@ -134,33 +134,32 @@ export async function POST(req) {
     ];
     const candidates = await findCandidateListings(Array.from(new Set(queryTerms)), userCountry);
     const matchText = [query, vision?.description, vision?.productType].filter(Boolean).join(" ");
-    const strippedMatch = findMatchingListing(matchText, candidates, userCountry);
+    // Top few plausible candidates — the MODEL chooses which one (if any)
+    // genuinely answers the question. Mechanical scoring is the recall gate;
+    // the model is the precision gate. See findTopMatchingListings.
+    const topMatches = findTopMatchingListings(matchText, candidates, userCountry, 4);
 
     // A search with no relevant partner product is an inventory gap worth
     // measuring — it tells us which categories to go and get merchants for.
     // Recorded as a bare count with no query text attached.
-    if (!strippedMatch) {
+    if (topMatches.length === 0) {
       recordEvent({ eventType: "no_match", identity, country: userCountry }).catch(() => {});
     }
-    // Look the full record up in `candidates` — the DB-side search results.
-    // This referenced `approvedListings`, which stopped existing when search
-    // moved into Postgres, so any search that DID find a match threw a
-    // ReferenceError. It stayed hidden only because matches were rare.
-    const fullMatch = strippedMatch
-      ? candidates.find((l) => l.id === strippedMatch.id) || null
-      : null;
-
     // Log the query text ANONYMOUSLY — no identity, ever (see search_queries
     // DDL). This runs after the content filter, so prohibited queries are
     // never recorded, and only when something was actually typed — an
-    // image-only search has no query text worth aggregating. The unmatched
-    // rows are the feed shopping-list for the networks.
+    // image-only search has no query text worth aggregating. Matched here
+    // means "inventory had a plausible candidate" (retrieval level), which
+    // is the inventory-gap signal the log exists for.
+    const topCandidate = topMatches.length
+      ? candidates.find((l) => l.id === topMatches[0].listing.id) || null
+      : null;
     if (query && query.trim()) {
       recordSearchQuery({
         queryText: query,
-        matched: !!fullMatch,
-        listingId: fullMatch?.id || null,
-        network: fullMatch?.network || null,
+        matched: topMatches.length > 0,
+        listingId: topCandidate?.id || null,
+        network: topCandidate?.network || null,
         country: userCountry,
       }).catch(() => {});
     }
@@ -218,10 +217,15 @@ export async function POST(req) {
         ? `\nAttachment: "${attachment.name}"`
         : ""
     }${
-      strippedMatch
-        ? `\n\nA relevant product exists: ${strippedMatch.product} by ${strippedMatch.brand}, ${strippedMatch.price}${
-            fullMatch?.rating ? `, rated ${fullMatch.rating}/5 by ${fullMatch.ratingCount || "some"} shoppers` : ""
-          }. Reason about whether this is genuinely a good fit, don't just assume yes.`
+      topMatches.length
+        ? `\n\nThe following partner products exist in our inventory and MIGHT be relevant:\n${topMatches
+            .map(
+              (m, i) =>
+                `${i + 1}. [id ${m.listing.id}] ${m.listing.product} by ${m.listing.brand}, ${m.listing.price}${
+                  m.listing.rating ? `, rated ${m.listing.rating}/5 by ${m.listing.ratingCount || "some"} shoppers` : ""
+                }`
+            )
+            .join("\n")}\nJudge each exactly as you would if no money were involved. Choose the ONE that genuinely answers the question, or none.`
         : ""
     }${searchContext}`;
 
@@ -281,6 +285,20 @@ export async function POST(req) {
       );
     }
 
+    // Resolve the model's sponsored choice. The id must be one we actually
+    // offered — a hallucinated or stale id resolves to nothing, so the model
+    // can only ever select from the shortlist, never inject a product. Null
+    // or absent means the model judged nothing genuinely relevant, and no
+    // card is shown. (Legacy sponsoredRelevant handled during the schema
+    // transition: true selects the top candidate, false selects nothing.)
+    const offeredIds = new Set(topMatches.map((m) => m.listing.id));
+    let chosenId = Number(parsed.sponsoredChoiceId);
+    if (!offeredIds.has(chosenId)) chosenId = null;
+    if (chosenId === null && parsed.sponsoredRelevant === true && topMatches.length > 0) {
+      chosenId = topMatches[0].listing.id;
+    }
+    const chosenMatch = chosenId ? candidates.find((l) => l.id === chosenId) || null : null;
+
     // Validate taskType against the fixed taxonomy — microsite linking
     // (matching microsites by shared task type) depends on exact string
     // equality, so a stray capitalization or typo from the model would
@@ -308,7 +326,7 @@ export async function POST(req) {
       summary: parsed.micrositeSummary,
       taskType,
       learnings: parsed.learnings,
-      listingId: parsed.sponsoredRelevant === false ? null : (fullMatch?.id || null),
+      listingId: chosenMatch?.id || null,
       queryHash,
       slug,
       topic: publicTopic || null,
@@ -335,7 +353,7 @@ export async function POST(req) {
       // was irrelevant — showing a buy button under an explanation of why not
       // to buy it. A sponsored slot we can't defend is worth less than an
       // empty one.
-      matchedListing: parsed.sponsoredRelevant === false ? null : buildClientListingPayload(fullMatch),
+      matchedListing: buildClientListingPayload(chosenMatch),
       plan,
       limit,
       searchUsed,
