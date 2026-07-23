@@ -3,7 +3,11 @@ node_modules/
 
 # Next.js build output
 .next/
-out/
+# Leading slash is load-bearing: 'out/' without it ignores ANY folder named
+# out at any depth — which silently swallowed app/out/, the affiliate click
+# redirect route, keeping it out of git and out of every production build.
+# Root-anchored, it ignores only Next's static-export folder as intended.
+/out/
 
 # Environment variables — NEVER commit real secrets.
 # .env.example is the template and is meant to be committed;
