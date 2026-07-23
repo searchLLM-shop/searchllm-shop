@@ -317,6 +317,16 @@ export default function ReportsPanel() {
               </div>
             ))}
           </div>
+          {(data.rewards.feedback || []).length > 0 && (
+            <div style={{ margin: "10px 0" }}>
+              <div style={{ fontSize: 11, color: "var(--color-text-tertiary)", marginBottom: 6 }}>Why engaged users say they don&apos;t buy (checkpoint feedback):</div>
+              {data.rewards.feedback.map((f, i) => (
+                <div key={i} style={{ fontSize: 12, padding: "5px 0", borderBottom: "0.5px solid var(--color-border-tertiary)", color: "var(--color-text-secondary)" }}>
+                  <span style={{ color: "var(--color-text-tertiary)", fontSize: 11 }}>[{f.kind} · block {f.block_number} · {f.user_prefix}…]</span> {f.feedback}
+                </div>
+              ))}
+            </div>
+          )}
           {data.rewards.byVoucher.length > 0 && (
             <div style={{ border: "0.5px solid var(--color-border-tertiary)", borderRadius: 10, overflow: "hidden" }}>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 90px 90px 110px", gap: 8, padding: "8px 12px", background: "var(--color-background-tertiary)", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.04em", color: "var(--color-text-tertiary)" }}>

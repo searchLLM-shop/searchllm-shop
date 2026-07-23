@@ -116,7 +116,7 @@ export default function RewardsTab() {
       <div style={{ maxWidth: 560 }}>
         <h2 style={{ fontSize: 18, fontWeight: 500, marginBottom: 8 }}>Join the rewards programme</h2>
         <p style={{ fontSize: 13, color: "var(--color-text-secondary)", lineHeight: 1.8, marginBottom: 8 }}>
-          Earn points two ways: <strong>every pick you research</strong> ({cfg.SEARCH_POINTS?.USER_PER_PICK} points each, up to {cfg.SEARCH_POINTS?.USER_DAILY_CAP}/day) and <strong>every purchase a partner store confirms</strong> (based on what the store pays us — {cfg.PLUS_MULTIPLIER}× for Plus members, uncapped). 1 point = ₹1 of voucher value. Points accumulate free forever; redeeming them for {(cfg.DENOMINATIONS || []).join("/")}-point vouchers (Amazon Pay, Flipkart, Myntra, Swiggy) is a Plus benefit.
+          Earn points three ways: <strong>every pick you research</strong> ({cfg.SEARCH_POINTS?.USER_PER_PICK} points each), <strong>every recommended product link you click</strong> ({cfg.SEARCH_POINTS?.CLICK_POINTS} points, once per product per day), and <strong>every purchase a partner store confirms</strong> (based on what the store pays us — {cfg.PLUS_MULTIPLIER}× for Plus members, uncapped). 1 point = ₹1 of voucher value. Points accumulate free forever; redeeming them for {(cfg.DENOMINATIONS || []).join("/")}-point vouchers (Amazon Pay, Flipkart, Myntra, Swiggy) is a Plus benefit.
         </p>
         <p style={{ fontSize: 12, color: "var(--color-text-tertiary)", lineHeight: 1.7, marginBottom: 14 }}>
           Points show as pending first, and confirm once the store approves the sale — typically 30–90 days after purchase, because stores wait out the return window. Returned or cancelled orders don&apos;t earn.
@@ -163,14 +163,14 @@ export default function RewardsTab() {
         </div>
       </div>
       <div style={{ fontSize: 11, color: "var(--color-text-tertiary)", marginBottom: 18 }}>
-        Earn on every pick you research ({data.searchPointsToday || 0}/{cfg.SEARCH_POINTS?.USER_DAILY_CAP} search points today) and on every purchase a store confirms through our links — no cap on those. <a href="/points" style={{ color: "#0F6E56" }}>How points work</a>
+        {data.searchPointsToday || 0} engagement points earned today — every pick earns {cfg.SEARCH_POINTS?.USER_PER_PICK}, every product-link click earns {cfg.SEARCH_POINTS?.CLICK_POINTS}, and confirmed purchases earn on top. <a href="/points" style={{ color: "#0F6E56" }}>How points work</a>
       </div>
 
       <div style={{ border: "0.5px solid var(--color-border-tertiary)", borderRadius: 10, padding: "14px 16px", marginBottom: 20 }}>
         <div style={{ fontSize: 13, fontWeight: 500, marginBottom: 8 }}>Redeem points</div>
         {data.plan !== "plus" ? (
           <div style={{ fontSize: 12, color: "var(--color-text-secondary)", lineHeight: 1.7 }}>
-            🔒 Your points are safe and keep accumulating — <strong>redeeming them is a Plus benefit</strong>. Plus also gives unlimited picks and {cfg.PLUS_MULTIPLIER}× purchase points.
+            🔒 Your points are safe and keep accumulating — <strong>redeeming them is a Plus benefit</strong>. Plus also raises your allowance to {cfg.GATE_LIMITS?.plus?.searches} picks and {cfg.GATE_LIMITS?.plus?.clicks} product links per purchase cycle (vs {cfg.GATE_LIMITS?.free?.searches}/{cfg.GATE_LIMITS?.free?.clicks} free), with {cfg.PLUS_MULTIPLIER}× purchase points.
             <div style={{ marginTop: 8 }}>
               <a href="/?upgrade=1" style={{ display: "inline-block", background: "#0F6E56", color: "#fff", borderRadius: 6, padding: "7px 14px", fontSize: 12, fontWeight: 500, textDecoration: "none" }}>Upgrade to Plus — ₹499/year</a>
             </div>
@@ -231,7 +231,7 @@ export default function RewardsTab() {
             {data.ledger.map((e, i) => (
               <div key={i} style={{ display: "flex", gap: 10, alignItems: "center", padding: "8px 12px", fontSize: 12, borderTop: i === 0 ? "none" : "0.5px solid var(--color-border-tertiary)" }}>
                 <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                  {e.source === "search" ? (e.note?.startsWith("guest day claim") ? "Guest day points (claimed on signup)" : "Search pick") : (e.product || "Purchase")}{e.source !== "search" && e.brand ? ` · ${e.brand}` : ""}
+                  {e.source === "search" ? (e.note?.startsWith("guest day claim") ? "Guest day points (claimed on signup)" : "Search pick") : e.source === "click" ? `Link click${e.product ? ` · ${e.product.slice(0, 40)}` : ""}` : (e.product || "Purchase")}{e.source === "purchase" && e.brand ? ` · ${e.brand}` : ""}
                 </span>
                 <span style={{ fontWeight: 600, color: e.status === "confirmed" ? "#0F6E56" : e.status === "reversed" ? "#A03530" : "var(--color-text-secondary)" }}>
                   {e.status === "reversed" ? "—" : `+${n(Math.floor(e.points))}`}

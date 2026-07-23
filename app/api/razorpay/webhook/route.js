@@ -10,7 +10,7 @@
 // and set the same secret in RAZORPAY_WEBHOOK_SECRET.
 
 import { createHmac, timingSafeEqual } from "crypto";
-import { upsertUserPlan } from "@/lib/db";
+import { upsertUserPlan, resolveCheckpoint } from "@/lib/db";
 
 const UPGRADE_EVENTS = ["subscription.activated", "subscription.charged"];
 const DOWNGRADE_EVENTS = ["subscription.cancelled", "subscription.halted", "subscription.completed", "subscription.paused"];
@@ -39,6 +39,23 @@ export async function POST(req) {
     const type = event.event;
     const sub = event.payload?.subscription?.entity;
     const userId = sub?.notes?.clerkUserId;
+
+    // Recharge: one-time payment link paid → mark the user's CURRENT search
+    // block as paid-resolved, unlocking the next 50 picks. Idempotent by
+    // the (user, kind, block) unique key, so webhook retries no-op.
+    if (type === "payment_link.paid") {
+      const pl = body?.payload?.payment_link?.entity;
+      const rechargeUser = pl?.notes?.clerkUserId;
+      if (rechargeUser && pl?.notes?.type === "recharge") {
+        try {
+          // The paid row's timestamp IS the new anchor — counters restart.
+          await resolveCheckpoint(rechargeUser, "search", "paid");
+        } catch (err) {
+          console.error("Recharge unlock failed:", err.message);
+        }
+      }
+      return Response.json({ ok: true });
+    }
 
     if (userId && UPGRADE_EVENTS.includes(type)) {
       await upsertUserPlan({ userId, plan: "plus", subscriptionId: sub.id });

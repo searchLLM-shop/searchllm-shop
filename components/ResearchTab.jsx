@@ -62,6 +62,18 @@ export default function ResearchTab({ maxSearches, searchCount, onSearchComplete
   const [step, setStep] = useState(-1);
   const [result, setResult] = useState(null);
   const [errorMsg, setErrorMsg] = useState(null);
+  const [gate, setGate] = useState(null);           // blocking search gate
+  const [gateFeedback, setGateFeedback] = useState("");
+  const [gateBusy, setGateBusy] = useState(false);
+  const [gateFeedbackSent, setGateFeedbackSent] = useState(false);
+  useEffect(() => {
+    // A blocked affiliate click lands back here with ?gate=click — show the
+    // same gate card in its click variant.
+    if (typeof window !== "undefined" && new URLSearchParams(window.location.search).get("gate") === "click") {
+      setGate({ gate: "click" });
+      window.history.replaceState({}, "", window.location.pathname);
+    }
+  }, []);
   const [geoOverride, setGeoOverride] = useState("");
   const fileRef = useRef();
   const [attachment, setAttachment] = useState(null);
@@ -88,6 +100,13 @@ export default function ResearchTab({ maxSearches, searchCount, onSearchComplete
           body: JSON.stringify({ query: searchQ, attachment, geoOverride: geoOverride || undefined, locale }),
         });
 
+        if (resp.status === 403) {
+          const g = await resp.json().catch(() => null);
+          if (g?.gate === "search") {
+            setGate(g);
+            return;
+          }
+        }
         if (resp.status === 429) {
           setErrorMsg(
             "That's your 8 picks for today. The count resets at midnight UTC — come back tomorrow and we'll pick up where you left off. Your saved picks stay available in the meantime."
@@ -225,6 +244,65 @@ export default function ResearchTab({ maxSearches, searchCount, onSearchComplete
         </div>
       )}
 
+      {gate && (
+        <div style={{ border: "0.5px solid #EADFC8", background: "#FDF8EF", borderRadius: 12, padding: "16px 18px", margin: "14px 0" }}>
+          {!gateFeedbackSent ? (
+            <>
+              <div style={{ fontSize: 14, fontWeight: 600, color: "#854F0B", marginBottom: 6 }}>
+                {gate.gate === "click" ? "Product links paused — a word before we continue" : `${gate.searches} picks since your last purchase — a word before we continue`}
+              </div>
+              <div style={{ fontSize: 13, color: "var(--color-text-secondary)", lineHeight: 1.7, marginBottom: 10 }}>
+                {gate.gate === "click"
+                  ? <>You&apos;ve opened your full allowance of recommended product links since your last purchase. To keep browsing stores through us, use <strong>Increase Usage</strong> — and if you have a moment, tell us what stopped you at the store pages. We read every word.</>
+                  : <>Every pick runs real AI research and costs us real server money. To keep going, use <strong>Increase Usage</strong> below — and if you have a moment, tell us what&apos;s kept you from shopping through a recommendation. We read every word.</>}
+              </div>
+              <textarea
+                value={gateFeedback}
+                onChange={(e) => setGateFeedback(e.target.value)}
+                placeholder="optional, but genuinely valued — e.g. prices were higher on the store page…"
+                rows={2}
+                style={{ width: "100%", border: "0.5px solid var(--color-border-secondary)", borderRadius: 8, padding: "8px 10px", fontSize: 13, background: "none", color: "var(--color-text-primary)", resize: "vertical", boxSizing: "border-box" }}
+              />
+            </>
+          ) : (
+            <div style={{ fontSize: 13, color: "var(--color-text-secondary)", lineHeight: 1.7, marginBottom: 10 }}>
+              🙏 Your feedback is gratefully acknowledged — it genuinely shapes what we build. We do incur server costs for every pick, so to continue, please use Increase Usage. You&apos;ve used the platform a lot, and we deeply appreciate your continued support.
+            </div>
+          )}
+          <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap", alignItems: "center" }}>
+            <button
+              disabled={gateBusy}
+              onClick={async () => {
+                setGateBusy(true);
+                try {
+                  const resp = await fetch("/api/checkout", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ type: "recharge" }) });
+                  const j = await resp.json();
+                  if (j.url) window.location.href = j.url;
+                } finally { setGateBusy(false); }
+              }}
+              style={{ background: "#0F6E56", color: "#fff", border: "none", borderRadius: 8, padding: "8px 16px", fontSize: 13, fontWeight: 500, cursor: "pointer", opacity: gateBusy ? 0.5 : 1 }}
+            >
+              Increase Usage — ₹249 for 50 picks
+            </button>
+            {!gateFeedbackSent && (
+              <button
+                disabled={gateBusy || gateFeedback.trim().length < 3}
+                onClick={async () => {
+                  setGateBusy(true);
+                  try {
+                    const resp = await fetch("/api/lifecycle", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ kind: gate.gate === "click" ? "click" : "search", feedback: gateFeedback }) });
+                    if (resp.ok) setGateFeedbackSent(true);
+                  } finally { setGateBusy(false); }
+                }}
+                style={{ background: "none", color: "var(--color-text-secondary)", border: "0.5px solid var(--color-border-secondary)", borderRadius: 8, padding: "8px 16px", fontSize: 13, cursor: "pointer", opacity: gateBusy || gateFeedback.trim().length < 3 ? 0.5 : 1 }}
+              >
+                Send feedback
+              </button>
+            )}
+            <span style={{ fontSize: 11, color: "var(--color-text-tertiary)" }}>Shopping through any recommendation also resets your free picks.</span>
+          </div>
+        </div>
+      )}
       {result && !processing && (
         <div>
           <div style={{ fontSize: 12, color: "var(--color-text-tertiary)", marginBottom: 10, display: "flex", alignItems: "center", gap: 8 }}>
@@ -347,9 +425,7 @@ export default function ResearchTab({ maxSearches, searchCount, onSearchComplete
           {result.rewards && (
             <div style={{ fontSize: 12, color: "#854F0B", background: "#FDF8EF", border: "0.5px solid #EADFC8", borderRadius: 8, padding: "8px 12px", margin: "10px 0" }}>
               {result.rewards.kind === "user" ? (
-                result.rewards.earned > 0
-                  ? <>✨ You earned <strong>{result.rewards.earned} points</strong> for this pick — {result.rewards.todayTotal} today. <a href="/points" style={{ color: "#854F0B", textDecoration: "underline" }}>How points work</a></>
-                  : <>You&apos;ve earned today&apos;s maximum search points ({result.rewards.todayTotal}) — purchases through recommendations keep earning without limits.</>
+                <>✨ You earned <strong>{result.rewards.earned} points</strong> for this pick — {result.rewards.todayTotal} today. Clicking a recommended product link earns 10 more. <a href="/points" style={{ color: "#854F0B", textDecoration: "underline" }}>How points work</a></>
               ) : (
                 <>✨ You&apos;ve earned <strong>{result.rewards.guestToday} points</strong> today as a guest — they expire at midnight. <strong>Sign up free to keep them</strong>, and they&apos;ll keep adding up.</>
               )}

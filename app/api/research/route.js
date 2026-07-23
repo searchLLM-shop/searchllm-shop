@@ -14,9 +14,9 @@ import { languageForModel, resolveLocale } from "@/lib/i18n";
 import { recordEvent, recordSearchQuery } from "@/lib/db";
 import { identifyProductFromImage } from "@/lib/visionSearch";
 import { findTopMatchingListings, buildClientListingPayload, extractQueryTerms } from "@/lib/listingMatcher";
-import { creditSearchPoints, getGuestDayPoints } from "@/lib/db";
+import { creditSearchPoints, getGuestDayPoints, getLifecycleStatus, hashIp, recordIpActivity, getIpGate } from "@/lib/db";
 import { getOrCreateGuestId } from "@/lib/guestId";
-import { PLANS } from "@/lib/constants";
+import { PLANS , LOYALTY } from "@/lib/constants";
 import { shouldSearch, braveSearch, formatSearchContext } from "@/lib/braveSearch";
 
 const SYSTEM_PROMPT = `You are SearchLLM, a shopping research assistant whose entire reputation rests on being honest, not on maximizing affiliate revenue.
@@ -69,6 +69,34 @@ export async function POST(req) {
 
     // --- Real quota check, backed by the database, scoped per identity ---
     const identity = userId || (await getOrCreateGuestId());
+
+    // Lifecycle + IP gates. Account gate: picks since last purchase or
+    // recharge vs the plan's allowance (Plus gets a higher one, not
+    // unlimited). IP gate: rolling-window limits per hashed network address
+    // — catches multi-account evasion — waived for anyone who has ever
+    // paid or purchased, so shared carrier IPs never punish paying users.
+    // Admins bypass; the gate must never take the product down with it.
+    const ipHash = hashIp(req.headers.get("x-vercel-forwarded-for") || req.headers.get("x-forwarded-for")?.split(",")[0]?.trim());
+    try {
+      const adminBypass = isAdminEmail((await currentUser())?.emailAddresses?.[0]?.emailAddress);
+      if (!adminBypass) {
+        const lifecycle = userId ? await getLifecycleStatus(userId) : null;
+        const gateMessage = (n) =>
+          `You've made ${n} picks since your last purchase. Every pick runs paid AI research — to continue, please use Increase Usage. Completing a purchase through any recommendation also resets your free picks.`;
+        if (lifecycle?.searchGated) {
+          return Response.json({ gate: "search", searches: lifecycle.searches, message: gateMessage(lifecycle.searches) }, { status: 403 });
+        }
+        if (!(lifecycle?.hasCredit)) {
+          const ipGate = await getIpGate(ipHash);
+          if (ipGate.searchGated) {
+            return Response.json({ gate: "search", searches: LOYALTY.IP_GATE.searches, message: "This network has reached its free research limit. To continue, sign in and use Increase Usage — or complete a purchase through any recommendation." }, { status: 403 });
+          }
+        }
+      }
+    } catch (err) {
+      console.error("Lifecycle check failed:", err.message);
+    }
+    recordIpActivity(ipHash, "search").catch(() => {});
     const storedPlan = userId ? await getUserPlan(userId) : "free";
 
     // Admins get unlimited picks. Testing the product shouldn't require

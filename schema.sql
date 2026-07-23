@@ -437,3 +437,35 @@ CREATE TABLE IF NOT EXISTS wa_processed (
   message_id TEXT PRIMARY KEY,
   processed_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- Lifecycle checkpoints: the engagement-without-conversion gates.
+-- kind 'search': blocking — every 50 lifetime picks without a purchase, a
+--   feedback form (or a ₹249 recharge) unlocks the next 50.
+-- kind 'click': informational — every 25 affiliate clicks without a
+--   conversion, a "you've clicked N links but not purchased" prompt with a
+--   feedback form. Never blocks clicks: clicks are the revenue action.
+-- One row per (user, kind, block); status 'feedback' or 'paid' records how
+-- it was resolved. The feedback text is the real prize — engaged non-buyers
+-- telling us exactly why they don't buy.
+CREATE TABLE IF NOT EXISTS user_checkpoints (
+  id SERIAL PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  block_number INTEGER NOT NULL,
+  status TEXT NOT NULL,               -- feedback | paid
+  feedback TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (user_id, kind, block_number)
+);
+
+-- IP-level fair-use tracking (hashed — raw IPs are never stored). Catches
+-- multi-account evasion of the usage gates: limits are enforced per network
+-- address as well as per account, with anyone who has ever paid or
+-- purchased exempt (shared/carrier IPs must never punish paying users).
+CREATE TABLE IF NOT EXISTS ip_activity (
+  ip_hash TEXT NOT NULL,
+  day DATE NOT NULL,
+  searches INTEGER NOT NULL DEFAULT 0,
+  clicks INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (ip_hash, day)
+);

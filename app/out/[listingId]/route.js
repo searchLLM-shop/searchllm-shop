@@ -19,7 +19,7 @@
 
 import { auth } from "@clerk/nextjs/server";
 import { getOrCreateGuestId } from "@/lib/guestId";
-import { getApprovedListingById, recordNetworkClick, recordEvent, newToken } from "@/lib/db";
+import { getApprovedListingById, recordNetworkClick, recordEvent, newToken, creditClickPoints, getLifecycleStatus, hashIp, recordIpActivity, getIpGate } from "@/lib/db";
 import { buildOutboundUrl } from "@/lib/outbound";
 
 const CONTEXTS = new Set(["research", "answer"]);
@@ -54,11 +54,46 @@ export async function GET(req, { params }) {
   // cookie/session-derived and unspoofable.
   const explicitId = new URL(req.url).searchParams.get("i");
   let identity = explicitId && explicitId.startsWith("wa:") ? explicitId.slice(0, 40) : null;
+  let clerkUserId = null;
   try {
     const { userId } = await auth();
+    clerkUserId = userId || null;
     if (!identity) identity = userId || (await getOrCreateGuestId());
   } catch {
     // Identity is attribution metadata, never a reason to block a shopper.
+  }
+
+  // BLOCKING click gate (decision 2026-07-23): a user who has clicked
+  // their plan's allowance of affiliate links since their last purchase or
+  // recharge is redirected to the gate instead of the store — no click row,
+  // no points, no network hit — until Increase Usage or a purchase resets
+  // the cycle. IP-level limits apply to everyone without a payment/purchase
+  // history, which also covers guests hopping accounts.
+  try {
+    const ipHash = hashIp(req.headers.get("x-vercel-forwarded-for") || req.headers.get("x-forwarded-for")?.split(",")[0]?.trim());
+    let gated = false;
+    let hasCredit = false;
+    if (clerkUserId) {
+      const lc = await getLifecycleStatus(clerkUserId);
+      gated = lc.clickGated;
+      hasCredit = lc.hasCredit;
+    }
+    if (!gated && !hasCredit) {
+      gated = (await getIpGate(ipHash)).clickGated;
+    }
+    if (gated) {
+      return Response.redirect(new URL("/?gate=click", req.url), 302);
+    }
+    recordIpActivity(ipHash, "click").catch(() => {});
+  } catch (err) {
+    console.error("Click gate check failed:", err.message);
+  }
+
+  // Click points: the action closest to revenue (5, once per product per
+  // day). Signed-in users only; best-effort — a points hiccup must never
+  // slow the redirect.
+  if (clerkUserId) {
+    creditClickPoints(clerkUserId, id).catch((e) => console.error("Click points failed:", e.message));
   }
 
   // Record the click row and the analytics event, but never at the shopper's

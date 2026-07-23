@@ -41,6 +41,43 @@ export async function POST(req) {
   const user = await currentUser();
   const email = user?.primaryEmailAddress?.emailAddress;
 
+  // Recharge: a ONE-TIME payment (₹249 → unlock the current search block),
+  // via a Razorpay Payment Link — distinct from the Plus subscription flow
+  // below. The unlock itself happens only in the webhook on
+  // payment_link.paid, same never-trust-the-redirect rule as Plus.
+  let rechargeBody = null;
+  try { rechargeBody = await req.json(); } catch {}
+  if (rechargeBody?.type === "recharge") {
+    try {
+      const { RECHARGE_PRICE_INR } = (await import("@/lib/constants")).LOYALTY;
+      const resp = await fetch("https://api.razorpay.com/v1/payment_links", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: "Basic " + Buffer.from(`${keyId}:${keySecret}`).toString("base64"),
+        },
+        body: JSON.stringify({
+          amount: RECHARGE_PRICE_INR * 100, // paise
+          currency: "INR",
+          description: "SearchLLM recharge — 50 more picks",
+          customer: email ? { email } : undefined,
+          notes: { clerkUserId: userId, type: "recharge" },
+          callback_url: `${process.env.NEXT_PUBLIC_SITE_URL || "https://searchllm.shop"}/?recharged=1`,
+          callback_method: "get",
+        }),
+      });
+      const link = await resp.json();
+      if (!resp.ok || !link.short_url) {
+        console.error("Recharge link failed:", JSON.stringify(link).slice(0, 300));
+        return Response.json({ error: "Could not start the recharge" }, { status: 502 });
+      }
+      return Response.json({ url: link.short_url });
+    } catch (err) {
+      console.error("Recharge checkout failed:", err);
+      return Response.json({ error: "Could not start the recharge" }, { status: 502 });
+    }
+  }
+
   try {
     const resp = await fetch("https://api.razorpay.com/v1/subscriptions", {
       method: "POST",
