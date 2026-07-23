@@ -5,7 +5,7 @@
 // update after a search completes, which reads wrong on first visit.
 
 import { auth, currentUser } from "@clerk/nextjs/server";
-import { getUsageToday, getUserPlan } from "@/lib/db";
+import { getUsageToday, getUserPlan, getHeaderPoints, getGuestDayPoints } from "@/lib/db";
 import { getOrCreateGuestId } from "@/lib/guestId";
 import { PLANS } from "@/lib/constants";
 import { isAdminEmail } from "@/lib/isAdmin";
@@ -21,5 +21,16 @@ export async function GET() {
   const limit = admin ? -1 : (PLANS[plan]?.searches ?? PLANS.free.searches);
   const used = limit === -1 ? 0 : await getUsageToday(identity);
 
-  return Response.json({ plan, limit, used });
+  // Points for the header chip. Best-effort: a rewards hiccup must never
+  // break the usage display the whole header depends on.
+  let points = null;
+  try {
+    points = userId
+      ? { kind: "user", ...(await getHeaderPoints(userId)) }
+      : { kind: "guest", today: await getGuestDayPoints(identity) };
+  } catch (err) {
+    console.error("Header points failed:", err.message);
+  }
+
+  return Response.json({ plan, limit, used, points });
 }

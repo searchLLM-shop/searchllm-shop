@@ -249,6 +249,28 @@ export default function Home() {
       <div className="sllm-header" style={{ padding: "12px 20px", borderBottom: "0.5px solid var(--color-border-tertiary)", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
         <span style={{ fontSize: 13, fontWeight: 500, color: "#0F6E56", letterSpacing: "0.04em", textTransform: "uppercase" }}>SearchLLM</span>
         <div className="sllm-header-right" style={{ display: "flex", alignItems: "center", gap: 14 }}>
+          {/* Points chip: earning must be VISIBLE to work as retention.
+              Users see their live balance (tap → Rewards tab). Guests see
+              today's day-points with the honest expiry note — the whole
+              signup hook in twelve words. */}
+          {usage?.points?.kind === "user" && (
+            <button
+              onClick={() => setActiveTab("rewards")}
+              title={usage.points.pending > 0 ? `${usage.points.pending} more points pending store confirmation` : "Your points — tap to view rewards"}
+              style={{ background: "#FDF8EF", border: "0.5px solid #EADFC8", borderRadius: 12, padding: "3px 11px", fontSize: 12, fontWeight: 600, color: "#854F0B", cursor: "pointer", whiteSpace: "nowrap" }}
+            >
+              ⭐ {Number(usage.points.balance).toLocaleString()} pts
+            </button>
+          )}
+          {usage?.points?.kind === "guest" && usage.points.today > 0 && (
+            <button
+              onClick={() => setActiveTab("rewards")}
+              title="Guest points expire at midnight — sign in free to keep them and they'll keep adding up."
+              style={{ background: "#FDF8EF", border: "0.5px solid #EADFC8", borderRadius: 12, padding: "3px 11px", fontSize: 12, fontWeight: 600, color: "#854F0B", cursor: "pointer", whiteSpace: "nowrap" }}
+            >
+              ⭐ {usage.points.today} pts today · gone at midnight — sign in to keep
+            </button>
+          )}
           <span className="sllm-header-identity" style={{ fontSize: 12, color: "var(--color-text-secondary)" }}>
             {isSignedIn ? user?.primaryEmailAddress?.emailAddress : tr("guest")} · {plan === "plus" ? tr("plus") : tr("free")} · {picksLeftLabel} {tr("picksLeft")}
           </span>
