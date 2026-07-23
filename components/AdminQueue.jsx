@@ -22,6 +22,7 @@ export default function AdminQueue() {
   const [bulkBusy, setBulkBusy] = useState(false);
   const [enriching, setEnriching] = useState(false);
   const [enrichMsg, setEnrichMsg] = useState(null);
+  const [backfill, setBackfill] = useState({ running: false, processed: 0, remaining: null });
   const [keywordBacklog, setKeywordBacklog] = useState(null);
   const [pendingCounts, setPendingCounts] = useState(null);
   const [page, setPage] = useState(0);
@@ -114,6 +115,11 @@ export default function AdminQueue() {
         const data = await resp.json();
         setSyncRuns(data.latest || []);
         setInventory(data.inventory || []);
+      }
+      const eResp = await fetch("/api/admin/enrich-keywords");
+      if (eResp.ok) {
+        const eData = await eResp.json();
+        if (typeof eData.pending === "number") setBackfill((b) => ({ ...b, remaining: eData.pending }));
       }
       const rResp = await fetch("/api/admin/redemptions");
       if (rResp.ok) {
@@ -329,6 +335,34 @@ export default function AdminQueue() {
         </div>
       )}
 
+      {backfill.remaining !== null && (
+        <div style={{ fontSize: 12, color: "var(--color-text-secondary)", marginBottom: 6 }}>
+          Keyword backfill: {backfill.remaining.toLocaleString()} listings remaining{backfill.processed ? ` · ${backfill.processed.toLocaleString()} processed this session` : ""}
+          {backfill.running ? " · running…" : ""}
+          <button
+            onClick={async () => {
+              if (backfill.running) { setBackfill((b) => ({ ...b, running: false })); return; }
+              setBackfill((b) => ({ ...b, running: true }));
+              let keepGoing = true;
+              let sessionProcessed = 0;
+              while (keepGoing) {
+                try {
+                  const resp = await fetch("/api/admin/enrich-keywords", { method: "POST" });
+                  const j = await resp.json();
+                  sessionProcessed += j.updated || j.processed || 0;
+                  const rem = j.remaining ?? null;
+                  setBackfill((b) => { keepGoing = b.running && rem > 0; return { ...b, processed: sessionProcessed, remaining: rem }; });
+                  if (rem === 0) break;
+                } catch { await new Promise((r) => setTimeout(r, 10000)); }
+              }
+              setBackfill((b) => ({ ...b, running: false }));
+            }}
+            style={{ marginLeft: 8, background: backfill.running ? "none" : "#0F6E56", color: backfill.running ? "var(--color-text-secondary)" : "#fff", border: backfill.running ? "0.5px solid var(--color-border-secondary)" : "none", borderRadius: 6, padding: "3px 10px", fontSize: 11, cursor: "pointer" }}
+          >
+            {backfill.running ? "Stop" : "Run backfill from this tab"}
+          </button>
+        </div>
+      )}
       {enrichMsg && (
         <div style={{ fontSize: 12, color: "var(--color-text-secondary)", marginBottom: 10 }}>{enrichMsg}</div>
       )}

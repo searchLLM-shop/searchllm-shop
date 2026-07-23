@@ -107,7 +107,14 @@ export async function GET(req) {
   // cron entry has been removed from vercel.json too; this guard is here in
   // case one ever comes back. The manual admin POST above stays functional
   // for deliberate, bounded runs.
-  if (isCron && !ENABLE_AI_KEYWORDS) {
+  // ONE-TIME BACKFILL OVERRIDE (2026-07-23): ENRICH_BACKFILL=1 in the env
+  // lets the cron run the full-corpus Haiku pass despite the strategy flag
+  // — enrichment as ONGOING policy stays off; this is a bounded catch-up to
+  // level the enriched-vs-bare keyword asymmetry that was tilting ranking.
+  // Delete the env var (and the vercel.json cron line) when remaining hits
+  // zero; the cron also no-ops harmlessly at that point.
+  const backfill = process.env.ENRICH_BACKFILL === "1";
+  if (isCron && !ENABLE_AI_KEYWORDS && !backfill) {
     return Response.json({
       skipped: "AI keyword enrichment is disabled (ENABLE_AI_KEYWORDS=false); matching uses mechanical keywords + full-text search.",
     });
@@ -132,7 +139,18 @@ export async function GET(req) {
       const listings = await getListingsNeedingKeywords(BATCH_LIMIT);
       if (!listings.length) break;
 
-      const { results } = await generateKeywords(listings);
+      let results;
+      try {
+        ({ results } = await generateKeywords(listings));
+      } catch (err) {
+        // Rate limits are expected on a fresh console tier: back off and
+        // keep going rather than dying — the time budget still bounds us.
+        if (String(err?.message || err).includes("429")) {
+          await new Promise((r) => setTimeout(r, 20000));
+          continue;
+        }
+        throw err;
+      }
       const improved = [];
       for (const listing of listings) {
         const kws = results.get(String(listing.id));
