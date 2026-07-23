@@ -70,23 +70,34 @@ export async function POST(req) {
     // --- Real quota check, backed by the database, scoped per identity ---
     const identity = userId || (await getOrCreateGuestId());
 
-    // Lifecycle + IP gates. Account gate: picks since last purchase or
-    // recharge vs the plan's allowance (Plus gets a higher one, not
-    // unlimited). IP gate: rolling-window limits per hashed network address
-    // — catches multi-account evasion — waived for anyone who has ever
-    // paid or purchased, so shared carrier IPs never punish paying users.
-    // Admins bypass; the gate must never take the product down with it.
+    // Lifecycle matrix (v3): evaluated for EVERY identity, guests included.
+    // Free/guest: stage 1 → blocking upgrade interstitial (acknowledgeable),
+    // stage 2 → hard Increase Usage gate. Plus: never blocked; alternatives
+    // withheld instead (handled after the model call). IP limits backstop
+    // identity-hopping for anyone without a payment/purchase history.
     const ipHash = hashIp(req.headers.get("x-vercel-forwarded-for") || req.headers.get("x-forwarded-for")?.split(",")[0]?.trim());
+    let suppressAlternatives = false;
     try {
       const adminBypass = isAdminEmail((await currentUser())?.emailAddresses?.[0]?.emailAddress);
       if (!adminBypass) {
-        const lifecycle = userId ? await getLifecycleStatus(userId) : null;
-        const gateMessage = (n) =>
-          `You've made ${n} picks since your last purchase. Every pick runs paid AI research — to continue, please use Increase Usage. Completing a purchase through any recommendation also resets your free picks.`;
-        if (lifecycle?.searchGated) {
-          return Response.json({ gate: "search", searches: lifecycle.searches, message: gateMessage(lifecycle.searches) }, { status: 403 });
+        const lifecycle = await getLifecycleStatus(identity);
+        suppressAlternatives = lifecycle.suppressAlternatives;
+        if (lifecycle.stage === "upgrade") {
+          return Response.json({
+            gate: "upgrade",
+            searches: lifecycle.searches,
+            signedIn: Boolean(userId),
+            message: "You're clearly getting value from the research — that's exactly what we built. Honest answers cost real server money, and upgrading is how the platform stays honest instead of ad-driven. Plus unlocks gift-voucher redemption for the points you're already earning.",
+          }, { status: 403 });
         }
-        if (!(lifecycle?.hasCredit)) {
+        if (lifecycle.stage === "recharge") {
+          return Response.json({
+            gate: "search",
+            searches: lifecycle.searches,
+            message: `You've made ${lifecycle.searches} picks since your last purchase. Every pick runs paid AI research — to continue, please use Increase Usage. Completing a purchase through any recommendation also resets your free picks.`,
+          }, { status: 403 });
+        }
+        if (!lifecycle.hasCredit) {
           const ipGate = await getIpGate(ipHash);
           if (ipGate.searchGated) {
             return Response.json({ gate: "search", searches: LOYALTY.IP_GATE.searches, message: "This network has reached its free research limit. To continue, sign in and use Increase Usage — or complete a purchase through any recommendation." }, { status: 403 });
@@ -430,7 +441,7 @@ export async function POST(req) {
       body: parsed.reasoning,
       whoFor: parsed.whoItsFor,
       whoSkip: parsed.whoShouldSkip,
-      alternatives: parsed.alternatives || [],
+      alternatives: suppressAlternatives ? [] : (parsed.alternatives || []),
       country: userCountry,
     });
 
@@ -450,6 +461,7 @@ export async function POST(req) {
       // to buy it. A sponsored slot we can't defend is worth less than an
       // empty one.
       matchedListing: buildClientListingPayload(chosenMatch),
+      alternativesWithheld: suppressAlternatives || undefined,
       // Search points: registered users earn per pick under a daily cap;
       // guests see a day-expiring figure computed from today's picks (never
       // stored — vanishes at midnight unless they sign up and claim). Both

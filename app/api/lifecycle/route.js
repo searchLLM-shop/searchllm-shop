@@ -7,16 +7,26 @@
 // themselves is the highest-signal product research that exists.
 
 import { auth } from "@clerk/nextjs/server";
+import { getOrCreateGuestId } from "@/lib/guestId";
 import { resolveCheckpoint } from "@/lib/db";
 
 export const maxDuration = 15;
 
 export async function POST(req) {
   const { userId } = await auth();
-  if (!userId) return Response.json({ error: "Sign in first" }, { status: 401 });
+  // Guests participate in the lifecycle too (their identity is the guest
+  // cookie), so acknowledgments and feedback work signed out.
+  const identity = userId || (await getOrCreateGuestId());
 
   let body;
   try { body = await req.json(); } catch { return Response.json({ error: "Bad request" }, { status: 400 }); }
+
+  // 'prompt' = acknowledging the upgrade interstitial ("continue for now").
+  // Recording it is what advances the user to stage 2 next threshold.
+  if (body.kind === "prompt") {
+    await resolveCheckpoint(identity, "prompt", "shown");
+    return Response.json({ ok: true });
+  }
 
   const kind = body.kind === "click" ? "click" : "search";
   const feedback = String(body.feedback || "").trim();
@@ -28,7 +38,7 @@ export async function POST(req) {
     // Stored with gratitude, unlocks nothing (design 2026-07-23): the
     // recharge or a real purchase is the only key. The response says so
     // honestly rather than letting the client pretend otherwise.
-    await resolveCheckpoint(userId, kind, "feedback", feedback);
+    await resolveCheckpoint(identity, kind, "feedback", feedback);
     return Response.json({ ok: true, unlocked: false });
   } catch (err) {
     console.error("Checkpoint resolution failed:", err);

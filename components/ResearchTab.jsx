@@ -102,7 +102,7 @@ export default function ResearchTab({ maxSearches, searchCount, onSearchComplete
 
         if (resp.status === 403) {
           const g = await resp.json().catch(() => null);
-          if (g?.gate === "search") {
+          if (g?.gate === "search" || g?.gate === "upgrade") {
             setGate(g);
             return;
           }
@@ -244,7 +244,40 @@ export default function ResearchTab({ maxSearches, searchCount, onSearchComplete
         </div>
       )}
 
-      {gate && (
+      {gate && gate.gate === "upgrade" && (
+        <div style={{ border: "0.5px solid #C9DED6", background: "#F2F8F6", borderRadius: 12, padding: "16px 18px", margin: "14px 0" }}>
+          <div style={{ fontSize: 14, fontWeight: 600, color: "#0F6E56", marginBottom: 6 }}>
+            You&apos;re getting real value here — help keep it honest
+          </div>
+          <div style={{ fontSize: 13, color: "var(--color-text-secondary)", lineHeight: 1.7, marginBottom: 12 }}>
+            {gate.message}
+          </div>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+            {gate.signedIn ? (
+              <a href="/?upgrade=1" style={{ background: "#0F6E56", color: "#fff", borderRadius: 8, padding: "8px 16px", fontSize: 13, fontWeight: 500, textDecoration: "none" }}>
+                Upgrade to Plus — ₹499/year
+              </a>
+            ) : (
+              <span style={{ fontSize: 13, fontWeight: 500, color: "#0F6E56" }}>Sign in (top right) to upgrade — your points come with you.</span>
+            )}
+            <button
+              disabled={gateBusy}
+              onClick={async () => {
+                setGateBusy(true);
+                try {
+                  await fetch("/api/lifecycle", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ kind: "prompt" }) });
+                  setGate(null);
+                  handleSearch();
+                } finally { setGateBusy(false); }
+              }}
+              style={{ background: "none", color: "var(--color-text-secondary)", border: "0.5px solid var(--color-border-secondary)", borderRadius: 8, padding: "8px 16px", fontSize: 13, cursor: "pointer" }}
+            >
+              Continue for now
+            </button>
+          </div>
+        </div>
+      )}
+      {gate && gate.gate !== "upgrade" && (
         <div style={{ border: "0.5px solid #EADFC8", background: "#FDF8EF", borderRadius: 12, padding: "16px 18px", margin: "14px 0" }}>
           {!gateFeedbackSent ? (
             <>
@@ -449,15 +482,30 @@ export default function ResearchTab({ maxSearches, searchCount, onSearchComplete
               ))}
             </div>
           )}
+          {result.alternativesWithheld && (
+            <div style={{ fontSize: 12, color: "var(--color-text-tertiary)", padding: "10px 12px", border: "0.5px solid var(--color-border-tertiary)", borderRadius: 8, margin: "10px 0" }}>
+              Alternative suggestions are paused on your account — completing a purchase through any recommendation restores them. Your research and recommendations continue as normal.
+            </div>
+          )}
           {result.alternatives?.length > 0 && (
             <div style={{ marginBottom: 16 }}>
               <div style={{ fontSize: 11, fontWeight: 500, color: "var(--color-text-secondary)", marginBottom: 10, letterSpacing: "0.04em", textTransform: "uppercase" }}>
-                We also considered (no affiliate relationship)
-              </div>
+                We also considered (no affiliate relationship — links open a plain web search, and we earn nothing from them)</div>
               {result.alternatives.map((a, i) => (
                 <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0", borderTop: i > 0 ? "0.5px solid var(--color-border-tertiary)" : "none" }}>
                   <div>
-                    <div style={{ fontSize: 13, fontWeight: 500 }}>{a.name}</div>
+                    {/* Tracked but NEVER monetized: /alt records the click as
+                        brand-demand evidence, then opens a neutral web search.
+                        The moment these earn money, the section stops being
+                        proof that advice comes first. */}
+                    <a
+                      href={`/alt?p=${encodeURIComponent(a.name || "")}&ctx=research`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{ fontSize: 13, fontWeight: 500, color: "var(--color-text-primary)", textDecoration: "underline", textDecorationColor: "var(--color-border-secondary)", textUnderlineOffset: 3 }}
+                    >
+                      {a.name} ↗
+                    </a>
                     <div style={{ fontSize: 12, color: "var(--color-text-tertiary)" }}>{a.note}</div>
                   </div>
                   <div style={{ fontSize: 13, fontWeight: 500, color: "var(--color-text-secondary)", whiteSpace: "nowrap", marginLeft: 12 }}>{a.price}</div>

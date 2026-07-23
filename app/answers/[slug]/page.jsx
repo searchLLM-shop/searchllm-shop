@@ -107,12 +107,12 @@ export default async function AnswerPage({ params }) {
       {alternatives.length > 0 && (
         <div style={{ marginBottom: 20 }}>
           <div style={{ fontSize: 10, letterSpacing: "0.05em", textTransform: "uppercase", color: "var(--color-text-tertiary)", marginBottom: 8 }}>
-            We also considered (no affiliate relationship)
+            We also considered (no affiliate relationship — links open a plain web search, and we earn nothing from them)
           </div>
           {alternatives.map((alt, i) => (
             <div key={i} style={{ display: "flex", justifyContent: "space-between", gap: 12, padding: "10px 0", borderTop: i > 0 ? "0.5px solid var(--color-border-tertiary)" : "none" }}>
               <div>
-                <div style={{ fontSize: 13, fontWeight: 500 }}>{alt.name}</div>
+                <a href={`/alt?p=${encodeURIComponent(alt.name || "")}&ctx=answer`} target="_blank" rel="noopener noreferrer" style={{ fontSize: 13, fontWeight: 500, color: "var(--color-text-primary)", textDecoration: "underline", textDecorationColor: "var(--color-border-secondary)", textUnderlineOffset: 3 }}>{alt.name} ↗</a>
                 <div style={{ fontSize: 12, color: "var(--color-text-tertiary)" }}>{alt.note}</div>
               </div>
               <div style={{ fontSize: 13, whiteSpace: "nowrap", color: "var(--color-text-secondary)" }}>{alt.price}</div>

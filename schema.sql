@@ -469,3 +469,18 @@ CREATE TABLE IF NOT EXISTS ip_activity (
   clicks INTEGER NOT NULL DEFAULT 0,
   PRIMARY KEY (ip_hash, day)
 );
+
+-- Alternative-product clicks: the demand-measurement instrument. The
+-- alternatives in an answer carry NO affiliate relationship (that's the
+-- trust architecture) — they link to a neutral web search — but each click
+-- is recorded here as evidence for brand conversations: "your product
+-- pulled N clicks on our platform" is how the catalog grows.
+CREATE TABLE IF NOT EXISTS alt_clicks (
+  id SERIAL PRIMARY KEY,
+  brand TEXT,
+  product TEXT NOT NULL,
+  identity TEXT,
+  context TEXT,                -- research | answer
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_alt_clicks_day ON alt_clicks ((created_at::date));

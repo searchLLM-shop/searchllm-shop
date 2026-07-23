@@ -75,7 +75,11 @@ export async function GET(req, { params }) {
     let hasCredit = false;
     if (clerkUserId) {
       const lc = await getLifecycleStatus(clerkUserId);
-      gated = lc.clickGated;
+      // Plus is never blocked from clicking through (their consequence is
+      // alternative withholding); free users hard-gate at stage 2 only —
+      // stage 1 (the upgrade interstitial) lives on the search path, and
+      // blocking a revenue click before even asking would be self-harm.
+      gated = !lc.isPlus && lc.stage === "recharge" && lc.trigger === "clicks";
       hasCredit = lc.hasCredit;
     }
     if (!gated && !hasCredit) {

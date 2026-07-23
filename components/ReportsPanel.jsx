@@ -307,6 +307,36 @@ export default function ReportsPanel() {
         )}
       </Section>
 
+      {data.clicksReport && (
+        <Section title="Link clicks" note="sponsored = affiliate redirects · alternative = tracked, unmonetized web-search links (brand-demand evidence)">
+          <div style={{ border: "0.5px solid var(--color-border-tertiary)", borderRadius: 10, overflow: "hidden", marginBottom: 12 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 110px 110px", gap: 8, padding: "8px 12px", background: "var(--color-background-tertiary)", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.04em", color: "var(--color-text-tertiary)" }}>
+              <span>Day</span><span style={{ textAlign: "right" }}>Sponsored</span><span style={{ textAlign: "right" }}>Alternative</span>
+            </div>
+            {data.clicksReport.byDay.slice(0, 14).map((r, i) => (
+              <div key={i} style={{ display: "grid", gridTemplateColumns: "1fr 110px 110px", gap: 8, padding: "6px 12px", fontSize: 12, borderTop: "0.5px solid var(--color-border-tertiary)" }}>
+                <span>{new Date(r.day).toLocaleDateString()}</span>
+                <span style={{ textAlign: "right", fontWeight: 500 }}>{Number(r.sponsored_clicks).toLocaleString()}</span>
+                <span style={{ textAlign: "right" }}>{Number(r.alternative_clicks).toLocaleString()}</span>
+              </div>
+            ))}
+          </div>
+          {data.clicksReport.altDemand.length > 0 && (
+            <>
+              <div style={{ fontSize: 11, color: "var(--color-text-tertiary)", marginBottom: 6 }}>Alternative demand — the brand-conversation sheet ("your product pulled N clicks on our platform"):</div>
+              <div style={{ border: "0.5px solid var(--color-border-tertiary)", borderRadius: 10, overflow: "hidden" }}>
+                {data.clicksReport.altDemand.slice(0, 10).map((r, i) => (
+                  <div key={i} style={{ display: "flex", justifyContent: "space-between", gap: 10, padding: "6px 12px", fontSize: 12, borderTop: i > 0 ? "0.5px solid var(--color-border-tertiary)" : "none" }}>
+                    <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.brand !== "—" ? `${r.brand} · ` : ""}{r.product}</span>
+                    <span style={{ fontWeight: 600, whiteSpace: "nowrap" }}>{Number(r.clicks).toLocaleString()} clicks</span>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+        </Section>
+      )}
+
       {data.rewards && (
         <Section title="Rewards programme" note={`${n(data.rewards.members)} members · outstanding liability: ${n(data.rewards.outstandingPoints)} points (₹${n(data.rewards.outstandingPoints)})`}>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>

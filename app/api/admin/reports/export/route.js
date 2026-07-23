@@ -135,6 +135,18 @@ export async function GET(req) {
     voucher: v.voucher_type, status: v.status, count: num(v.redemptions), value_inr: num(v.points_value),
   })));
 
+  addSheet("Clicks by day", (r.clicksReport?.byDay || []).map((c) => ({
+    day: c.day, sponsored_clicks: num(c.sponsored_clicks), alternative_clicks: num(c.alternative_clicks),
+  })));
+
+  addSheet("Alternative demand", (r.clicksReport?.altDemand || []).map((c) => ({
+    brand: c.brand, product: c.product, clicks: num(c.clicks), first_seen: c.first_seen, last_seen: c.last_seen,
+  })));
+
+  addSheet("Queries by day", (r.clicksReport?.queriesByDay || []).map((q) => ({
+    day: q.day, query: q.query_text, matched_inventory: q.matched ? "yes" : "no",
+  })));
+
   const buf = XLSX.write(wb, { type: "buffer", bookType: "xlsx" });
   const rangeLabel = r.range ? `${r.range.from}_to_${r.range.to}` : `${days}d`;
   const filename = `searchllm-report-${rangeLabel}.xlsx`;
