@@ -483,4 +483,7 @@ CREATE TABLE IF NOT EXISTS alt_clicks (
   context TEXT,                -- research | answer
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
-CREATE INDEX IF NOT EXISTS idx_alt_clicks_day ON alt_clicks ((created_at::date));
+-- Plain timestamp index: an expression index on created_at::date is
+-- invalid (the cast is timezone-dependent, not IMMUTABLE) — learned in
+-- production 2026-07-24.
+CREATE INDEX IF NOT EXISTS idx_alt_clicks_created ON alt_clicks (created_at);
