@@ -462,6 +462,16 @@ export async function POST(req) {
       // empty one.
       matchedListing: buildClientListingPayload(chosenMatch),
       alternativesWithheld: suppressAlternatives || undefined,
+      // Amazon Associates browse link — ONLY when no partner product
+      // matched, so it monetizes otherwise-unmonetized queries without
+      // competing with the sponsored card or touching the (provably
+      // neutral) alternatives. Direct link, no redirect: Amazon's rules
+      // require the destination be apparent; click tracking happens via
+      // the client dataLayer event instead. Renders only when the
+      // AMAZON_ASSOCIATES_TAG env var is set.
+      amazonBrowse: (!chosenMatch && process.env.AMAZON_ASSOCIATES_TAG && queryText.trim())
+        ? `https://www.amazon.in/s?k=${encodeURIComponent(queryText.trim().slice(0, 120))}&tag=${process.env.AMAZON_ASSOCIATES_TAG}`
+        : undefined,
       // Search points: registered users earn per pick under a daily cap;
       // guests see a day-expiring figure computed from today's picks (never
       // stored — vanishes at midnight unless they sign up and claim). Both

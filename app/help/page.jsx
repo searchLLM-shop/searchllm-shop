@@ -24,6 +24,7 @@ export default function HelpPage() {
 
       <h2 style={{ fontSize: 17, fontWeight: 600, margin: "26px 0 8px" }}>Reading the answer</h2>
       <p>Every answer gives you one clear pick with the reasoning, a <strong>Good for / Skip if</strong> pair so you can tell whether the pick fits <em>you</em>, and alternatives we considered but didn&apos;t choose — including why.</p>
+      <p><strong>About Amazon links:</strong> when no partner product matches your question, we may show a clearly-labelled Amazon browse link. As an Amazon Associate, we earn from qualifying purchases made through those links — and as always, this never changes the price you pay.</p>
       <p><strong>About the sponsored match:</strong> when a product from our partner stores genuinely answers your question, it appears in a clearly-labelled card with a link. Three honest promises about it: the AI that writes your answer is never told what we earn; a partner product only appears when the AI judges it a genuinely good answer — many searches show none; and the alternatives listed below carry no links at all, which is how you can tell the advice comes first. Clicking a sponsored link never changes the price you pay.</p>
       <p>We don&apos;t sell or ship anything — purchases, delivery and returns are between you and the retailer, so always confirm price and specs on the store&apos;s own page.</p>
 

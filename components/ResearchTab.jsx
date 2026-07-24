@@ -488,6 +488,21 @@ export default function ResearchTab({ maxSearches, searchCount, onSearchComplete
               ))}
             </div>
           )}
+          {result.amazonBrowse && (
+            <div style={{ fontSize: 12, padding: "10px 12px", border: "0.5px solid var(--color-border-tertiary)", borderRadius: 8, margin: "10px 0", color: "var(--color-text-secondary)" }}>
+              No partner product matched this one, but you can{" "}
+              <a
+                href={result.amazonBrowse}
+                target="_blank"
+                rel="noopener noreferrer sponsored"
+                onClick={() => trackEvent("amazon_browse_click", {})}
+                style={{ color: "#0F6E56", fontWeight: 500 }}
+              >
+                browse this on Amazon ↗
+              </a>{" "}
+              <span style={{ color: "var(--color-text-tertiary)" }}>(partner link — as an Amazon Associate, we earn from qualifying purchases; your price never changes)</span>
+            </div>
+          )}
           {result.alternativesWithheld && (
             <div style={{ fontSize: 12, color: "var(--color-text-tertiary)", padding: "10px 12px", border: "0.5px solid var(--color-border-tertiary)", borderRadius: 8, margin: "10px 0" }}>
               Alternative suggestions are paused on your account — completing a purchase through any recommendation restores them. Your research and recommendations continue as normal.
