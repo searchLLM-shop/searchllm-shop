@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useCallback, useRef, useEffect } from "react";
+import { trackEvent } from "@/lib/track";
 import { t } from "@/lib/i18n";
 
 const STEPS = ["Reading your question", "Checking current options", "Weighing trade-offs", "Writing the honest version"];
@@ -130,6 +131,10 @@ export default function ResearchTab({ maxSearches, searchCount, onSearchComplete
         const data = await resp.json();
         setResult({ query: searchQ, ...data, alternatives: data.alternatives || [], id: Date.now() });
         onSearchComplete?.();
+        trackEvent("search_completed", {
+          matched_inventory: Boolean(data.matchedListing),
+          sponsored_shown: Boolean(data.matchedListing),
+        });
       } catch (e) {
         console.error(e);
         setErrorMsg(
@@ -430,6 +435,7 @@ export default function ResearchTab({ maxSearches, searchCount, onSearchComplete
                   </div>
                   <a
                     href={`/out/${result.matchedListing.id}?ctx=research`}
+                onClick={() => trackEvent("affiliate_click", { listing_id: result.matchedListing.id, network: result.matchedListing.network })}
                     target="_blank"
                     rel="noopener noreferrer sponsored"
                     style={{ display: "inline-block", fontSize: 13, fontWeight: 500, color: "#fff", background: "#854F0B", padding: "8px 16px", borderRadius: 8, textDecoration: "none" }}>
@@ -499,6 +505,7 @@ export default function ResearchTab({ maxSearches, searchCount, onSearchComplete
                         The moment these earn money, the section stops being
                         proof that advice comes first. */}
                     <a
+                      onClick={() => trackEvent("alternative_click", {})}
                       href={`/alt?p=${encodeURIComponent(a.name || "")}&ctx=research`}
                       target="_blank"
                       rel="noopener noreferrer"
