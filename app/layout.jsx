@@ -1,4 +1,5 @@
 import { ClerkProvider } from "@clerk/nextjs";
+import Script from "next/script";
 import "./globals.css";
 
 export const metadata = {
@@ -33,6 +34,15 @@ export default function RootLayout({ children }) {
             12px, scales up smoothly, and caps at the original 24px on
             larger screens. */}
         <body style={{ margin: 0, fontFamily: "system-ui, -apple-system, sans-serif", padding: "clamp(12px, 4vw, 24px)", boxSizing: "border-box" }}>
+        {/* Google Tag Manager (noscript) — required fallback per Google */}
+        <noscript>
+          <iframe
+            src="https://www.googletagmanager.com/ns.html?id=GTM-W8ZBMQHQ"
+            height="0"
+            width="0"
+            style={{ display: "none", visibility: "hidden" }}
+          />
+        </noscript>
           {/* Impact.com site-ownership verification. Impact's tag uses a
               non-standard `value` attribute (not `content`), so it can't go
               through Next's metadata API — instead we render the exact tag
@@ -42,7 +52,19 @@ export default function RootLayout({ children }) {
             <meta name="impact-site-verification" value={impactVerification} />
           )}
           {children}
-        </body>
+                {/* Google Tag Manager. The container is empty until tags are added in
+            the GTM dashboard — WHAT gets loaded there decides our privacy
+            posture: Meta Pixel for campaign attribution is disclosed in the
+            Privacy Policy; cross-site advertising/remarketing tags would
+            contradict it. Keep the container consistent with the promise. */}
+        <Script id="gtm" strategy="afterInteractive">
+          {`(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
+new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
+j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
+'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
+})(window,document,'script','dataLayer','GTM-W8ZBMQHQ');`}
+        </Script>
+      </body>
       </html>
     </ClerkProvider>
   );
