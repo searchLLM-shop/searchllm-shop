@@ -88,3 +88,62 @@ input, select, textarea {
 .sllm-tabs button {
   flex-shrink: 0;
 }
+
+
+/* ===================== Mobile pass (2026-07-23) =====================
+   Most shoppers — and all the Meta campaign traffic — arrive on phones.
+   The rules below make the shopper surfaces genuinely phone-first:
+   header wraps instead of overflowing, tabs scroll horizontally, gate
+   cards and forms stack, and admin tables scroll sideways rather than
+   crushing their columns. */
+
+/* Tabs: never wrap, scroll sideways — 9 admin tabs fit nowhere else */
+.sllm-tabs {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  white-space: nowrap;
+}
+.sllm-tabs::-webkit-scrollbar { display: none; }
+.sllm-tabs > button { flex-shrink: 0; }
+
+/* Admin data tables: scroll, don't crush */
+.sllm-scroll-x { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.sllm-scroll-x > * { min-width: 560px; }
+
+@media (max-width: 640px) {
+  /* Header: two-line layout — brand row, then status row wrapping */
+  .sllm-header { flex-wrap: wrap; padding: 10px 12px !important; row-gap: 6px; }
+  .sllm-header-right { flex-wrap: wrap; gap: 8px !important; width: 100%; justify-content: flex-end; }
+  .sllm-header-identity { font-size: 11px !important; }
+
+  /* Points chips: compact on phones; the full expiry message lives in the
+     per-search banner and the title tooltip, the chip stays scannable */
+  .sllm-points-chip { font-size: 11px !important; padding: 2px 9px !important; max-width: 68vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .sllm-points-chip .sllm-chip-long { display: none; }
+
+  /* Main containers breathe on small screens */
+  main, .sllm-main { padding-left: 12px !important; padding-right: 12px !important; }
+
+  /* Search area: full-width button, comfortable textarea */
+  .sllm-search-actions { flex-wrap: wrap; gap: 8px; }
+  .sllm-search-actions button[type], .sllm-search-actions .sllm-primary-btn { width: 100%; }
+
+  /* Gate cards / rewards forms: buttons stack full-width, tap-friendly */
+  .sllm-gate-actions { flex-direction: column; align-items: stretch !important; }
+  .sllm-gate-actions > button, .sllm-gate-actions > a { width: 100%; text-align: center; box-sizing: border-box; }
+
+  /* Result card + answer text: slightly tighter type on phones */
+  .sllm-answer-headline { font-size: 16px !important; }
+
+  /* Refinement chips: wrap fine already; give them touch spacing */
+  .sllm-chips button { padding: 8px 12px !important; }
+
+  /* Date inputs in reports stack */
+  .sllm-report-controls { flex-wrap: wrap; }
+}
+
+/* Tap targets: comfortable minimum on coarse pointers */
+@media (pointer: coarse) {
+  button, a[role="button"], select, input[type="date"] { min-height: 38px; }
+}

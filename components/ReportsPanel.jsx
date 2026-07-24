@@ -197,7 +197,7 @@ export default function ReportsPanel() {
       </Section>
 
       <Section title={customRange ? `Daily activity — ${customRange.from} to ${customRange.to}` : `Daily activity — last ${days} days`}>
-        <div style={{ border: "0.5px solid var(--color-border-tertiary)", borderRadius: 10, overflow: "hidden" }}>
+        <div className="sllm-scroll-x" style={{ border: "0.5px solid var(--color-border-tertiary)", borderRadius: 10, overflow: "hidden" }}>
           <div style={{ display: "grid", gridTemplateColumns: "90px 1fr 60px 60px 60px", gap: 8, padding: "8px 12px", background: "var(--color-background-tertiary)", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.04em", color: "var(--color-text-tertiary)" }}>
             <span>Date</span><span>Searches</span><span style={{ textAlign: "right" }}>Search</span><span style={{ textAlign: "right" }}>Users</span><span style={{ textAlign: "right" }}>Clicks</span>
           </div>
@@ -221,7 +221,7 @@ export default function ReportsPanel() {
         {(!data.topProducts || data.topProducts.length === 0) ? (
           <div style={{ fontSize: 12, color: "var(--color-text-tertiary)", padding: "12px 0" }}>No affiliate clicks recorded yet.</div>
         ) : (
-          <div style={{ border: "0.5px solid var(--color-border-tertiary)", borderRadius: 10, overflow: "hidden" }}>
+          <div className="sllm-scroll-x" style={{ border: "0.5px solid var(--color-border-tertiary)", borderRadius: 10, overflow: "hidden" }}>
             {data.topProducts.map((p, i) => (
               <div key={p.id} style={{ display: "flex", gap: 10, alignItems: "center", padding: "9px 12px", fontSize: 12, borderTop: i === 0 ? "none" : "0.5px solid var(--color-border-tertiary)" }}>
                 <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
@@ -253,7 +253,7 @@ export default function ReportsPanel() {
       </Section>
 
       <Section title="Most active users" note="Identified by account or anonymous session token — no shopping history is stored against either.">
-        <div style={{ border: "0.5px solid var(--color-border-tertiary)", borderRadius: 10, overflow: "hidden", maxHeight: 300, overflowY: "auto" }}>
+        <div className="sllm-scroll-x" style={{ border: "0.5px solid var(--color-border-tertiary)", borderRadius: 10, overflow: "hidden", maxHeight: 300, overflowY: "auto" }}>
           {data.topUsers.map((u, i) => (
             <div key={u.identity} style={{ display: "grid", gridTemplateColumns: "1fr 70px 70px 90px", gap: 8, padding: "7px 12px", fontSize: 12, borderTop: i === 0 ? "none" : "0.5px solid var(--color-border-tertiary)" }}>
               <span style={{ fontFamily: "monospace", fontSize: 11, color: "var(--color-text-secondary)", overflow: "hidden", textOverflow: "ellipsis" }}>
@@ -273,7 +273,7 @@ export default function ReportsPanel() {
         {(!data.sources || data.sources.length === 0) ? (
           <div style={{ fontSize: 12, color: "var(--color-text-tertiary)" }}>No visits recorded yet.</div>
         ) : (
-          <div style={{ border: "0.5px solid var(--color-border-tertiary)", borderRadius: 10, overflow: "hidden" }}>
+          <div className="sllm-scroll-x" style={{ border: "0.5px solid var(--color-border-tertiary)", borderRadius: 10, overflow: "hidden" }}>
             {data.sources.map((s, i) => (
               <div key={i} style={{ display: "grid", gridTemplateColumns: "1fr 100px 70px 60px", gap: 8, padding: "8px 12px", fontSize: 12, borderTop: i === 0 ? "none" : "0.5px solid var(--color-border-tertiary)" }}>
                 <span>{s.source}</span>
@@ -290,7 +290,7 @@ export default function ReportsPanel() {
         {(!data.campaigns || data.campaigns.length === 0) ? (
           <div style={{ fontSize: 12, color: "var(--color-text-tertiary)" }}>Nothing to show yet.</div>
         ) : (
-          <div style={{ border: "0.5px solid var(--color-border-tertiary)", borderRadius: 10, overflow: "hidden" }}>
+          <div className="sllm-scroll-x" style={{ border: "0.5px solid var(--color-border-tertiary)", borderRadius: 10, overflow: "hidden" }}>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 70px 70px 70px", gap: 8, padding: "8px 12px", background: "var(--color-background-tertiary)", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.04em", color: "var(--color-text-tertiary)" }}>
               <span>Source</span><span>Campaign</span><span style={{ textAlign: "right" }}>Visitors</span><span style={{ textAlign: "right" }}>Searches</span><span style={{ textAlign: "right" }}>Clicks</span>
             </div>
@@ -309,7 +309,7 @@ export default function ReportsPanel() {
 
       {data.clicksReport && (
         <Section title="Link clicks" note="sponsored = affiliate redirects · alternative = tracked, unmonetized web-search links (brand-demand evidence)">
-          <div style={{ border: "0.5px solid var(--color-border-tertiary)", borderRadius: 10, overflow: "hidden", marginBottom: 12 }}>
+          <div className="sllm-scroll-x" style={{ border: "0.5px solid var(--color-border-tertiary)", borderRadius: 10, overflow: "hidden", marginBottom: 12 }}>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 110px 110px", gap: 8, padding: "8px 12px", background: "var(--color-background-tertiary)", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.04em", color: "var(--color-text-tertiary)" }}>
               <span>Day</span><span style={{ textAlign: "right" }}>Sponsored</span><span style={{ textAlign: "right" }}>Alternative</span>
             </div>
@@ -324,7 +324,7 @@ export default function ReportsPanel() {
           {data.clicksReport.altDemand.length > 0 && (
             <>
               <div style={{ fontSize: 11, color: "var(--color-text-tertiary)", marginBottom: 6 }}>Alternative demand — the brand-conversation sheet ("your product pulled N clicks on our platform"):</div>
-              <div style={{ border: "0.5px solid var(--color-border-tertiary)", borderRadius: 10, overflow: "hidden" }}>
+              <div className="sllm-scroll-x" style={{ border: "0.5px solid var(--color-border-tertiary)", borderRadius: 10, overflow: "hidden" }}>
                 {data.clicksReport.altDemand.slice(0, 10).map((r, i) => (
                   <div key={i} style={{ display: "flex", justifyContent: "space-between", gap: 10, padding: "6px 12px", fontSize: 12, borderTop: i > 0 ? "0.5px solid var(--color-border-tertiary)" : "none" }}>
                     <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.brand !== "—" ? `${r.brand} · ` : ""}{r.product}</span>
@@ -358,7 +358,7 @@ export default function ReportsPanel() {
             </div>
           )}
           {data.rewards.byVoucher.length > 0 && (
-            <div style={{ border: "0.5px solid var(--color-border-tertiary)", borderRadius: 10, overflow: "hidden" }}>
+            <div className="sllm-scroll-x" style={{ border: "0.5px solid var(--color-border-tertiary)", borderRadius: 10, overflow: "hidden" }}>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 90px 90px 110px", gap: 8, padding: "8px 12px", background: "var(--color-background-tertiary)", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.04em", color: "var(--color-text-tertiary)" }}>
                 <span>Voucher</span><span style={{ textAlign: "right" }}>Status</span><span style={{ textAlign: "right" }}>Count</span><span style={{ textAlign: "right" }}>Value (₹)</span>
               </div>
@@ -390,7 +390,7 @@ export default function ReportsPanel() {
             <div style={{ fontSize: 11, color: "var(--color-text-tertiary)", marginBottom: 8 }}>
               By country. A listing serving several countries counts once per country; listings with no region data are unrestricted (servable anywhere).
             </div>
-            <div style={{ border: "0.5px solid var(--color-border-tertiary)", borderRadius: 10, overflow: "hidden" }}>
+            <div className="sllm-scroll-x" style={{ border: "0.5px solid var(--color-border-tertiary)", borderRadius: 10, overflow: "hidden" }}>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 90px 90px 90px", gap: 8, padding: "8px 12px", background: "var(--color-background-tertiary)", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.04em", color: "var(--color-text-tertiary)" }}>
                 <span>Country</span><span style={{ textAlign: "right" }}>Total</span><span style={{ textAlign: "right" }}>Approved</span><span style={{ textAlign: "right" }}>Pending</span>
               </div>
@@ -410,7 +410,7 @@ export default function ReportsPanel() {
             <div style={{ fontSize: 11, color: "var(--color-text-tertiary)", marginBottom: 8 }}>
               By category — the site's own taxonomy, assigned at sync time.
             </div>
-            <div style={{ border: "0.5px solid var(--color-border-tertiary)", borderRadius: 10, overflow: "hidden" }}>
+            <div className="sllm-scroll-x" style={{ border: "0.5px solid var(--color-border-tertiary)", borderRadius: 10, overflow: "hidden" }}>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 90px 90px 90px", gap: 8, padding: "8px 12px", background: "var(--color-background-tertiary)", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.04em", color: "var(--color-text-tertiary)" }}>
                 <span>Category</span><span style={{ textAlign: "right" }}>Total</span><span style={{ textAlign: "right" }}>Approved</span><span style={{ textAlign: "right" }}>Pending</span>
               </div>

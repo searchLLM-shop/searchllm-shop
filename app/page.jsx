@@ -257,6 +257,7 @@ export default function Home() {
             <button
               onClick={() => setActiveTab("rewards")}
               title={usage.points.pending > 0 ? `${usage.points.pending} more points pending store confirmation` : "Your points — tap to view rewards"}
+              className="sllm-points-chip"
               style={{ background: "#FDF8EF", border: "0.5px solid #EADFC8", borderRadius: 12, padding: "3px 11px", fontSize: 12, fontWeight: 600, color: "#854F0B", cursor: "pointer", whiteSpace: "nowrap" }}
             >
               ⭐ {Number(usage.points.balance).toLocaleString()} pts
@@ -266,9 +267,10 @@ export default function Home() {
             <button
               onClick={() => setActiveTab("rewards")}
               title="Guest points expire at midnight — sign in free to keep them and they'll keep adding up."
+              className="sllm-points-chip"
               style={{ background: "#FDF8EF", border: "0.5px solid #EADFC8", borderRadius: 12, padding: "3px 11px", fontSize: 12, fontWeight: 600, color: "#854F0B", cursor: "pointer", whiteSpace: "nowrap" }}
             >
-              ⭐ {usage.points.today} pts today · gone at midnight — sign in to keep
+              ⭐ {usage.points.today} pts today<span className="sllm-chip-long"> · gone at midnight — sign in to keep</span>
             </button>
           )}
           <span className="sllm-header-identity" style={{ fontSize: 12, color: "var(--color-text-secondary)" }}>

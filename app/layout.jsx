@@ -4,6 +4,10 @@ import "./globals.css";
 export const metadata = {
   title: "SearchLLM — shopping research, honestly",
   description: "One honest pick, the alternatives we didn't choose, and why — for every shopping question.",
+  // The manifest makes the site installable ("Add to Home Screen") — the
+  // free 80% of "we need a mobile app": standalone window, home-screen
+  // icon, brand splash. A native app can come later; this ships today.
+  manifest: "/manifest.json",
 };
 
 // Without this, mobile browsers render the page at a default desktop-width
@@ -15,6 +19,7 @@ export const metadata = {
 export const viewport = {
   width: "device-width",
   initialScale: 1,
+  themeColor: "#0F6E56",
 };
 
 export default function RootLayout({ children }) {

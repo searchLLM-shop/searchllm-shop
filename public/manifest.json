@@ -1,0 +1,21 @@
+{
+  "name": "SearchLLM \u2014 honest shopping research",
+  "short_name": "SearchLLM",
+  "description": "Ask a shopping question, get one honest, reasoned pick.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#FFFFFF",
+  "theme_color": "#0F6E56",
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

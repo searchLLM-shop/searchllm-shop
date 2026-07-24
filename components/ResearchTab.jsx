@@ -252,7 +252,7 @@ export default function ResearchTab({ maxSearches, searchCount, onSearchComplete
           <div style={{ fontSize: 13, color: "var(--color-text-secondary)", lineHeight: 1.7, marginBottom: 12 }}>
             {gate.message}
           </div>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+          <div className="sllm-gate-actions" style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
             {gate.signedIn ? (
               <a href="/?upgrade=1" style={{ background: "#0F6E56", color: "#fff", borderRadius: 8, padding: "8px 16px", fontSize: 13, fontWeight: 500, textDecoration: "none" }}>
                 Upgrade to Plus — ₹499/year
@@ -302,7 +302,7 @@ export default function ResearchTab({ maxSearches, searchCount, onSearchComplete
               🙏 Your feedback is gratefully acknowledged — it genuinely shapes what we build. We do incur server costs for every pick, so to continue, please use Increase Usage. You&apos;ve used the platform a lot, and we deeply appreciate your continued support.
             </div>
           )}
-          <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap", alignItems: "center" }}>
+          <div className="sllm-gate-actions" style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap", alignItems: "center" }}>
             <button
               disabled={gateBusy}
               onClick={async () => {
