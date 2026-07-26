@@ -469,8 +469,8 @@ export async function POST(req) {
       // require the destination be apparent; click tracking happens via
       // the client dataLayer event instead. Renders only when the
       // AMAZON_ASSOCIATES_TAG env var is set.
-      amazonBrowse: (!chosenMatch && process.env.AMAZON_ASSOCIATES_TAG && queryText.trim())
-        ? `https://www.amazon.in/s?k=${encodeURIComponent(queryText.trim().slice(0, 120))}&tag=${process.env.AMAZON_ASSOCIATES_TAG}`
+      amazonBrowse: (!chosenMatch && process.env.AMAZON_ASSOCIATES_TAG && typeof query === "string" && query.trim())
+        ? `https://www.amazon.in/s?k=${encodeURIComponent(query.trim().slice(0, 120))}&tag=${process.env.AMAZON_ASSOCIATES_TAG}`
         : undefined,
       // Search points: registered users earn per pick under a daily cap;
       // guests see a day-expiring figure computed from today's picks (never
