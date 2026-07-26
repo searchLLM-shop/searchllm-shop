@@ -489,18 +489,29 @@ export default function ResearchTab({ maxSearches, searchCount, onSearchComplete
             </div>
           )}
           {result.amazonBrowse && (
-            <div style={{ fontSize: 12, padding: "10px 12px", border: "0.5px solid var(--color-border-tertiary)", borderRadius: 8, margin: "10px 0", color: "var(--color-text-secondary)" }}>
-              No partner product matched this one, but you can{" "}
-              <a
-                href={result.amazonBrowse}
-                target="_blank"
-                rel="noopener noreferrer sponsored"
-                onClick={() => trackEvent("amazon_browse_click", {})}
-                style={{ color: "#0F6E56", fontWeight: 500 }}
-              >
-                browse this on Amazon ↗
-              </a>{" "}
-              <span style={{ color: "var(--color-text-tertiary)" }}>(partner link — as an Amazon Associate, we earn from qualifying purchases; your price never changes)</span>
+            <div style={{ border: "0.5px solid var(--color-border-tertiary)", borderRadius: 10, margin: "12px 0", overflow: "hidden" }}>
+              <div style={{ padding: "12px 14px", display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap", justifyContent: "space-between" }}>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontSize: 10, letterSpacing: "0.05em", textTransform: "uppercase", color: "var(--color-text-tertiary)", marginBottom: 3 }}>
+                    Not in our partner inventory — available on Amazon
+                  </div>
+                  <div style={{ fontSize: 14, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis" }}>
+                    {result.query}
+                  </div>
+                </div>
+                <a
+                  href={result.amazonBrowse}
+                  target="_blank"
+                  rel="noopener noreferrer sponsored"
+                  onClick={() => trackEvent("amazon_browse_click", {})}
+                  style={{ background: "#FF9900", color: "#111", borderRadius: 8, padding: "9px 16px", fontSize: 13, fontWeight: 600, textDecoration: "none", whiteSpace: "nowrap" }}
+                >
+                  Browse on Amazon ↗
+                </a>
+              </div>
+              <div style={{ padding: "7px 14px", background: "var(--color-background-secondary)", fontSize: 11, color: "var(--color-text-tertiary)" }}>
+                Partner link — as an Amazon Associate, we earn from qualifying purchases. Your price never changes, and our answer above was written without knowing this link would appear.
+              </div>
             </div>
           )}
           {result.alternativesWithheld && (
