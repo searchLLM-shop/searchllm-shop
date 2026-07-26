@@ -9,7 +9,9 @@ export async function GET() {
   let answers = [];
   try { answers = await getAllPublishedSlugs(); } catch { /* serve static pages regardless */ }
 
-  const staticPages = ["", "/answers", "/pricing", "/privacy", "/terms", "/refunds", "/contact"];
+  // Keep this list in sync when adding customer-facing pages — /help and
+  // /points were missing for a week because it's easy to forget.
+  const staticPages = ["", "/answers", "/help", "/points", "/pricing", "/privacy", "/terms", "/refunds", "/contact"];
 
   const urls = [
     ...staticPages.map((p) => `  <url><loc>${base}${p}</loc><changefreq>weekly</changefreq></url>`),
