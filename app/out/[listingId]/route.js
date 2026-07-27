@@ -19,7 +19,7 @@
 
 import { auth } from "@clerk/nextjs/server";
 import { getOrCreateGuestId } from "@/lib/guestId";
-import { getApprovedListingById, recordNetworkClick, recordEvent, newToken, creditClickPoints, getLifecycleStatus, hashIp, recordIpActivity, getIpGate } from "@/lib/db";
+import { getApprovedListingById, recordNetworkClick, recordEvent, newToken, creditClickPoints, getLifecycleStatus, hashIp, recordAndCheckIp } from "@/lib/db";
 import { buildOutboundUrl } from "@/lib/outbound";
 
 const CONTEXTS = new Set(["research", "answer"]);
@@ -82,13 +82,14 @@ export async function GET(req, { params }) {
       gated = !lc.isPlus && lc.stage === "recharge" && lc.trigger === "clicks";
       hasCredit = lc.hasCredit;
     }
-    if (!gated && !hasCredit) {
-      gated = (await getIpGate(ipHash)).clickGated;
-    }
+    // Records the attempt and returns the rolling window in one statement.
+    // A blocked attempt still counts toward the network window — it came
+    // from that network either way.
+    const ipState = await recordAndCheckIp(ipHash, "click");
+    if (!gated && !hasCredit && ipState.clickGated) gated = true;
     if (gated) {
       return Response.redirect(new URL("/?gate=click", req.url), 302);
     }
-    recordIpActivity(ipHash, "click").catch(() => {});
   } catch (err) {
     console.error("Click gate check failed:", err.message);
   }

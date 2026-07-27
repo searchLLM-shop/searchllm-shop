@@ -1,36 +1,35 @@
 // app/api/usage/route.js
 //
-// Lets the client show "X picks left" on page load, before the user has
-// run any search this session — without this, the count would only ever
-// update after a search completes, which reads wrong on first visit.
+// Powers the header: picks left and the points chip. ONE database query
+// (consolidated 2026-07-27, was three) — plan, today's usage and the
+// points balance resolve together, and guest day-points need no query at
+// all since they're today's pick count times the per-pick rate.
 
 import { auth, currentUser } from "@clerk/nextjs/server";
-import { getUsageToday, getUserPlan, getHeaderPoints, getGuestDayPoints } from "@/lib/db";
+import { getHeaderSnapshot } from "@/lib/db";
 import { getOrCreateGuestId } from "@/lib/guestId";
-import { PLANS } from "@/lib/constants";
+import { PLANS, LOYALTY } from "@/lib/constants";
 import { isAdminEmail } from "@/lib/isAdmin";
 
 export async function GET() {
   const { userId } = await auth();
   const identity = userId || (await getOrCreateGuestId());
-  const storedPlan = userId ? await getUserPlan(userId) : "free";
-  // Admins show as unlimited, matching the bypass in /api/research.
-  const user = userId ? await currentUser() : null;
-  const admin = isAdminEmail(user?.emailAddresses?.[0]?.emailAddress);
-  const plan = admin ? "plus" : storedPlan;
-  const limit = admin ? -1 : (PLANS[plan]?.searches ?? PLANS.free.searches);
-  const used = limit === -1 ? 0 : await getUsageToday(identity);
+  const admin = isAdminEmail((userId ? await currentUser() : null)?.emailAddresses?.[0]?.emailAddress);
 
-  // Points for the header chip. Best-effort: a rewards hiccup must never
-  // break the usage display the whole header depends on.
-  let points = null;
+  let snapshot;
   try {
-    points = userId
-      ? { kind: "user", ...(await getHeaderPoints(userId)) }
-      : { kind: "guest", today: await getGuestDayPoints(identity) };
+    snapshot = await getHeaderSnapshot(identity, userId);
   } catch (err) {
-    console.error("Header points failed:", err.message);
+    console.error("Header snapshot failed:", err.message);
+    return Response.json({ plan: "free", limit: PLANS.free.searches, used: 0, points: null });
   }
 
-  return Response.json({ plan, limit, used, points });
+  const plan = admin ? "plus" : snapshot.plan;
+  const limit = admin ? -1 : (PLANS[plan]?.searches ?? PLANS.free.searches);
+
+  const points = userId
+    ? { kind: "user", balance: snapshot.balance, pending: snapshot.pending }
+    : { kind: "guest", today: snapshot.used * LOYALTY.SEARCH_POINTS.GUEST_PER_PICK };
+
+  return Response.json({ plan, limit, used: limit === -1 ? 0 : snapshot.used, points });
 }

@@ -14,7 +14,7 @@ import { languageForModel, resolveLocale } from "@/lib/i18n";
 import { recordEvent, recordSearchQuery } from "@/lib/db";
 import { identifyProductFromImage } from "@/lib/visionSearch";
 import { findTopMatchingListings, buildClientListingPayload, extractQueryTerms } from "@/lib/listingMatcher";
-import { creditSearchPoints, getGuestDayPoints, getLifecycleStatus, hashIp, recordIpActivity, getIpGate } from "@/lib/db";
+import { creditSearchPoints, getGuestDayPoints, getLifecycleStatus, hashIp, recordAndCheckIp, checkAndConsumeQuota } from "@/lib/db";
 import { getOrCreateGuestId } from "@/lib/guestId";
 import { PLANS , LOYALTY } from "@/lib/constants";
 import { shouldSearch, braveSearch, formatSearchContext } from "@/lib/braveSearch";
@@ -75,13 +75,20 @@ export async function POST(req) {
     // stage 2 → hard Increase Usage gate. Plus: never blocked; alternatives
     // withheld instead (handled after the model call). IP limits backstop
     // identity-hopping for anyone without a payment/purchase history.
+    //
+    // OPERATION BUDGET (consolidated 2026-07-27): this whole block is now
+    // 2 queries for a normal search — one lifecycle statement (which also
+    // returns the plan, so no separate plan lookup) and one combined
+    // IP record-and-check. Admins skip both entirely.
     const ipHash = hashIp(req.headers.get("x-vercel-forwarded-for") || req.headers.get("x-forwarded-for")?.split(",")[0]?.trim());
+    const admin = isAdminEmail((await currentUser())?.emailAddresses?.[0]?.emailAddress);
     let suppressAlternatives = false;
+    let storedPlan = "free";
     try {
-      const adminBypass = isAdminEmail((await currentUser())?.emailAddresses?.[0]?.emailAddress);
-      if (!adminBypass) {
+      if (!admin) {
         const lifecycle = await getLifecycleStatus(identity);
         suppressAlternatives = lifecycle.suppressAlternatives;
+        storedPlan = lifecycle.plan;
         if (lifecycle.stage === "upgrade") {
           return Response.json({
             gate: "upgrade",
@@ -97,49 +104,40 @@ export async function POST(req) {
             message: `You've made ${lifecycle.searches} picks since your last purchase. Every pick runs paid AI research — to continue, please use Increase Usage. Completing a purchase through any recommendation also resets your free picks.`,
           }, { status: 403 });
         }
-        if (!lifecycle.hasCredit) {
-          const ipGate = await getIpGate(ipHash);
-          if (ipGate.searchGated) {
-            return Response.json({ gate: "search", searches: LOYALTY.IP_GATE.searches, message: "This network has reached its free research limit. To continue, sign in and use Increase Usage — or complete a purchase through any recommendation." }, { status: 403 });
-          }
+        // Records this hit and returns the rolling window in one statement.
+        // Users with a purchase/payment history are exempt from IP limits
+        // (shared carrier IPs must never punish paying customers), but we
+        // still record so the counters stay complete.
+        const ipState = await recordAndCheckIp(ipHash, "search");
+        if (!lifecycle.hasCredit && ipState.searchGated) {
+          return Response.json({ gate: "search", searches: LOYALTY.IP_GATE.searches, message: "This network has reached its free research limit. To continue, sign in and use Increase Usage — or complete a purchase through any recommendation." }, { status: 403 });
         }
       }
     } catch (err) {
       console.error("Lifecycle check failed:", err.message);
     }
-    recordIpActivity(ipHash, "search").catch(() => {});
-    const storedPlan = userId ? await getUserPlan(userId) : "free";
 
     // Admins get unlimited picks. Testing the product shouldn't require
     // burning a paid subscription or waiting for the daily reset.
-    const user = userId ? await currentUser() : null;
-    const admin = isAdminEmail(user?.emailAddresses?.[0]?.emailAddress);
-
     const plan = admin ? "plus" : storedPlan;
     const limit = admin ? -1 : (PLANS[plan]?.searches ?? PLANS.free.searches);
 
+    // Today's pick count, returned by the quota statement — guests' day
+    // points are derived from it instead of costing another query.
+    let picksUsedToday = null;
     if (limit !== -1) {
-      // Check BEFORE incrementing — a request that's about to be blocked
-      // must not consume a quota slot. (An earlier version incremented
-      // first and checked after, which let a blocked 9th request still
-      // bump the stored count, silently drifting it above the real limit
-      // every time someone hit the cap.)
-      //
-      // Note: check-then-increment isn't atomic, so two simultaneous
-      // requests from the same identity at exactly the limit could both
-      // slip through. Acceptable at current scale (a user firing two
-      // requests in the same millisecond is rare and low-stakes — worst
-      // case they get one extra free search). If this becomes a real
-      // problem, replace with a single atomic SQL statement using
-      // INSERT ... ON CONFLICT with a WHERE clause checking the count.
-      const usedSoFar = await getUsageToday(identity);
-      if (usedSoFar >= limit) {
+      // ONE atomic statement (2026-07-27): the insert only increments while
+      // under the limit, so a blocked request consumes nothing and two
+      // simultaneous requests at the boundary can't both slip through —
+      // the race the previous read-then-increment version documented.
+      const quota = await checkAndConsumeQuota(identity, limit);
+      picksUsedToday = quota.used;
+      if (!quota.allowed) {
         // Track how often people run out of picks — the signal that tells us
         // whether the daily limit is doing anything, or just adding friction.
         recordEvent({ eventType: "limit_reached", identity }).catch(() => {});
         return Response.json({ error: "Daily free limit reached" }, { status: 429 });
       }
-      await getAndIncrementUsage(identity);
     }
 
     // --- Listing match (runs in plain code, never inside the AI call) ---
@@ -482,7 +480,10 @@ export async function POST(req) {
             const sp = await creditSearchPoints(userId);
             return { kind: "user", ...sp };
           }
-          return { kind: "guest", guestToday: await getGuestDayPoints(identity), perPick: 10 };
+          const guestToday = picksUsedToday !== null
+            ? picksUsedToday * LOYALTY.SEARCH_POINTS.GUEST_PER_PICK
+            : await getGuestDayPoints(identity);
+          return { kind: "guest", guestToday, perPick: LOYALTY.SEARCH_POINTS.GUEST_PER_PICK };
         } catch (e) {
           console.error("Search points failed:", e.message);
           return null;
