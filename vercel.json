@@ -22,9 +22,6 @@
       "memory": 3009,
       "maxDuration": 300
     },
-    "app/api/admin/enrich-keywords/route.js": {
-      "maxDuration": 300
-    },
     "app/api/admin/conversions/route.js": {
       "maxDuration": 300
     }
