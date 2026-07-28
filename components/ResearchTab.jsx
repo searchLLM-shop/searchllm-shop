@@ -522,7 +522,7 @@ export default function ResearchTab({ maxSearches, searchCount, onSearchComplete
           {result.alternatives?.length > 0 && (
             <div style={{ marginBottom: 16 }}>
               <div style={{ fontSize: 11, fontWeight: 500, color: "var(--color-text-secondary)", marginBottom: 10, letterSpacing: "0.04em", textTransform: "uppercase" }}>
-                We also considered (no affiliate relationship — links open a plain web search, and we earn nothing from them)</div>
+                We also considered (no affiliate relationship — links open a plain web search, and we earn nothing from them). Prices here are rough estimates, not live — check the current price before deciding.</div>
               {result.alternatives.map((a, i) => (
                 <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0", borderTop: i > 0 ? "0.5px solid var(--color-border-tertiary)" : "none" }}>
                   <div>
@@ -541,7 +541,15 @@ export default function ResearchTab({ maxSearches, searchCount, onSearchComplete
                     </a>
                     <div style={{ fontSize: 12, color: "var(--color-text-tertiary)" }}>{a.note}</div>
                   </div>
-                  <div style={{ fontSize: 13, fontWeight: 500, color: "var(--color-text-secondary)", whiteSpace: "nowrap", marginLeft: 12 }}>{a.price}</div>
+                  {/* Deliberately lighter than the sponsored card's price:
+                      that one comes from the partner feed and is real; this
+                      one is the model's recollection. Same styling would
+                      imply the same reliability. */}
+                  {a.price ? (
+                    <div style={{ fontSize: 12, color: "var(--color-text-tertiary)", whiteSpace: "nowrap", marginLeft: 12 }}>
+                      ~{a.price}<span style={{ fontSize: 10 }}> est.</span>
+                    </div>
+                  ) : null}
                 </div>
               ))}
             </div>

@@ -89,7 +89,7 @@ export default async function AnswerPage({ params }) {
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ display: "flex", justifyContent: "space-between", gap: 10, marginBottom: 6 }}>
                 <span style={{ fontSize: 14, fontWeight: 500 }}>{a.product}</span>
-                <span style={{ fontSize: 14, fontWeight: 500, whiteSpace: "nowrap" }}>{a.price}</span>
+                <span style={{ fontSize: 13, color: "var(--color-text-tertiary)", whiteSpace: "nowrap" }}>{a.price ? `~${a.price} est.` : ""}</span>
               </div>
               <div style={{ fontSize: 12, color: "var(--color-text-secondary)", marginBottom: 10 }}>{a.brand}</div>
               <a href={`/out/${a.listing_id}?ctx=answer`} target="_blank" rel="noopener noreferrer sponsored nofollow"
@@ -107,7 +107,7 @@ export default async function AnswerPage({ params }) {
       {alternatives.length > 0 && (
         <div style={{ marginBottom: 20 }}>
           <div style={{ fontSize: 10, letterSpacing: "0.05em", textTransform: "uppercase", color: "var(--color-text-tertiary)", marginBottom: 8 }}>
-            We also considered (no affiliate relationship — links open a plain web search, and we earn nothing from them)
+            We also considered (no affiliate relationship — links open a plain web search, and we earn nothing from them). Prices here are rough estimates, not live — check the current price before deciding.
           </div>
           {alternatives.map((alt, i) => (
             <div key={i} style={{ display: "flex", justifyContent: "space-between", gap: 12, padding: "10px 0", borderTop: i > 0 ? "0.5px solid var(--color-border-tertiary)" : "none" }}>
@@ -115,7 +115,7 @@ export default async function AnswerPage({ params }) {
                 <a href={`/alt?p=${encodeURIComponent(alt.name || "")}&ctx=answer`} target="_blank" rel="noopener noreferrer" style={{ fontSize: 13, fontWeight: 500, color: "var(--color-text-primary)", textDecoration: "underline", textDecorationColor: "var(--color-border-secondary)", textUnderlineOffset: 3 }}>{alt.name} ↗</a>
                 <div style={{ fontSize: 12, color: "var(--color-text-tertiary)" }}>{alt.note}</div>
               </div>
-              <div style={{ fontSize: 13, whiteSpace: "nowrap", color: "var(--color-text-secondary)" }}>{alt.price}</div>
+              <div style={{ fontSize: 12, whiteSpace: "nowrap", color: "var(--color-text-tertiary)" }}>{alt.price ? `~${alt.price} est.` : ""}</div>
             </div>
           ))}
         </div>

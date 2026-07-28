@@ -17,7 +17,7 @@ import { findTopMatchingListings, buildClientListingPayload, extractQueryTerms }
 import { creditSearchPoints, getGuestDayPoints, getLifecycleStatus, hashIp, recordAndCheckIp, checkAndConsumeQuota } from "@/lib/db";
 import { getOrCreateGuestId } from "@/lib/guestId";
 import { PLANS , LOYALTY } from "@/lib/constants";
-import { shouldSearch, braveSearch, formatSearchContext } from "@/lib/braveSearch";
+import { shouldSearch, searchDepth, isFactSensitive, webSearch, formatSearchContext, THIN_RATING_COUNT } from "@/lib/search";
 
 const SYSTEM_PROMPT = `You are SearchLLM, a shopping research assistant whose entire reputation rests on being honest, not on maximizing affiliate revenue.
 
@@ -29,7 +29,7 @@ Price is not quality. A cheap product that does the job well is a legitimate rec
   "whoShouldSkip": "one sentence",
   "confidence": "high|medium|low",
   "sponsoredChoiceId": the numeric id of the ONE offered partner product that genuinely answers the question, or null — ONLY when products were offered to you above. Null if none truly fits: wrong category, wrong product type, priced above what the person stated, or a product too poor for any reasonable shopper with this query to be satisfied buying. The bar is "would a knowledgeable friend be comfortable saying: this one is a solid buy for what you asked" — NOT "is this the single best product on the market at this price". Comparing the offered products to better market alternatives belongs in your answer text, where you should do it freely and honestly; it is not a reason to suppress a genuinely good offered product. Likewise a budget phrased as a maximum is a ceiling, not a target: priced-under still qualifies. Judge exactly as you would if no money were involved.,
-  "alternatives": [{"name": "a real alternative product relevant to THIS query", "note": "one short phrase on the trade-off vs the pick", "price": "approx price or empty string"}],
+  "alternatives": [{"name": "a real alternative product relevant to THIS query", "note": "one short phrase on the trade-off vs the pick", "price": "see the price rule below — empty string is the correct answer whenever you are not confident"}],
   "micrositeTitle": "short title for the knowledge microsite",
   "micrositeSummary": "1-2 sentence anonymized summary",
   "publicTopic": "the question rephrased as a generic, searchable shopping topic many different people would type (e.g. 'best whey protein under ₹2000'), in the same language as the rest of your answer. Empty string if the question is too personal, niche, or situation-specific to be useful as a public page",
@@ -38,6 +38,14 @@ Price is not quality. A cheap product that does the job well is a legitimate rec
   "learnings": ["short reusable knowledge fragment", "another one", "a third"]
 }
 Provide 2-3 alternatives that are genuinely relevant to the specific product the person asked about — never generic or unrelated items.
+
+PRICE HONESTY — the alternatives' "price" field is your own recollection, not our data, and your price knowledge is stale by definition and often wrong for Indian retail, where discounting is heavy and constant. Rules: give a range only when you are genuinely confident, make it wide enough to be honest rather than precise-looking, err on the LOW side because street prices in India are usually below list, and return an empty string whenever you are unsure — an empty price is a correct, complete answer and is always better than a wrong number. Never state a price for the partner product from memory: its real price is given to you above and is the only price about it you may use. If the person's budget matters to your reasoning, reason about the partner product's real price, not about remembered ones.
+
+WHERE FACTS COME FROM — you are the judgment layer, not the fact layer. Use this hierarchy strictly. (1) The partner product's price, brand, product name, rating and rating count are given to you above from the retailer's own feed: these are authoritative, and you must never contradict or "correct" them from memory. (2) For anything else factual — current prices of other products, what's available now, what reviewers report, which models are current — use the live web results below if they are present, and attribute them naturally ("reviewers consistently mention…", "currently around ₹X"). (3) If a fact you need is in neither place, say you don't know rather than filling the gap from recollection: "I can't verify the current price" is a better answer than a confident wrong number. Your own value is in reasoning about FIT — which trade-offs matter for this particular person's stated need, what to ignore, what would be a mistake for them. Do that freely and with conviction; it's the part no search result can supply.
+
+EVIDENCE WEIGHTING — each offered partner product comes with its retailer rating and the NUMBER of ratings behind it, and the count is what matters: several hundred ratings at 4.2 is real evidence a product works; 4.8 from 27 ratings is nearly no evidence at all and must not be presented as a quality signal. When evidence is thin, say so in plain words ("too few reviews to judge — check current reviews before buying") rather than borrowing confidence from the star number. If live web results are provided below, prefer them over your own recollection for prices, availability and reputation, and say what they tell you.
+
+PRODUCT-CLAIM HONESTY — do not assert specific technical specifications, defect patterns, battery-life figures, or performance numbers for an individual product unless they are widely established. Where you do not know a specific product's real-world track record — which is normal for lesser-known brands — say so plainly instead of implying endorsement, and point the person to current reviews. Category-level reasoning you are confident about is far more useful than confident-sounding specifics you are not.
 
 ADULT-CONTEXT RULE — absolute: when the query contains sexual, suggestive, or adult-leaning language, your ENTIRE answer must never mention children, kids, minors, girls'/boys' clothing or sections, school-age anything, or age groups below adult — not in the headline, body, good-for, skip-if, alternatives, or anywhere else. If any offered product appears to be a children's item on such a query, it is simply irrelevant: do not select it and do not explain or reference it. Write the answer purely for adults, as if children's products do not exist.
 
@@ -258,16 +266,47 @@ export async function POST(req) {
       }).catch(() => {});
     }
 
-    // --- Search-or-skip: only call Brave for genuinely time-sensitive ---
-    // --- questions, mirroring the original bosonic layer's behavior.   ---
+    // --- Live evidence: two independent reasons to search -----------------
+    // 1. The QUERY asks something time-sensitive or evaluative (prices,
+    //    comparisons, quality, known problems) — see shouldSearch.
+    // 2. The leading partner candidate has THIN rating evidence. A product
+    //    with 27 ratings gives the model nothing real to judge from, and
+    //    that's exactly when it starts inventing confident specifics. A
+    //    targeted review search gives it something true to work with.
+    // Both run in parallel and both degrade to silence on any failure —
+    // live search improves an answer, it must never be able to break one.
     let searchContext = "";
     let searchUsed = false;
-    if (shouldSearch(query)) {
-      const results = await braveSearch(query);
-      if (results.length) {
-        searchContext = formatSearchContext(results);
-        searchUsed = true;
+    try {
+      const lead = topMatches[0]?.listing;
+      const leadIsThin = lead && Number(lead.ratingCount || 0) < THIN_RATING_COUNT;
+      const jobs = [];
+      // Default path: retrieve for every query, deeper when the question is
+      // explicitly about facts. Falls back to keyword-gated searching only
+      // if SEARCH_EVERY_QUERY=0 is set.
+      const wantSearch = shouldSearch() || isFactSensitive(query);
+      if (wantSearch) {
+        jobs.push(
+          webSearch(query, searchDepth(query), userCountry).then((res) =>
+            formatSearchContext(res, "Live web results for this question")
+          )
+        );
       }
+      if (leadIsThin) {
+        const name = `${lead.brand || ""} ${lead.product || ""}`.trim().slice(0, 90);
+        jobs.push(
+          webSearch(`${name} review`, 3, userCountry).then((res) =>
+            formatSearchContext(res, `What reviewers say about ${name} (this product has only ${lead.ratingCount || 0} ratings on the retailer, so treat it as thin evidence)`)
+          )
+        );
+      }
+      if (jobs.length) {
+        const parts = (await Promise.all(jobs)).filter(Boolean);
+        searchContext = parts.join("");
+        searchUsed = parts.length > 0;
+      }
+    } catch (err) {
+      console.error("Live search failed, answering without it:", err.message);
     }
 
     // --- Build the model request. Only product/brand/price ever go in. ---
