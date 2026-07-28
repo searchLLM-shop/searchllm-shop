@@ -143,6 +143,20 @@ export async function GET(req) {
     brand: c.brand, product: c.product, clicks: num(c.clicks), first_seen: c.first_seen, last_seen: c.last_seen,
   })));
 
+  addSheet("App installs summary", [{
+    unique_visitors: num(r.pwa?.visitors),
+    installs: num(r.pwa?.installs),
+    installs_per_100_visitors: r.pwa?.installRate ?? "",
+    app_users: num(r.pwa?.appUsers),
+    app_users_per_100_visitors: r.pwa?.appUserRate ?? "",
+    app_sessions: num(r.pwa?.appSessions),
+    prompts_dismissed: num(r.pwa?.dismissed),
+  }]);
+
+  addSheet("App installs by day", (r.pwa?.daily || []).map((d) => ({
+    day: d.day, installs: num(d.installs), app_users: num(d.app_users),
+  })));
+
   addSheet("Queries by day", (r.clicksReport?.queriesByDay || []).map((q) => ({
     day: q.day, query: q.query_text, matched_inventory: q.matched ? "yes" : "no",
   })));

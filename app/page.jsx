@@ -16,6 +16,7 @@ import ProductsBrowser from "@/components/ProductsBrowser";
 import QueriesPanel from "@/components/QueriesPanel";
 import PerformancePanel from "@/components/PerformancePanel";
 import RewardsTab from "@/components/RewardsTab";
+import InstallApp from "@/components/InstallApp";
 
 // Bump this whenever the Privacy Policy or Terms of Use changes materially
 // — it invalidates stored consent and forces the gate to show again, which
@@ -253,6 +254,7 @@ export default function Home() {
               Users see their live balance (tap → Rewards tab). Guests see
               today's day-points with the honest expiry note — the whole
               signup hook in twelve words. */}
+          <InstallApp />
           {usage?.points?.kind === "user" && (
             <button
               onClick={() => setActiveTab("rewards")}

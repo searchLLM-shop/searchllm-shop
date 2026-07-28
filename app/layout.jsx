@@ -9,6 +9,17 @@ export const metadata = {
   // free 80% of "we need a mobile app": standalone window, home-screen
   // icon, brand splash. A native app can come later; this ships today.
   manifest: "/manifest.json",
+  // iOS ignores most of the web manifest — these are what give an
+  // "Add to Home Screen" install a proper icon and standalone chrome.
+  appleWebApp: {
+    capable: true,
+    title: "SearchLLM",
+    statusBarStyle: "default",
+  },
+  icons: {
+    icon: [{ url: "/icon-192.png", sizes: "192x192", type: "image/png" }],
+    apple: [{ url: "/apple-touch-icon.png", sizes: "180x180", type: "image/png" }],
+  },
 };
 
 // Without this, mobile browsers render the page at a default desktop-width

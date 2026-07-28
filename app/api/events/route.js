@@ -11,7 +11,17 @@ import { auth } from "@clerk/nextjs/server";
 import { getOrCreateGuestId } from "@/lib/guestId";
 import { recordEvent } from "@/lib/db";
 
-const ALLOWED = new Set(["visit", "affiliate_click"]);
+// pwa_standalone_visit is the load-bearing one: iOS fires no install
+// event at all, so "sessions opened from the installed app" is the only
+// metric that counts every platform — and it measures real usage, not
+// just an install that was never opened again.
+const ALLOWED = new Set([
+  "visit",
+  "affiliate_click",
+  "pwa_installed",
+  "pwa_standalone_visit",
+  "pwa_prompt_dismissed",
+]);
 
 export async function POST(req) {
   try {

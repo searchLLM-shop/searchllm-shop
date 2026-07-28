@@ -307,6 +307,41 @@ export default function ReportsPanel() {
         )}
       </Section>
 
+      {data.pwa && (
+        <Section title="App installs" note={`${n(data.pwa.visitors)} unique visitors in range · app users counts every platform (iOS reports no install event, so the install rate understates adoption)`}>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
+            {[
+              ["Installs (Android/desktop)", data.pwa.installs, data.pwa.installRate],
+              ["App users", data.pwa.appUsers, data.pwa.appUserRate],
+              ["App sessions", data.pwa.appSessions, null],
+              ["Prompts dismissed", data.pwa.dismissed, null],
+            ].map(([label, value, per100]) => (
+              <div key={label} style={{ background: "var(--color-background-secondary)", border: "0.5px solid var(--color-border-tertiary)", borderRadius: 8, padding: "9px 14px", minWidth: 130 }}>
+                <div style={{ fontSize: 10, color: "var(--color-text-tertiary)", marginBottom: 3 }}>{label}</div>
+                <div style={{ fontSize: 18, fontWeight: 600 }}>{n(value)}</div>
+                {per100 !== null && per100 !== undefined && (
+                  <div style={{ fontSize: 11, color: "#0F6E56", marginTop: 2 }}>{per100} per 100 visitors</div>
+                )}
+              </div>
+            ))}
+          </div>
+          {data.pwa.daily.some((r) => Number(r.installs) || Number(r.app_users)) && (
+            <div className="sllm-scroll-x" style={{ border: "0.5px solid var(--color-border-tertiary)", borderRadius: 10, overflow: "hidden" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 110px 110px", gap: 8, padding: "8px 12px", background: "var(--color-background-tertiary)", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.04em", color: "var(--color-text-tertiary)" }}>
+                <span>Day</span><span style={{ textAlign: "right" }}>Installs</span><span style={{ textAlign: "right" }}>App users</span>
+              </div>
+              {data.pwa.daily.slice(0, 14).map((r, i) => (
+                <div key={i} style={{ display: "grid", gridTemplateColumns: "1fr 110px 110px", gap: 8, padding: "6px 12px", fontSize: 12, borderTop: "0.5px solid var(--color-border-tertiary)" }}>
+                  <span>{new Date(r.day).toLocaleDateString()}</span>
+                  <span style={{ textAlign: "right", fontWeight: 500 }}>{n(r.installs)}</span>
+                  <span style={{ textAlign: "right" }}>{n(r.app_users)}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </Section>
+      )}
+
       {data.clicksReport && (
         <Section title="Link clicks" note="sponsored = affiliate redirects · alternative = tracked, unmonetized web-search links (brand-demand evidence)">
           <div className="sllm-scroll-x" style={{ border: "0.5px solid var(--color-border-tertiary)", borderRadius: 10, overflow: "hidden", marginBottom: 12 }}>

@@ -147,3 +147,9 @@ input, select, textarea {
 @media (pointer: coarse) {
   button, a[role="button"], select, input[type="date"] { min-height: 38px; }
 }
+
+
+/* Install button: compact on phones, where the header is tightest */
+@media (max-width: 640px) {
+  .sllm-install-btn { font-size: 11px !important; padding: 2px 9px !important; }
+}
