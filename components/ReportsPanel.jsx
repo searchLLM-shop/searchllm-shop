@@ -307,6 +307,37 @@ export default function ReportsPanel() {
         )}
       </Section>
 
+      {data.publication && (
+        <Section title="Answer pages (publication health)" note="only gate-passing drafts are published · publication rate climbing much above 15% means the gate has gone soft">
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
+            {[
+              ["Published (indexed)", data.publication.published],
+              ["Drafts held back", data.publication.drafts],
+              ["Withdrawn", data.publication.withdrawn],
+              ["Publication rate", `${data.publication.publicationRate}%`],
+            ].map(([label, value]) => (
+              <div key={label} style={{ background: "var(--color-background-secondary)", border: "0.5px solid var(--color-border-tertiary)", borderRadius: 8, padding: "9px 14px", minWidth: 120 }}>
+                <div style={{ fontSize: 10, color: "var(--color-text-tertiary)", marginBottom: 3 }}>{label}</div>
+                <div style={{ fontSize: 18, fontWeight: 600 }}>{typeof value === "number" ? n(value) : value}</div>
+              </div>
+            ))}
+          </div>
+          {data.publication.failures.length > 0 && (
+            <>
+              <div style={{ fontSize: 11, color: "var(--color-text-tertiary)", marginBottom: 6 }}>Why drafts are being held back — tells you which threshold to tune:</div>
+              <div style={{ border: "0.5px solid var(--color-border-tertiary)", borderRadius: 10, overflow: "hidden" }}>
+                {data.publication.failures.map((f, i) => (
+                  <div key={f.reason} style={{ display: "flex", justifyContent: "space-between", padding: "6px 12px", fontSize: 12, borderTop: i > 0 ? "0.5px solid var(--color-border-tertiary)" : "none" }}>
+                    <span>{f.reason.replace(/_/g, " ")}</span>
+                    <span style={{ fontWeight: 600 }}>{n(f.count)}</span>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+        </Section>
+      )}
+
       {data.pwa && (
         <Section title="App installs" note={`${n(data.pwa.visitors)} unique visitors in range · app users counts every platform (iOS reports no install event, so the install rate understates adoption)`}>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>

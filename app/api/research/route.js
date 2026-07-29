@@ -469,6 +469,9 @@ export async function POST(req) {
       title: parsed.micrositeTitle,
       summary: parsed.micrositeSummary,
       taskType,
+      // Gate input: a page written without live retrieval has no original
+      // evidence behind it and cannot earn an indexed URL.
+      searchPerformed: searchUsed,
       learnings: parsed.learnings,
       listingId: chosenMatch?.id || null,
       queryHash,

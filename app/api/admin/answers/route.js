@@ -27,7 +27,11 @@ export async function PATCH(req) {
 export async function POST(req) {
   const err = await guard();
   if (err) return Response.json({ error: err }, { status: err === "Forbidden" ? 403 : 401 });
-  const { action } = await req.json();
+  const body = await req.json();
+  const { action } = body;
   if (action !== "publish_all") return Response.json({ error: "Unknown action" }, { status: 400 });
-  return Response.json({ published: await bulkPublishDrafts() });
+  // force=true publishes drafts that failed the gate — a human override for
+  // pages you've read and judged worth indexing anyway.
+  const result = await bulkPublishDrafts({ force: body.force === true });
+  return Response.json(result);
 }

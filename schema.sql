@@ -487,3 +487,16 @@ CREATE TABLE IF NOT EXISTS alt_clicks (
 -- invalid (the cast is timezone-dependent, not IMMUTABLE) — learned in
 -- production 2026-07-24.
 CREATE INDEX IF NOT EXISTS idx_alt_clicks_created ON alt_clicks (created_at);
+
+-- Publication gate (2026-07-29). Corpus membership and INDEX membership are
+-- different things: every answer feeds the engine, only a qualifying
+-- minority earns a URL Google is allowed to see. gate_result is written for
+-- every draft including failures, so thresholds can be tuned against real
+-- decisions instead of guessed at.
+ALTER TABLE microsites ADD COLUMN IF NOT EXISTS search_performed BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE microsites ADD COLUMN IF NOT EXISTS content_hash TEXT;
+ALTER TABLE microsites ADD COLUMN IF NOT EXISTS gate_result JSONB;
+ALTER TABLE microsites ADD COLUMN IF NOT EXISTS last_verified_at TIMESTAMPTZ;
+ALTER TABLE microsites ADD COLUMN IF NOT EXISTS withdrawn_at TIMESTAMPTZ;
+ALTER TABLE microsites ADD COLUMN IF NOT EXISTS withdrawn_reason TEXT;
+CREATE INDEX IF NOT EXISTS idx_microsites_hash ON microsites (content_hash);

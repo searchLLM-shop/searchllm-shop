@@ -25,6 +25,12 @@ export async function generateMetadata({ params }) {
     title,
     description,
     alternates: { canonical: `https://searchllm.shop/answers/${slug}` },
+    // Explicit rather than implicit: a page earns indexing by passing the
+    // publication gate, and a withdrawn page must drop out of the index
+    // while keeping its URL alive.
+    robots: a.status === "withdrawn"
+      ? { index: false, follow: false }
+      : { index: true, follow: true },
     openGraph: { title, description, type: "article", url: `https://searchllm.shop/answers/${slug}` },
     twitter: { card: "summary", title, description },
   };
