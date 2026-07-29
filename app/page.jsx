@@ -17,6 +17,7 @@ import QueriesPanel from "@/components/QueriesPanel";
 import PerformancePanel from "@/components/PerformancePanel";
 import RewardsTab from "@/components/RewardsTab";
 import InstallApp from "@/components/InstallApp";
+import { trackEvent } from "@/lib/track";
 
 // Bump this whenever the Privacy Policy or Terms of Use changes materially
 // — it invalidates stored consent and forces the gate to show again, which
@@ -174,6 +175,10 @@ export default function Home() {
   }, []);
 
   function handleAccept() {
+    // Funnel measurement for the gate, sent to the dataLayer only — GA4
+    // picks it up via GTM, so "landed → accepted → searched" is visible
+    // without spending a database operation on every new session.
+    trackEvent("consent_accepted", {});
     try {
       localStorage.setItem("sllm_consent_version", CONSENT_VERSION);
     } catch (e) {

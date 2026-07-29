@@ -158,8 +158,23 @@ export default function ResearchTab({ maxSearches, searchCount, onSearchComplete
       {!result && !processing && (
         <div style={{ textAlign: "center", padding: "14px 0 22px" }}>
           <p style={{ fontSize: 14, color: "var(--color-text-secondary)", margin: 0, lineHeight: 1.6 }}>
-            Ask a real shopping question. Get one honest pick, with the trade-offs and the alternatives we didn&apos;t choose.
+            Ask a real shopping question. Get one clear, researched answer.
           </p>
+          <p style={{ fontSize: 13, color: "var(--color-text-tertiary)", margin: "7px 0 0", lineHeight: 1.7 }}>
+            Live prices and reviews checked. Paid only when you buy.{" "}
+            <a href="/points" style={{ color: "var(--color-text-tertiary)", textDecoration: "underline" }}>Points</a> every time you ask.
+          </p>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "center", marginTop: 16 }}>
+            {PLACEHOLDER_EXAMPLES.slice(0, 3).map((ex) => (
+              <button
+                key={ex}
+                onClick={() => setQuery(ex)}
+                style={{ background: "none", border: "0.5px solid var(--color-border-tertiary)", borderRadius: 14, padding: "5px 11px", fontSize: 12, color: "var(--color-text-tertiary)", cursor: "pointer" }}
+              >
+                {ex}
+              </button>
+            ))}
+          </div>
         </div>
       )}
 

@@ -19,43 +19,68 @@ function Modal({ title, content, onClose }) {
   );
 }
 
-export default function ConsentGate({onAccept, locale = "en" }) {
+export default function ConsentGate({ onAccept, locale = "en" }) {
   const tr = t(locale);
   const [modal, setModal] = useState(null);
-  const [privacyRead, setPrivacyRead] = useState(false);
-  const [termsRead, setTermsRead] = useState(false);
-  const [c1, setC1] = useState(false);
-  const [c2, setC2] = useState(false);
+  const [accepted, setAccepted] = useState(false);
+
+  // Standard clickwrap: the policies are one tap away and named in the
+  // consent sentence itself, but reading them is no longer a gate. The
+  // previous version required opening both documents and ticking two boxes
+  // before anything could happen — four actions on a first mobile visit,
+  // which is a large share of paid traffic lost before the product is ever
+  // seen. The disclosure is unchanged; only the ceremony is lighter.
+  const PolicyLink = ({ label, title, content, key: k }) => (
+    <button
+      type="button"
+      onClick={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setModal({ title, content });
+      }}
+      style={{ background: "none", border: "none", padding: 0, font: "inherit", color: "#0F6E56", textDecoration: "underline", cursor: "pointer" }}
+    >
+      {label}
+    </button>
+  );
 
   return (
     <div style={{ position: "relative", minHeight: 560 }}>
-      {modal && <Modal title={modal.title} content={modal.content} onClose={() => { if (modal.key === "privacy") setPrivacyRead(true); else setTermsRead(true); setModal(null); }} />}
+      {modal && <Modal title={modal.title} content={modal.content} onClose={() => setModal(null)} />}
       <div style={{ maxWidth: 460, margin: "0 auto", padding: "44px 24px 32px", textAlign: "center" }}>
         <div style={{ fontSize: 13, fontWeight: 500, color: "#0F6E56", letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 14 }}>SearchLLM</div>
-        <h1 style={{ fontSize: 24, fontWeight: 500, margin: "0 0 10px", lineHeight: 1.3 }}>{tr("tagline1")}<br />{tr("tagline2")}<br />{tr("tagline3")}</h1>
-        <p style={{ color: "var(--color-text-secondary)", fontSize: 14, marginBottom: 28, lineHeight: 1.6 }}>
-          One honest pick, the alternatives we didn&apos;t choose, and why — for every shopping question.
+        <h1 style={{ fontSize: 24, fontWeight: 500, margin: "0 0 10px", lineHeight: 1.3 }}>
+          {tr("tagline1")}<br />{tr("tagline2")}<br />{tr("tagline3")}
+        </h1>
+        <p style={{ color: "var(--color-text-secondary)", fontSize: 14, marginBottom: 26, lineHeight: 1.6 }}>
+          {tr("subtitle")}
         </p>
-        <div style={{ background: "var(--color-background-secondary)", borderRadius: 12, padding: 20, textAlign: "left", marginBottom: 16 }}>
-          <p style={{ fontSize: 13, color: "var(--color-text-secondary)", margin: "0 0 14px", lineHeight: 1.6 }}>
-            {tr("beforeStart")}
-          </p>
-          <button onClick={() => setModal({ title: "Privacy Policy", content: PRIVACY_POLICY, key: "privacy" })} style={{ background: "none", border: `1px solid ${privacyRead ? "#0F6E56" : "var(--color-border-secondary)"}`, borderRadius: 8, padding: "9px 14px", cursor: "pointer", color: privacyRead ? "#0F6E56" : "var(--color-text-primary)", fontSize: 13, width: "100%", textAlign: "left", marginBottom: 8 }}>
-            {privacyRead ? "✓ " : "→ "}Privacy Policy {!privacyRead && "(read first)"}
-          </button>
-          <button onClick={() => setModal({ title: "Terms of Use", content: TERMS, key: "terms" })} style={{ background: "none", border: `1px solid ${termsRead ? "#0F6E56" : "var(--color-border-secondary)"}`, borderRadius: 8, padding: "9px 14px", cursor: "pointer", color: termsRead ? "#0F6E56" : "var(--color-text-primary)", fontSize: 13, width: "100%", textAlign: "left", marginBottom: 14 }}>
-            {termsRead ? "✓ " : "→ "}Terms of Use, including our honesty commitment {!termsRead && "(read first)"}
-          </button>
-          <label style={{ display: "flex", alignItems: "flex-start", gap: 10, fontSize: 13, cursor: "pointer", marginBottom: 8 }}>
-            <input type="checkbox" checked={c1} onChange={e => setC1(e.target.checked)} style={{ marginTop: 2 }} />
-            <span>{tr("acceptPrivacy")}</span>
-          </label>
-          <label style={{ display: "flex", alignItems: "flex-start", gap: 10, fontSize: 13, cursor: "pointer" }}>
-            <input type="checkbox" checked={c2} onChange={e => setC2(e.target.checked)} style={{ marginTop: 2 }} />
-            <span>{tr("acceptTerms")}</span>
-          </label>
+
+        <div
+          onClick={() => setAccepted((v) => !v)}
+          style={{ display: "flex", alignItems: "flex-start", gap: 10, textAlign: "left", fontSize: 13, color: "var(--color-text-secondary)", lineHeight: 1.6, cursor: "pointer", marginBottom: 18 }}
+        >
+          <input
+            type="checkbox"
+            checked={accepted}
+            onChange={(e) => setAccepted(e.target.checked)}
+            onClick={(e) => e.stopPropagation()}
+            style={{ marginTop: 3 }}
+          />
+          <span>
+            {tr("acceptBothPre")}
+            <PolicyLink label={tr("privacyLabel")} title="Privacy Policy" content={PRIVACY_POLICY} />
+            {tr("acceptBothMid")}
+            <PolicyLink label={tr("termsLabel")} title="Terms of Use" content={TERMS} />
+            {tr("acceptBothPost")}
+          </span>
         </div>
-        <button onClick={onAccept} disabled={!c1 || !c2} style={{ width: "100%", padding: 13, background: c1 && c2 ? "#0F6E56" : "var(--color-background-secondary)", color: c1 && c2 ? "#fff" : "var(--color-text-tertiary)", border: "none", borderRadius: 10, fontSize: 15, fontWeight: 500, cursor: c1 && c2 ? "pointer" : "not-allowed" }}>
+
+        <button
+          onClick={onAccept}
+          disabled={!accepted}
+          style={{ width: "100%", padding: 13, background: accepted ? "#0F6E56" : "var(--color-background-secondary)", color: accepted ? "#fff" : "var(--color-text-tertiary)", border: "none", borderRadius: 10, fontSize: 15, fontWeight: 500, cursor: accepted ? "pointer" : "not-allowed" }}
+        >
           {tr("startResearching")}
         </button>
       </div>
