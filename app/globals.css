@@ -178,3 +178,30 @@ input, select, textarea {
   .sllm-amazon-row { align-items: stretch !important; }
   .sllm-amazon-row > a { width: 100%; text-align: center; box-sizing: border-box; padding: 11px 16px !important; }
 }
+
+
+/* ============ iOS Safari specifics (2026-07-29) ============
+   1. iOS auto-zooms the viewport whenever a focused input has a font-size
+      below 16px. Our search box was 14px, so every iPhone user tapping the
+      main input got an unwanted zoom that left the page scrolled sideways.
+      Forcing 16px on small screens is the standard cure — it also happens
+      to be more readable on a phone.
+   2. -webkit-text-size-adjust stops iOS inflating body text in landscape.
+   3. Tap highlight suppressed so buttons don't flash grey boxes. */
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+@media (max-width: 640px) {
+  input,
+  textarea,
+  select {
+    font-size: 16px !important;
+  }
+}
+
+button,
+a[role="button"],
+.sllm-example-chip {
+  -webkit-tap-highlight-color: rgba(0, 0, 0, 0.06);
+}
