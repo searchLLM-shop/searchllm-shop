@@ -53,6 +53,14 @@ export default function ResearchTab({ maxSearches, searchCount, onSearchComplete
     "maroon ethnic dress under ₹800 for a festive occasion",
     "mixer grinder around ₹3,000 for a small kitchen",
   ];
+  // Chips are separate from the rotating placeholders: they must fit one
+  // line on a 360px screen, so they're deliberately shorter while still
+  // modelling the product + constraint + budget shape.
+  const CHIP_EXAMPLES = [
+    "face wash for oily skin under ₹300",
+    "55-inch TV around ₹1L",
+    "gamepad under ₹1,500",
+  ];
   const [placeholderIdx, setPlaceholderIdx] = useState(0);
   useEffect(() => {
     if (query) return; // don't churn the interval while they type
@@ -165,11 +173,12 @@ export default function ResearchTab({ maxSearches, searchCount, onSearchComplete
             <a href="/points" style={{ color: "var(--color-text-tertiary)", textDecoration: "underline" }}>Points</a> every time you ask.
           </p>
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "center", marginTop: 16 }}>
-            {PLACEHOLDER_EXAMPLES.slice(0, 3).map((ex) => (
+            {CHIP_EXAMPLES.map((ex) => (
               <button
                 key={ex}
                 onClick={() => setQuery(ex)}
-                style={{ background: "none", border: "0.5px solid var(--color-border-tertiary)", borderRadius: 14, padding: "5px 11px", fontSize: 12, color: "var(--color-text-tertiary)", cursor: "pointer" }}
+                className="sllm-example-chip"
+                style={{ background: "none", border: "0.5px solid var(--color-border-tertiary)", borderRadius: 14, padding: "5px 11px", fontSize: 12, color: "var(--color-text-tertiary)", cursor: "pointer", maxWidth: "100%", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}
               >
                 {ex}
               </button>
@@ -505,7 +514,7 @@ export default function ResearchTab({ maxSearches, searchCount, onSearchComplete
           )}
           {result.amazonBrowse && (
             <div style={{ border: "0.5px solid var(--color-border-tertiary)", borderRadius: 10, margin: "12px 0", overflow: "hidden" }}>
-              <div style={{ padding: "12px 14px", display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap", justifyContent: "space-between" }}>
+              <div className="sllm-amazon-row" style={{ padding: "12px 14px", display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap", justifyContent: "space-between" }}>
                 <div style={{ minWidth: 0 }}>
                   <div style={{ fontSize: 10, letterSpacing: "0.05em", textTransform: "uppercase", color: "var(--color-text-tertiary)", marginBottom: 3 }}>
                     Not in our partner inventory — available on Amazon

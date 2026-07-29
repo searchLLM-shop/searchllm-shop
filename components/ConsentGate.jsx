@@ -6,7 +6,7 @@ import { t } from "@/lib/i18n";
 
 function Modal({ title, content, onClose }) {
   return (
-    <div style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.55)", display: "flex", alignItems: "flex-start", justifyContent: "center", zIndex: 100, padding: 20, overflowY: "auto" }}>
+    <div className="sllm-consent-modal" style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.55)", display: "flex", alignItems: "flex-start", justifyContent: "center", zIndex: 100, padding: 20, overflowY: "auto" }}>
       <div style={{ background: "var(--color-background-primary)", borderRadius: 14, border: "0.5px solid var(--color-border-tertiary)", padding: 24, maxWidth: 560, width: "100%", marginTop: 10 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
           <h2 style={{ margin: 0, fontSize: 15, fontWeight: 500 }}>{title}</h2>
@@ -47,9 +47,9 @@ export default function ConsentGate({ onAccept, locale = "en" }) {
   return (
     <div style={{ position: "relative", minHeight: 560 }}>
       {modal && <Modal title={modal.title} content={modal.content} onClose={() => setModal(null)} />}
-      <div style={{ maxWidth: 460, margin: "0 auto", padding: "44px 24px 32px", textAlign: "center" }}>
+      <div className="sllm-consent-body" style={{ maxWidth: 460, margin: "0 auto", padding: "44px 24px 32px", textAlign: "center" }}>
         <div style={{ fontSize: 13, fontWeight: 500, color: "#0F6E56", letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 14 }}>SearchLLM</div>
-        <h1 style={{ fontSize: 24, fontWeight: 500, margin: "0 0 10px", lineHeight: 1.3 }}>
+        <h1 className="sllm-consent-title" style={{ fontSize: 24, fontWeight: 500, margin: "0 0 10px", lineHeight: 1.3 }}>
           {tr("tagline1")}<br />{tr("tagline2")}<br />{tr("tagline3")}
         </h1>
         <p style={{ color: "var(--color-text-secondary)", fontSize: 14, marginBottom: 26, lineHeight: 1.6 }}>

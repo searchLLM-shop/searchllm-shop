@@ -153,3 +153,28 @@ input, select, textarea {
 @media (max-width: 640px) {
   .sllm-install-btn { font-size: 11px !important; padding: 2px 9px !important; }
 }
+
+
+/* --- Mobile pass for the consent gate and landing state (2026-07-29) ---
+   Measured against a 360px viewport: the 24px tagline wrapped mid-sentence
+   and the longest example chip exceeded the usable width. */
+@media (max-width: 640px) {
+  .sllm-consent-title { font-size: 20px !important; }
+  .sllm-consent-body { padding: 32px 16px 26px !important; }
+
+  /* Chips stay one line each and never exceed the screen */
+  .sllm-example-chip { max-width: calc(100vw - 48px) !important; }
+}
+
+/* The consent modal is absolutely positioned inside the app shell; on short
+   phone viewports its body must scroll rather than overflow the card. */
+@media (max-width: 640px) {
+  .sllm-consent-modal { padding: 12px !important; }
+  .sllm-consent-modal pre { max-height: 46vh !important; }
+}
+
+/* Amazon fallback CTA: full-width and thumb-friendly once the row wraps */
+@media (max-width: 640px) {
+  .sllm-amazon-row { align-items: stretch !important; }
+  .sllm-amazon-row > a { width: 100%; text-align: center; box-sizing: border-box; padding: 11px 16px !important; }
+}
