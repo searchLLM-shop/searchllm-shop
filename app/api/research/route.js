@@ -17,7 +17,7 @@ import { findTopMatchingListings, buildClientListingPayload, extractQueryTerms }
 import { creditSearchPoints, getGuestDayPoints, getLifecycleStatus, hashIp, recordAndCheckIp, checkAndConsumeQuota } from "@/lib/db";
 import { getOrCreateGuestId } from "@/lib/guestId";
 import { PLANS , LOYALTY } from "@/lib/constants";
-import { shouldSearch, searchDepth, isFactSensitive, webSearch, formatSearchContext, THIN_RATING_COUNT } from "@/lib/search";
+import { shouldSearch, searchDepth, isFactSensitive, webSearch, reviewSearchProvider, formatSearchContext, THIN_RATING_COUNT } from "@/lib/search";
 
 const SYSTEM_PROMPT = `You are SearchLLM, a shopping research assistant whose entire reputation rests on being honest, not on maximizing affiliate revenue.
 
@@ -295,7 +295,10 @@ export async function POST(req) {
       if (leadIsThin) {
         const name = `${lead.brand || ""} ${lead.product || ""}`.trim().slice(0, 90);
         jobs.push(
-          webSearch(`${name} review`, 3, userCountry).then((res) =>
+          // Reputation lookup deliberately uses the review provider (Brave
+          // by default) for its forum-discussion results, while the main
+          // factual query above uses the faster, cheaper primary provider.
+          webSearch(`${name} review`, 3, userCountry, reviewSearchProvider()).then((res) =>
             formatSearchContext(res, `What reviewers say about ${name} (this product has only ${lead.ratingCount || 0} ratings on the retailer, so treat it as thin evidence)`)
           )
         );
