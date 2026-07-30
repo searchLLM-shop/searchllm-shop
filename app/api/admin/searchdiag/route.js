@@ -30,11 +30,15 @@ export async function GET(req) {
   const count = Math.min(Number(params.get("count")) || 4, 10);
 
   const result = await webSearchDiag(q, provider, count, params.get("country") || "IN");
+  // Rough per-call cost, so the comparison weighs money as well as quality.
+  const COST_USD = { brave: 0.005, serper: 0.001, serplify: 0.005, tavily: 0.005 };
   return Response.json({
     activeProvider: searchProvider(),
     testedProvider: provider,
     query: q,
     parsedCount: result.parsed?.length ?? 0,
+    approxCostPerCallUsd: COST_USD[provider] ?? null,
+    hasShoppingBlock: Boolean(result.raw?.shopping?.length),
     ...result,
   });
 }
