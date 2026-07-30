@@ -38,7 +38,7 @@ Price is not quality. A cheap product that does the job well is a legitimate rec
   "taskType": "research|creative|technical|predictive|analysis",
   "learnings": ["short reusable knowledge fragment", "another one", "a third"]
 }
-Provide 2-3 alternatives that are genuinely relevant to the specific product the person asked about — never generic or unrelated items.
+Provide 2-3 alternatives that are genuinely relevant to the specific product the person asked about — never generic or unrelated items. NEVER list the product you selected as sponsoredChoiceId among the alternatives: it is already shown to the reader as the pick, and repeating it there makes the comparison look padded.
 
 PRICE HONESTY — STRICT. You may put a figure in an alternative's "price" field ONLY if that figure appears in the live web results provided below. If the results do not give you a price for that product, return an empty string. Never price a product from memory: your price knowledge is stale by definition and wrong more often than not for Indian retail, where discounting is heavy and constant. An empty price is a correct and complete answer.
 The same rule applies to PACK SIZES and quantities. Do not write "for 1 litre", "for 1-1.5L", "500g" or any other quantity unless that exact packaging appears in the results — Indian detergents, foods and toiletries are sold in pack sizes you will guess wrong (a liquid detergent may be sold by weight, a "1 litre" product may only exist as 3kg). If you know the price but not the pack size, give the price alone. If you know neither, give nothing.
@@ -388,6 +388,13 @@ export async function POST(req) {
       body: JSON.stringify({
         model: "claude-sonnet-4-6",
         max_tokens: 1800,
+        // Low temperature deliberately (2026-07-30). The default of 1.0 made
+        // identical questions produce materially different verdicts run to
+        // run — one call selected a product, the next declined entirely.
+        // A shopper who re-asks must not get a contradictory answer, and we
+        // can't calibrate a prompt against a moving target. Not zero: a
+        // little variation keeps the prose from reading mechanically.
+        temperature: 0.2,
         system: SYSTEM_PROMPT,
         messages: [{ role: "user", content: userContent }],
       }),
@@ -497,7 +504,23 @@ export async function POST(req) {
       body: parsed.reasoning,
       whoFor: parsed.whoItsFor,
       whoSkip: parsed.whoShouldSkip,
-      alternatives: suppressAlternatives ? [] : (parsed.alternatives || []),
+      // Safety net for the prompt rule above: drop any alternative that
+      // names the product we already showed as the sponsored pick.
+      alternatives: suppressAlternatives
+        ? []
+        : (parsed.alternatives || []).filter((a) => {
+            if (!chosenMatch || !a?.name) return true;
+            const alt = String(a.name).toLowerCase().replace(/[^a-z0-9 ]/g, " ");
+            const picked = `${chosenMatch.brand || ""} ${chosenMatch.product || ""}`
+              .toLowerCase()
+              .replace(/[^a-z0-9 ]/g, " ");
+            const altWords = new Set(alt.split(/\s+/).filter((w) => w.length > 3));
+            const pickWords = new Set(picked.split(/\s+/).filter((w) => w.length > 3));
+            if (!altWords.size) return true;
+            let shared = 0;
+            for (const w of altWords) if (pickWords.has(w)) shared++;
+            return shared / altWords.size < 0.6; // mostly the same product
+          }),
       country: userCountry,
     });
 

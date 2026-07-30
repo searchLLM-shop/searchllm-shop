@@ -194,6 +194,7 @@ async function handleMessage(msg) {
       body: JSON.stringify({
         model: "claude-sonnet-4-6",
         max_tokens: 900,
+        temperature: 0.2,   // same reproducibility rule as the web channel
         system: WA_SYSTEM_PROMPT,
         messages: [{ role: "user", content: userContent }],
       }),
