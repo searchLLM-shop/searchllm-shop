@@ -18,6 +18,7 @@ import { creditSearchPoints, getGuestDayPoints, getLifecycleStatus, hashIp, reco
 import { getOrCreateGuestId } from "@/lib/guestId";
 import { PLANS, LOYALTY, dailyPickLimit } from "@/lib/constants";
 import { shouldSearch, searchDepth, isFactSensitive, webSearch, reviewSearchProvider, formatSearchContext, THIN_RATING_COUNT } from "@/lib/search";
+import { extractIntent, formatIntentContext } from "@/lib/queryIntent";
 
 const SYSTEM_PROMPT = `You are SearchLLM, a shopping research assistant whose entire reputation rests on being honest, not on maximizing affiliate revenue.
 
@@ -38,7 +39,7 @@ Price is not quality. A cheap product that does the job well is a legitimate rec
   "taskType": "research|creative|technical|predictive|analysis",
   "learnings": ["short reusable knowledge fragment", "another one", "a third"]
 }
-Provide 2-3 alternatives that are genuinely relevant to the specific product the person asked about — never generic or unrelated items. NEVER list the product you selected as sponsoredChoiceId among the alternatives: it is already shown to the reader as the pick, and repeating it there makes the comparison look padded.
+Provide 2-3 alternatives that are genuinely relevant to the specific product the person asked about — never generic or unrelated items. Where you have a genuine choice, prefer alternatives that appear in the live web results below — those are the ones you can quote a real price for, and an alternative with a price is more useful to the reader than one without. NEVER list the product you selected as sponsoredChoiceId among the alternatives: it is already shown to the reader as the pick, and repeating it there makes the comparison look padded.
 
 WHAT THE PERSON IS ACTUALLY OPTIMISING FOR — work this out before you judge anything, because getting it wrong makes an otherwise correct answer useless.
 
@@ -247,9 +248,20 @@ export async function POST(req) {
       }
     }
 
+    // Understand the query BEFORE retrieving. The intent pass turns
+    // "women maroon dress for wedding" into a product type, hard
+    // requirements, an occasion and an expected price band — so the matcher
+    // searches on the right words and the answering model learns that the
+    // occasion implies a product tier, not merely another keyword.
+    const intentSource = [query, vision?.productType, vision?.description].filter(Boolean).join(" ");
+    const intent = await extractIntent(intentSource);
+
     // Search terms come from the typed query and, when present, from what the
     // image turned out to be. A photo with no typed question still searches.
+    // Intent terms ADD precision on top — they never replace the mechanical
+    // extraction, so a failed intent call costs nothing.
     const queryTerms = [
+      ...(intent?.retrievalTerms || []).flatMap((t) => t.split(/\s+/)),
       ...extractQueryTerms(query),
       ...(vision?.isProduct ? vision.searchTerms : []),
       ...(vision?.productType ? extractQueryTerms(vision.productType) : []),
@@ -311,7 +323,7 @@ export async function POST(req) {
       const wantSearch = shouldSearch() || isFactSensitive(query);
       if (wantSearch) {
         jobs.push(
-          webSearch(query, searchDepth(query), userCountry).then((res) =>
+          webSearch(intent?.webQuery || query, searchDepth(query), userCountry).then((res) =>
             formatSearchContext(res, "Live web results for this question")
           )
         );
@@ -387,7 +399,7 @@ export async function POST(req) {
             )
             .join("\n")}\nJudge each exactly as you would if no money were involved. Choose the ONE that genuinely answers the question, or none.`
         : ""
-    }${searchContext}`;
+    }${formatIntentContext(intent)}${searchContext}`;
 
     const resp = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
