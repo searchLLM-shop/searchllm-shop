@@ -17,7 +17,7 @@ import { findTopMatchingListings, buildClientListingPayload, extractQueryTerms }
 import { creditSearchPoints, getGuestDayPoints, getLifecycleStatus, hashIp, recordAndCheckIp, checkAndConsumeQuota } from "@/lib/db";
 import { getOrCreateGuestId } from "@/lib/guestId";
 import { PLANS, LOYALTY, dailyPickLimit } from "@/lib/constants";
-import { shouldSearch, searchDepth, isFactSensitive, webSearch, reviewSearchProvider, formatSearchContext, THIN_RATING_COUNT } from "@/lib/search";
+import { shouldSearch, searchDepth, isFactSensitive, webSearch, contextSearchProvider, priceSearchProvider, reviewSearchProvider, formatSearchContext, THIN_RATING_COUNT } from "@/lib/search";
 import { extractIntent, formatIntentContext } from "@/lib/queryIntent";
 
 const SYSTEM_PROMPT = `You are SearchLLM, a shopping research assistant whose entire reputation rests on being honest, not on maximizing affiliate revenue.
@@ -40,6 +40,16 @@ Price is not quality. A cheap product that does the job well is a legitimate rec
   "learnings": ["short reusable knowledge fragment", "another one", "a third"]
 }
 Provide 2-3 alternatives that are genuinely relevant to the specific product the person asked about — never generic or unrelated items. Where you have a genuine choice, prefer alternatives that appear in the live web results below — those are the ones you can quote a real price for, and an alternative with a price is more useful to the reader than one without. NEVER list the product you selected as sponsoredChoiceId among the alternatives: it is already shown to the reader as the pick, and repeating it there makes the comparison look padded.
+
+TWO JUDGMENTS, BOTH REQUIRED, AND THEY OFTEN DISAGREE.
+
+First judgment — what is actually good right now. Decide this from the evidence in front of you: the live prices, what reviewers and owners report, rating counts, what the market currently offers at this tier. Not from what was true a year ago, and not from brand reputation alone. This is the question "what would a knowledgeable person call a good product today".
+
+Second judgment — what is right for THIS person. Their occasion, their stated requirements, their constraints, what they said matters. A product can be excellent and still be wrong for them; a product can be unremarkable and be exactly right.
+
+Hold both, and when they diverge, say so plainly rather than collapsing them. "The best plant-based detergent is Born Good; the best cleaner overall is Ariel Matic; you asked for plant-based, so Born Good is your answer" is a better paragraph than either judgment alone. The Good for / Skip if lines exist to carry this divergence — use them for it.
+
+Where the person's framing rests on an assumption the evidence contradicts, correct it kindly and briefly, then answer the question they meant. Do not simply agree, and do not lecture.
 
 WHAT THE PERSON IS ACTUALLY OPTIMISING FOR — work this out before you judge anything, because getting it wrong makes an otherwise correct answer useless.
 
@@ -302,43 +312,52 @@ export async function POST(req) {
       }).catch(() => {});
     }
 
-    // --- Live evidence: two independent reasons to search -----------------
-    // 1. The QUERY asks something time-sensitive or evaluative (prices,
-    //    comparisons, quality, known problems) — see shouldSearch.
-    // 2. The leading partner candidate has THIN rating evidence. A product
-    //    with 27 ratings gives the model nothing real to judge from, and
-    //    that's exactly when it starts inventing confident specifics. A
-    //    targeted review search gives it something true to work with.
-    // Both run in parallel and both degrade to silence on any failure —
-    // live search improves an answer, it must never be able to break one.
+    // --- Retrieval: two arms, fired in parallel -------------------------
+    //
+    // One search engine cannot serve both jobs. Perspective ("is this any
+    // good, what goes wrong with it, what do owners say") and price tail
+    // ("what does it cost right now in India") reward completely different
+    // queries and different indexes — measured 2026-07-30: Brave alone
+    // returns forum discussions, Serper alone reliably surfaces Indian
+    // price-aggregator pages with live rupee figures. Running both, on two
+    // queries written by the intent layer for their separate purposes,
+    // gives the synthesis layer two genuinely different views instead of
+    // one view twice.
+    //
+    // A third, conditional arm: when the leading partner candidate has thin
+    // rating evidence, a targeted review lookup on that exact product.
+    //
+    // All arms run concurrently and every one degrades to silence — live
+    // retrieval improves an answer, it must never be able to prevent one.
     let searchContext = "";
     let searchUsed = false;
     try {
       const lead = topMatches[0]?.listing;
       const leadIsThin = lead && Number(lead.ratingCount || 0) < THIN_RATING_COUNT;
-      const jobs = [];
-      // Default path: retrieve for every query, deeper when the question is
-      // explicitly about facts. Falls back to keyword-gated searching only
-      // if SEARCH_EVERY_QUERY=0 is set.
       const wantSearch = shouldSearch() || isFactSensitive(query);
+      const jobs = [];
+
       if (wantSearch) {
+        // Arm 1 — perspective.
         jobs.push(
-          webSearch(intent?.webQuery || query, searchDepth(query), userCountry).then((res) =>
-            formatSearchContext(res, "Live web results for this question")
-          )
+          webSearch(intent?.contextQuery || query, searchDepth(query), userCountry, contextSearchProvider())
+            .then((res) => formatSearchContext(res, "What the web says about this need (perspective, comparisons, owner reports)"))
+        );
+        // Arm 2 — price tail.
+        jobs.push(
+          webSearch(intent?.priceQuery || query, 4, userCountry, priceSearchProvider())
+            .then((res) => formatSearchContext(res, "Current prices found for this product in India (use these figures, not your recollection)"))
         );
       }
       if (leadIsThin) {
         const name = `${lead.brand || ""} ${lead.product || ""}`.trim().slice(0, 90);
         jobs.push(
-          // Reputation lookup deliberately uses the review provider (Brave
-          // by default) for its forum-discussion results, while the main
-          // factual query above uses the faster, cheaper primary provider.
           webSearch(`${name} review`, 3, userCountry, reviewSearchProvider()).then((res) =>
             formatSearchContext(res, `What reviewers say about ${name} (this product has only ${lead.ratingCount || 0} ratings on the retailer, so treat it as thin evidence)`)
           )
         );
       }
+
       if (jobs.length) {
         const parts = (await Promise.all(jobs)).filter(Boolean);
         searchContext = parts.join("");
