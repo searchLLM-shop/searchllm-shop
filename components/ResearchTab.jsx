@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useRef, useEffect } from "react";
 import { trackEvent } from "@/lib/track";
+import { LOYALTY } from "@/lib/constants";
 import { t } from "@/lib/i18n";
 
 const STEPS = ["Reading your question", "Checking current options", "Weighing trade-offs", "Writing the honest version"];
@@ -488,7 +489,11 @@ export default function ResearchTab({ maxSearches, searchCount, onSearchComplete
           {result.rewards && (
             <div style={{ fontSize: 12, color: "#854F0B", background: "#FDF8EF", border: "0.5px solid #EADFC8", borderRadius: 8, padding: "8px 12px", margin: "10px 0" }}>
               {result.rewards.kind === "user" ? (
-                <>✨ You earned <strong>{result.rewards.earned} points</strong> for this pick — {result.rewards.todayTotal} today. Clicking a recommended product link earns 10 more. <a href="/points" style={{ color: "#854F0B", textDecoration: "underline" }}>How points work</a></>
+                result.rewards.earned > 0 ? (
+                  <>✨ You earned <strong>{result.rewards.earned} points</strong> for this pick — {result.rewards.todayTotal} today. Clicking a recommended product link earns {LOYALTY.SEARCH_POINTS.CLICK_POINTS} more. <a href="/points" style={{ color: "#854F0B", textDecoration: "underline" }}>How points work</a></>
+                ) : (
+                  <>You&apos;ve reached the {LOYALTY.ENGAGEMENT_POINTS_LIFETIME_CAP}-point maximum for searching and clicking. Points from confirmed purchases have no limit and keep adding up. <a href="/points" style={{ color: "#854F0B", textDecoration: "underline" }}>How points work</a></>
+                )
               ) : (
                 <>✨ You&apos;ve earned <strong>{result.rewards.guestToday} points</strong> today as a guest — they expire at midnight. <strong>Sign up free to keep them</strong>, and they&apos;ll keep adding up.</>
               )}
@@ -520,11 +525,11 @@ export default function ResearchTab({ maxSearches, searchCount, onSearchComplete
                     Not in our partner inventory — available on Amazon
                   </div>
                   <div style={{ fontSize: 14, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis" }}>
-                    {result.query}
+                    {result.amazonBrowse.term}
                   </div>
                 </div>
                 <a
-                  href={result.amazonBrowse}
+                  href={result.amazonBrowse.url}
                   target="_blank"
                   rel="noopener noreferrer sponsored"
                   onClick={() => trackEvent("amazon_browse_click", {})}

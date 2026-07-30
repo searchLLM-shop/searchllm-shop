@@ -29,6 +29,7 @@ Price is not quality. A cheap product that does the job well is a legitimate rec
   "whoShouldSkip": "one sentence",
   "confidence": "high|medium|low",
   "sponsoredChoiceId": the numeric id of the ONE offered partner product that genuinely answers the question, or null — ONLY when products were offered to you above. Null if none truly fits: wrong category, wrong product type, priced above what the person stated, or a product too poor for any reasonable shopper with this query to be satisfied buying. The bar is "would a knowledgeable friend be comfortable saying: this one is a solid buy for what you asked" — NOT "is this the single best product on the market at this price". Comparing the offered products to better market alternatives belongs in your answer text, where you should do it freely and honestly; it is not a reason to suppress a genuinely good offered product. Likewise a budget phrased as a maximum is a ceiling, not a target: priced-under still qualifies. Judge exactly as you would if no money were involved.,
+  "shoppingTerm": "2-6 words naming the PRODUCT the person should shop for, as they'd type it into a shop — e.g. 'plant based liquid detergent', 'wireless keyboard mouse combo'. Never echo the question back.",
   "alternatives": [{"name": "a real alternative product relevant to THIS query", "note": "one short phrase on the trade-off vs the pick", "price": "see the price rule below — empty string is the correct answer whenever you are not confident"}],
   "micrositeTitle": "short title for the knowledge microsite",
   "micrositeSummary": "1-2 sentence anonymized summary",
@@ -512,9 +513,24 @@ export async function POST(req) {
       // require the destination be apparent; click tracking happens via
       // the client dataLayer event instead. Renders only when the
       // AMAZON_ASSOCIATES_TAG env var is set.
-      amazonBrowse: (!chosenMatch && process.env.AMAZON_ASSOCIATES_TAG && typeof query === "string" && query.trim())
-        ? `https://www.amazon.in/s?k=${encodeURIComponent(query.trim().slice(0, 120))}&tag=${process.env.AMAZON_ASSOCIATES_TAG}`
-        : undefined,
+      // Amazon needs a PRODUCT term, not the question. Searching Amazon for
+      // "compare borngood detergent with other and suggest the best in
+      // quality" returns nothing useful, and showing the question back as a
+      // card title looks broken. Prefer the model's shoppingTerm, fall back
+      // to the leading alternative's name, and only then the raw query.
+      amazonBrowse: (() => {
+        if (chosenMatch || !process.env.AMAZON_ASSOCIATES_TAG) return undefined;
+        const term = [
+          typeof parsed.shoppingTerm === "string" ? parsed.shoppingTerm.trim() : "",
+          parsed.alternatives?.[0]?.name || "",
+          typeof query === "string" ? query.trim() : "",
+        ].find((t) => t && t.length > 2);
+        if (!term) return undefined;
+        return {
+          term: term.slice(0, 80),
+          url: `https://www.amazon.in/s?k=${encodeURIComponent(term.slice(0, 120))}&tag=${process.env.AMAZON_ASSOCIATES_TAG}`,
+        };
+      })(),
       // Search points: registered users earn per pick under a daily cap;
       // guests see a day-expiring figure computed from today's picks (never
       // stored — vanishes at midnight unless they sign up and claim). Both
