@@ -4,7 +4,7 @@ import "./globals.css";
 
 export const metadata = {
   title: "SearchLLM — shopping research, honestly",
-  description: "One honest pick, the alternatives we didn't choose, and why — for every shopping question.",
+  description: "An AI shopping answer engine. One researched answer for every shopping question — never limited to the brands that pay us. We get paid only if you shop.",
   // The manifest makes the site installable ("Add to Home Screen") — the
   // free 80% of "we need a mobile app": standalone window, home-screen
   // icon, brand splash. A native app can come later; this ships today.

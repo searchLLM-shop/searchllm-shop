@@ -1,11 +1,16 @@
 // app/alt/route.js
 //
-// Outbound redirect for ALTERNATIVE products — the ones we recommend with
-// no affiliate relationship. Deliberately links to a neutral web search
-// (never a monetized destination): the alternatives section is the proof
-// that advice comes before revenue, and that only stays true if these
-// links earn us nothing. What we DO take is the count — per-brand click
-// volume is the evidence that convinces a brand manager to list.
+// Outbound redirect for ALTERNATIVE products — the ones the model chose
+// without any commercial input. These now carry the Amazon Associates tag,
+// so they CAN earn a commission; the on-page disclosure was rewritten to
+// say so plainly rather than claiming we earn nothing from them.
+//
+// The honesty claim that still holds, and the one that actually matters:
+// the model selects these alternatives with no knowledge of what we earn
+// on anything. Monetizing the click doesn't touch the selection.
+//
+// Click counts are still recorded as brand-demand evidence — per-product
+// volume is what convinces a brand manager to list with us.
 // No points, no gates: nothing here to game, nothing worth blocking.
 
 import { auth } from "@clerk/nextjs/server";
@@ -38,6 +43,28 @@ export async function GET(req) {
     console.error("Alt click record failed:", err.message);
   }
 
-  const q = encodeURIComponent(`${brand} ${product} buy online india`.trim());
-  return Response.redirect(`https://www.google.com/search?q=${q}`, 302);
+  // Destination policy (2026-07-30): send shoppers to Amazon, where they can
+  // actually buy, rather than to a search page they have to work through.
+  //
+  // A note on the fallback you might expect here: "Amazon, else the brand's
+  // own site, else Google" can't be implemented reliably without querying
+  // Amazon first — and that needs PA-API access, which arrives after the
+  // qualifying-sales threshold. Until then an Amazon SEARCH is the honest
+  // equivalent: it lands on real listings when they exist and on Amazon's
+  // own "no results" page when they don't, which is a better dead end than
+  // a Google page. Revisit once PA-API keys are live.
+  const term = `${brand} ${product}`.trim();
+  const tag = process.env.AMAZON_ASSOCIATES_TAG;
+  if (tag) {
+    return Response.redirect(
+      `https://www.amazon.in/s?k=${encodeURIComponent(term.slice(0, 120))}&tag=${tag}`,
+      302
+    );
+  }
+  // No Associates tag configured — fall back to a plain web search rather
+  // than sending untagged traffic.
+  return Response.redirect(
+    `https://www.google.com/search?q=${encodeURIComponent(`${term} buy online india`)}`,
+    302
+  );
 }

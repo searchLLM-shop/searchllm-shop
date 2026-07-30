@@ -49,9 +49,16 @@ export default function ConsentGate({ onAccept, locale = "en" }) {
       {modal && <Modal title={modal.title} content={modal.content} onClose={() => setModal(null)} />}
       <div className="sllm-consent-body" style={{ maxWidth: 460, margin: "0 auto", padding: "44px 24px 32px", textAlign: "center" }}>
         <div style={{ fontSize: 13, fontWeight: 500, color: "#0F6E56", letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 14 }}>SearchLLM</div>
-        <h1 className="sllm-consent-title" style={{ fontSize: 24, fontWeight: 500, margin: "0 0 10px", lineHeight: 1.3 }}>
-          {tr("tagline1")}<br />{tr("tagline2")}<br />{tr("tagline3")}
-        </h1>
+        <div className="sllm-consent-title" style={{ margin: "0 0 14px" }}>
+          {[1, 2, 3].map((n) => (
+            <div key={n} style={{ marginBottom: 10 }}>
+              <div style={{ fontSize: 21, fontWeight: 500, lineHeight: 1.3 }}>{tr(`tagline${n}`)}</div>
+              <div style={{ fontSize: 13, color: "var(--color-text-tertiary)", lineHeight: 1.5, marginTop: 1 }}>
+                {tr(`never${n}`)}
+              </div>
+            </div>
+          ))}
+        </div>
         <p style={{ color: "var(--color-text-secondary)", fontSize: 14, marginBottom: 26, lineHeight: 1.6 }}>
           {tr("subtitle")}
         </p>

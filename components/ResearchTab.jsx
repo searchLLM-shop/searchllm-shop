@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useRef, useEffect } from "react";
 import { trackEvent } from "@/lib/track";
-import { LOYALTY } from "@/lib/constants";
+import { LOYALTY, planPriceLabel } from "@/lib/constants";
 import { t } from "@/lib/i18n";
 
 const STEPS = ["Reading your question", "Checking current options", "Weighing trade-offs", "Writing the honest version"];
@@ -170,7 +170,7 @@ export default function ResearchTab({ maxSearches, searchCount, onSearchComplete
             Ask a real shopping question. Get one clear, researched answer.
           </p>
           <p style={{ fontSize: 13, color: "var(--color-text-tertiary)", margin: "7px 0 0", lineHeight: 1.7 }}>
-            Live prices and reviews checked. Paid only when you buy.{" "}
+            Live prices and reviews checked. Paid only when you shop.{" "}
             <a href="/points" style={{ color: "var(--color-text-tertiary)", textDecoration: "underline" }}>Points</a> every time you ask.
           </p>
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "center", marginTop: 16 }}>
@@ -285,7 +285,7 @@ export default function ResearchTab({ maxSearches, searchCount, onSearchComplete
           <div className="sllm-gate-actions" style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
             {gate.signedIn ? (
               <a href="/?upgrade=1" style={{ background: "#0F6E56", color: "#fff", borderRadius: 8, padding: "8px 16px", fontSize: 13, fontWeight: 500, textDecoration: "none" }}>
-                Upgrade to Plus — ₹499/year
+                Upgrade to Plus — {planPriceLabel()}
               </a>
             ) : (
               <span style={{ fontSize: 13, fontWeight: 500, color: "#0F6E56" }}>Sign in (top right) to upgrade — your points come with you.</span>
@@ -544,14 +544,36 @@ export default function ResearchTab({ maxSearches, searchCount, onSearchComplete
             </div>
           )}
           {result.alternativesWithheld && (
-            <div style={{ fontSize: 12, color: "var(--color-text-tertiary)", padding: "10px 12px", border: "0.5px solid var(--color-border-tertiary)", borderRadius: 8, margin: "10px 0" }}>
-              Alternative suggestions are paused on your account — completing a purchase through any recommendation restores them. Your research and recommendations continue as normal.
+            <div style={{ fontSize: 12, color: "var(--color-text-secondary)", padding: "12px 14px", border: "0.5px solid var(--color-border-tertiary)", borderRadius: 8, margin: "10px 0", lineHeight: 1.7 }}>
+              Alternative suggestions are paused on your account — you&apos;ve used your full cycle allowance without a purchase. Your research and recommendations continue as normal.
+              {/* Plus members are never blocked from researching, so this is
+                  an option rather than a wall: a purchase restores the
+                  suggestions free, Increase Usage restores them now. */}
+              <div className="sllm-gate-actions" style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap", alignItems: "center" }}>
+                <button
+                  disabled={gateBusy}
+                  onClick={async () => {
+                    setGateBusy(true);
+                    try {
+                      const resp = await fetch("/api/checkout", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ type: "recharge" }) });
+                      const j = await resp.json();
+                      if (j.url) window.location.href = j.url;
+                    } finally { setGateBusy(false); }
+                  }}
+                  style={{ background: "#0F6E56", color: "#fff", border: "none", borderRadius: 8, padding: "7px 14px", fontSize: 12, fontWeight: 500, cursor: "pointer", opacity: gateBusy ? 0.5 : 1 }}
+                >
+                  Increase Usage — ₹{LOYALTY.RECHARGE_PRICE_INR} to restore them
+                </button>
+                <span style={{ fontSize: 11, color: "var(--color-text-tertiary)" }}>
+                  Or complete a purchase through any recommendation — that restores them free.
+                </span>
+              </div>
             </div>
           )}
           {result.alternatives?.length > 0 && (
             <div style={{ marginBottom: 16 }}>
               <div style={{ fontSize: 11, fontWeight: 500, color: "var(--color-text-secondary)", marginBottom: 10, letterSpacing: "0.04em", textTransform: "uppercase" }}>
-                We also considered (no affiliate relationship — links open a plain web search, and we earn nothing from them). Prices here are rough estimates, not live — check the current price before deciding.</div>
+                We also considered — chosen by the AI with no knowledge of what we earn. These links go to Amazon and may earn us a commission; your price never changes. Any prices shown are rough estimates, not live.</div>
               {result.alternatives.map((a, i) => (
                 <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0", borderTop: i > 0 ? "0.5px solid var(--color-border-tertiary)" : "none" }}>
                   <div>

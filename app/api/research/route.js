@@ -16,7 +16,7 @@ import { identifyProductFromImage } from "@/lib/visionSearch";
 import { findTopMatchingListings, buildClientListingPayload, extractQueryTerms } from "@/lib/listingMatcher";
 import { creditSearchPoints, getGuestDayPoints, getLifecycleStatus, hashIp, recordAndCheckIp, checkAndConsumeQuota } from "@/lib/db";
 import { getOrCreateGuestId } from "@/lib/guestId";
-import { PLANS , LOYALTY } from "@/lib/constants";
+import { PLANS, LOYALTY, dailyPickLimit } from "@/lib/constants";
 import { shouldSearch, searchDepth, isFactSensitive, webSearch, reviewSearchProvider, formatSearchContext, THIN_RATING_COUNT } from "@/lib/search";
 
 const SYSTEM_PROMPT = `You are SearchLLM, a shopping research assistant whose entire reputation rests on being honest, not on maximizing affiliate revenue.
@@ -29,7 +29,7 @@ Price is not quality. A cheap product that does the job well is a legitimate rec
   "whoShouldSkip": "one sentence",
   "confidence": "high|medium|low",
   "sponsoredChoiceId": the numeric id of the ONE offered partner product that genuinely answers the question, or null — ONLY when products were offered to you above. Null if none truly fits: wrong category, wrong product type, priced above what the person stated, or a product too poor for any reasonable shopper with this query to be satisfied buying. The bar is "would a knowledgeable friend be comfortable saying: this one is a solid buy for what you asked" — NOT "is this the single best product on the market at this price". Comparing the offered products to better market alternatives belongs in your answer text, where you should do it freely and honestly; it is not a reason to suppress a genuinely good offered product. Likewise a budget phrased as a maximum is a ceiling, not a target: priced-under still qualifies. Judge exactly as you would if no money were involved.,
-  "shoppingTerm": "2-6 words naming the PRODUCT the person should shop for, as they'd type it into a shop — e.g. 'plant based liquid detergent', 'wireless keyboard mouse combo'. Never echo the question back.",
+  "shoppingTerm": "The specific PRODUCT NAME to shop for — brand plus model or variant, as printed on the pack: 'Born Good Plant-Based Liquid Detergent', 'Logitech MK270 Wireless Keyboard Mouse Combo'. NOT a category ('plant based detergent') and never the question restated. If the honest answer is a category rather than one product, name the single best product in it.",
   "alternatives": [{"name": "a real alternative product relevant to THIS query", "note": "one short phrase on the trade-off vs the pick", "price": "see the price rule below — empty string is the correct answer whenever you are not confident"}],
   "micrositeTitle": "short title for the knowledge microsite",
   "micrositeSummary": "1-2 sentence anonymized summary",
@@ -40,7 +40,9 @@ Price is not quality. A cheap product that does the job well is a legitimate rec
 }
 Provide 2-3 alternatives that are genuinely relevant to the specific product the person asked about — never generic or unrelated items.
 
-PRICE HONESTY — the alternatives' "price" field is your own recollection, not our data, and your price knowledge is stale by definition and often wrong for Indian retail, where discounting is heavy and constant. Rules: give a range only when you are genuinely confident, make it wide enough to be honest rather than precise-looking, err on the LOW side because street prices in India are usually below list, and return an empty string whenever you are unsure — an empty price is a correct, complete answer and is always better than a wrong number. Never state a price for the partner product from memory: its real price is given to you above and is the only price about it you may use. If the person's budget matters to your reasoning, reason about the partner product's real price, not about remembered ones.
+PRICE HONESTY — STRICT. You may put a figure in an alternative's "price" field ONLY if that figure appears in the live web results provided below. If the results do not give you a price for that product, return an empty string. Never price a product from memory: your price knowledge is stale by definition and wrong more often than not for Indian retail, where discounting is heavy and constant. An empty price is a correct and complete answer.
+The same rule applies to PACK SIZES and quantities. Do not write "for 1 litre", "for 1-1.5L", "500g" or any other quantity unless that exact packaging appears in the results — Indian detergents, foods and toiletries are sold in pack sizes you will guess wrong (a liquid detergent may be sold by weight, a "1 litre" product may only exist as 3kg). If you know the price but not the pack size, give the price alone. If you know neither, give nothing.
+The partner product is the one exception: its real price is supplied to you above and is authoritative — use that, and never contradict it from memory.
 
 WHERE FACTS COME FROM — you are the judgment layer, not the fact layer. Use this hierarchy strictly. (1) The partner product's price, brand, product name, rating and rating count are given to you above from the retailer's own feed: these are authoritative, and you must never contradict or "correct" them from memory. (2) For anything else factual — current prices of other products, what's available now, what reviewers report, which models are current — use the live web results below if they are present, and attribute them naturally ("reviewers consistently mention…", "currently around ₹X"). (3) If a fact you need is in neither place, say you don't know rather than filling the gap from recollection: "I can't verify the current price" is a better answer than a confident wrong number. Your own value is in reasoning about FIT — which trade-offs matter for this particular person's stated need, what to ignore, what would be a mistake for them. Do that freely and with conviction; it's the part no search result can supply.
 
@@ -93,11 +95,13 @@ export async function POST(req) {
     const admin = isAdminEmail((await currentUser())?.emailAddresses?.[0]?.emailAddress);
     let suppressAlternatives = false;
     let storedPlan = "free";
+    let engagementPoints = 0;
     try {
       if (!admin) {
         const lifecycle = await getLifecycleStatus(identity);
         suppressAlternatives = lifecycle.suppressAlternatives;
         storedPlan = lifecycle.plan;
+        engagementPoints = lifecycle.engagementPoints;
         if (lifecycle.stage === "upgrade") {
           return Response.json({
             gate: "upgrade",
@@ -129,7 +133,15 @@ export async function POST(req) {
     // Admins get unlimited picks. Testing the product shouldn't require
     // burning a paid subscription or waiting for the daily reset.
     const plan = admin ? "plus" : storedPlan;
-    const limit = admin ? -1 : (PLANS[plan]?.searches ?? PLANS.free.searches);
+    // Registering lifts the daily cap; hitting the 250-point engagement
+    // ceiling puts it back. One shared rule, so the header can't promise
+    // a different number than the quota check enforces.
+    const limit = dailyPickLimit({
+      signedIn: Boolean(userId),
+      plan,
+      engagementPoints,
+      isAdmin: admin,
+    });
 
     // Today's pick count, returned by the quota statement — guests' day
     // points are derived from it instead of costing another query.

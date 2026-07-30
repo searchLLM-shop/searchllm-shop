@@ -113,7 +113,7 @@ export default async function AnswerPage({ params }) {
       {alternatives.length > 0 && (
         <div style={{ marginBottom: 20 }}>
           <div style={{ fontSize: 10, letterSpacing: "0.05em", textTransform: "uppercase", color: "var(--color-text-tertiary)", marginBottom: 8 }}>
-            We also considered (no affiliate relationship — links open a plain web search, and we earn nothing from them). Prices here are rough estimates, not live — check the current price before deciding.
+            We also considered — chosen by the AI with no knowledge of what we earn. These links go to Amazon and may earn us a commission; your price never changes. Any prices shown are rough estimates, not live.
           </div>
           {alternatives.map((alt, i) => (
             <div key={i} style={{ display: "flex", justifyContent: "space-between", gap: 12, padding: "10px 0", borderTop: i > 0 ? "0.5px solid var(--color-border-tertiary)" : "none" }}>

@@ -8,7 +8,7 @@
 import { auth, currentUser } from "@clerk/nextjs/server";
 import { getHeaderSnapshot } from "@/lib/db";
 import { getOrCreateGuestId } from "@/lib/guestId";
-import { PLANS, LOYALTY } from "@/lib/constants";
+import { PLANS, LOYALTY, dailyPickLimit } from "@/lib/constants";
 import { isAdminEmail } from "@/lib/isAdmin";
 
 export async function GET() {
@@ -25,7 +25,12 @@ export async function GET() {
   }
 
   const plan = admin ? "plus" : snapshot.plan;
-  const limit = admin ? -1 : (PLANS[plan]?.searches ?? PLANS.free.searches);
+  const limit = dailyPickLimit({
+    signedIn: Boolean(userId),
+    plan,
+    engagementPoints: snapshot.engagementPoints,
+    isAdmin: admin,
+  });
 
   const points = userId
     ? { kind: "user", balance: snapshot.balance, pending: snapshot.pending }

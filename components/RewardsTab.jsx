@@ -9,7 +9,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useUser, SignInButton } from "@clerk/nextjs";
-import { LOYALTY } from "@/lib/constants";
+import { LOYALTY, planPriceLabel } from "@/lib/constants";
 
 const n = (v) => Number(v || 0).toLocaleString();
 
@@ -172,7 +172,7 @@ export default function RewardsTab() {
           <div style={{ fontSize: 12, color: "var(--color-text-secondary)", lineHeight: 1.7 }}>
             🔒 Your points are safe and keep accumulating — <strong>redeeming them is a Plus benefit</strong>. Plus also raises your allowance to {cfg.GATE_LIMITS?.plus?.searches} picks and {cfg.GATE_LIMITS?.plus?.clicks} product links per purchase cycle (vs {cfg.GATE_LIMITS?.free?.searches}/{cfg.GATE_LIMITS?.free?.clicks} free), with {cfg.PLUS_MULTIPLIER}× purchase points.
             <div style={{ marginTop: 8 }}>
-              <a href="/?upgrade=1" style={{ display: "inline-block", background: "#0F6E56", color: "#fff", borderRadius: 6, padding: "7px 14px", fontSize: 12, fontWeight: 500, textDecoration: "none" }}>Upgrade to Plus — ₹499/year</a>
+              <a href="/?upgrade=1" style={{ display: "inline-block", background: "#0F6E56", color: "#fff", borderRadius: 6, padding: "7px 14px", fontSize: 12, fontWeight: 500, textDecoration: "none" }}>Upgrade to Plus — {planPriceLabel()}</a>
             </div>
             <VoucherShowcase caption="What your points can become the moment you upgrade:" />
           </div>

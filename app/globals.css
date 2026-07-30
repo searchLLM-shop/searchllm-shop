@@ -159,7 +159,7 @@ input, select, textarea {
    Measured against a 360px viewport: the 24px tagline wrapped mid-sentence
    and the longest example chip exceeded the usable width. */
 @media (max-width: 640px) {
-  .sllm-consent-title { font-size: 20px !important; }
+  .sllm-consent-title > div > div:first-child { font-size: 18px !important; }
   .sllm-consent-body { padding: 32px 16px 26px !important; }
 
   /* Chips stay one line each and never exceed the screen */

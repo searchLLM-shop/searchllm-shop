@@ -2,7 +2,7 @@
 // explanation of the rewards programme. Every number renders from the same
 // LOYALTY config the engine uses, so this page can never drift from reality.
 
-import { LOYALTY } from "@/lib/constants";
+import { LOYALTY, planPriceLabel } from "@/lib/constants";
 
 export const metadata = {
   title: "How points work — SearchLLM",
@@ -26,7 +26,7 @@ export default function PointsPage() {
       </p>
 
       <h2 style={{ fontSize: 17, fontWeight: 600, margin: "26px 0 8px" }}>Redeeming</h2>
-      <p>Points accumulate free, forever, for every signed-in member. <strong>Redeeming them is a Plus benefit</strong> (₹499/year, which also raises your usage allowance to {LOYALTY.GATE_LIMITS.plus.searches} picks and {LOYALTY.GATE_LIMITS.plus.clicks} product links per purchase cycle, with the {LOYALTY.PLUS_MULTIPLIER}× purchase multiplier). Vouchers come in fixed denominations — {LOYALTY.DENOMINATIONS.map((d) => `₹${d}`).join(" / ")} — across {LOYALTY.VOUCHER_CATALOG.map((v) => v.brand).join(", ")}. Request a redemption from your Rewards tab and the voucher code appears there, usually within 2 working days.</p>
+      <p>Points accumulate free, forever, for every signed-in member. <strong>Redeeming them is a Plus benefit</strong> ({planPriceLabel()}, which also raises your usage allowance to {LOYALTY.GATE_LIMITS.plus.searches} picks and {LOYALTY.GATE_LIMITS.plus.clicks} product links per purchase cycle, with the {LOYALTY.PLUS_MULTIPLIER}× purchase multiplier). Vouchers come in fixed denominations — {LOYALTY.DENOMINATIONS.map((d) => `₹${d}`).join(" / ")} — across {LOYALTY.VOUCHER_CATALOG.map((v) => v.brand).join(", ")}. Request a redemption from your Rewards tab and the voucher code appears there, usually within 2 working days.</p>
 
       <h2 style={{ fontSize: 17, fontWeight: 600, margin: "26px 0 8px" }}>The voucher wall</h2>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 10, margin: "12px 0" }}>
