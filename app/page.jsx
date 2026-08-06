@@ -383,7 +383,7 @@ export default function Home() {
               </button>
             ))}
           </div>
-          <div style={{ flex: 1, padding: 24, maxWidth: 1100, width: "100%", margin: "0 auto", boxSizing: "border-box" }}>
+          <div className="sllm-main" style={{ flex: 1, padding: 24, maxWidth: 1100, width: "100%", margin: "0 auto", boxSizing: "border-box" }}>
             {activeTab === "brands" && SHOW_BRANDS_FORM && <BrandForm />}
             {activeTab === "advertise" && SHOW_ADVERTISERS && <AdvertiserPanel />}
             {activeTab === "advertisers" && SHOW_ADVERTISERS && <AdvertiserAdmin />}
@@ -396,7 +396,7 @@ export default function Home() {
           </div>
         </>
       ) : (
-        <div style={{ flex: 1, padding: "20px 20px 40px", maxWidth: 780, width: "100%", margin: "0 auto", boxSizing: "border-box" }}>
+        <div className="sllm-main" style={{ flex: 1, padding: "20px 20px 40px", maxWidth: 780, width: "100%", margin: "0 auto", boxSizing: "border-box" }}>
           <ResearchTab
             isAdmin={isAdminHint}
             locale={locale}
@@ -418,7 +418,7 @@ export default function Home() {
           <div onClick={() => setShowAccountDrawer(false)} style={{ position: "fixed", inset: 0, background: "rgba(17,24,39,0.35)", zIndex: 40 }} />
           <div style={{ position: "fixed", top: 0, right: 0, bottom: 0, width: "min(420px, 100vw)", background: "var(--color-background-primary)", boxShadow: "-8px 0 24px rgba(16,24,40,0.12)", zIndex: 41, display: "flex", flexDirection: "column" }}>
             <div style={{ padding: "16px 18px", borderBottom: "0.5px solid var(--color-border-tertiary)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-              <div className="sllm-tabs" style={{ display: "flex", gap: 4 }}>
+              <div className="sllm-tabs sllm-drawer-tabs" style={{ display: "flex", gap: 4 }}>
                 {["saved", "watchlist", "rewards"].map((dt) => (
                   <button
                     key={dt}

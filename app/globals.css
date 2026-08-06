@@ -93,7 +93,7 @@ input, select, textarea {
 /* ==================== Redesign (2026-08-06) ====================
    Matches the searchllm.ai reference: a light, faintly grid-lined canvas
    behind the whole app instead of the old bordered single-card shell, plus
-   a couple of small helpers the new nav/drawer/hero markup relies on. */
+   the nav/drawer/hero markup and its mobile behaviour below. */
 .sllm-canvas {
   background-color: #F3F4F7;
   background-image:
@@ -102,10 +102,39 @@ input, select, textarea {
   background-size: 32px 32px;
 }
 
+/* Ctrl+Enter only means anything on a physical keyboard — hidden on touch
+   devices instead of eating room on a 360px search bar row. */
+.sllm-ctrl-hint { display: inline; }
+
 @media (max-width: 640px) {
-  /* Nav wraps to two rows on phones — logo row, then actions row. */
+  /* Nav: wraps to its own row under the logo rather than fighting the
+     usage pill / points chip / avatar for space. */
   .sllm-header { flex-wrap: wrap; padding: 12px 14px !important; row-gap: 10px; }
-  .sllm-header-right { flex-wrap: wrap; gap: 10px !important; width: 100%; justify-content: flex-end; }
+  .sllm-header-right { flex-wrap: wrap; gap: 8px !important; width: 100%; justify-content: flex-end; row-gap: 8px; }
+  .sllm-header-right nav { order: 3; width: 100%; justify-content: center; gap: 14px !important; padding-top: 6px; border-top: 0.5px solid var(--color-border-tertiary); margin-top: 2px; }
+
+  .sllm-ctrl-hint { display: none; }
+
+  /* Hero: the manifesto and search bar are the whole home screen on
+     mobile, so give them the full width instead of the 780px desktop
+     column's side padding. */
+  .sllm-main { padding-left: 14px !important; padding-right: 14px !important; }
+
+  /* Search bar: input full width on its own row, Search button full width
+     below it — same wrap the bar already gets via .sllm-search-actions'
+     flex-wrap, just with the button (now .sllm-primary-btn) forced to
+     100% instead of shrinking to a thumb-unfriendly width. */
+  .sllm-searchbar { padding: 14px !important; align-items: stretch !important; }
+
+  /* Process trace: 4 columns of BOSONIC/FERMIONIC/ANYONIC/COSMIC is tight
+     on a phone even with auto-fit — force 2x2 so each label and its
+     description line has real room instead of wrapping mid-word. */
+  .sllm-stage-grid { grid-template-columns: repeat(2, 1fr) !important; }
+
+  /* Account drawer already goes full-width via min(420px, 100vw) inline,
+     but its internal padding and the sub-tab row are still desktop-sized. */
+  .sllm-drawer-tabs { gap: 2px !important; }
+  .sllm-drawer-tabs button { padding: 6px 8px !important; font-size: 11px !important; }
 }
 
 /* ===================== Mobile pass (2026-07-23) =====================

@@ -292,24 +292,30 @@ export default function ResearchTab({ maxSearches, searchCount, onSearchComplete
 
       {/* The big rounded search bar — the one element that's always visible,
           idle or not, so a shopper can immediately ask a follow-up. */}
-      <div className="sllm-search-actions" style={{ background: "#fff", borderRadius: 16, border: "0.5px solid var(--color-border-tertiary)", boxShadow: "0 2px 10px rgba(16,24,40,0.06)", padding: "16px 16px 16px 22px", marginBottom: 16, display: "flex", alignItems: "flex-end", gap: 12 }}>
+      <div className="sllm-search-actions sllm-searchbar" style={{ background: "#fff", borderRadius: 16, border: "0.5px solid var(--color-border-tertiary)", boxShadow: "0 2px 10px rgba(16,24,40,0.06)", padding: "16px 16px 16px 22px", marginBottom: 16, display: "flex", alignItems: "flex-end", gap: 12 }}>
         <textarea
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           onKeyDown={(e) => { if (e.key === "Enter" && e.ctrlKey) handleSearch(); }}
           placeholder={result || processing ? `e.g. ${PLACEHOLDER_EXAMPLES[placeholderIdx]}` : "What are you shopping for?"}
           rows={1}
-          style={{ flex: 1, boxSizing: "border-box", border: "none", background: "transparent", fontSize: 16, resize: "none", outline: "none", color: "var(--color-text-primary)", fontFamily: "var(--font-sans)", lineHeight: 1.6, padding: "8px 0" }}
+          style={{ flex: "1 1 160px", minWidth: 0, boxSizing: "border-box", border: "none", background: "transparent", fontSize: 16, resize: "none", outline: "none", color: "var(--color-text-primary)", fontFamily: "var(--font-sans)", lineHeight: 1.6, padding: "8px 0" }}
         />
-        <span style={{ fontSize: 10, color: "var(--color-text-tertiary)", whiteSpace: "nowrap", marginBottom: 14 }}>Ctrl+Enter</span>
+        {/* Ctrl+Enter only means anything with a physical keyboard — hidden
+            on touch/narrow screens via .sllm-ctrl-hint in globals.css rather
+            than crowding the search button off a 360px row. */}
+        <span className="sllm-ctrl-hint" style={{ fontSize: 10, color: "var(--color-text-tertiary)", whiteSpace: "nowrap", marginBottom: 14 }}>Ctrl+Enter</span>
         <button
           onClick={() => handleSearch()}
           disabled={processing || !query.trim() || quotaReached}
+          className="sllm-primary-btn"
           style={{ background: processing || !query.trim() ? "var(--color-background-tertiary)" : "#3F3F46", color: processing || !query.trim() ? "var(--color-text-tertiary)" : "#fff", border: "none", borderRadius: 10, padding: "12px 22px", cursor: "pointer", fontSize: 14, fontWeight: 600, whiteSpace: "nowrap" }}
         >
           {processing ? "Researching…" : "Search"}
         </button>
       </div>
+      {/* Attach-file placement moves above the bar on mobile too (see
+          globals.css) — everything else about that block is unchanged. */}
 
       {!result && !processing && (
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "center", marginBottom: 22 }}>
@@ -338,7 +344,7 @@ export default function ResearchTab({ maxSearches, searchCount, onSearchComplete
           — same visual language, so nothing jarring swaps in when a search
           actually starts. */}
       {(processing || !result) && (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", gap: 18, padding: processing ? "12px 4px 26px" : "0 4px 26px", opacity: processing ? 1 : 0.55 }}>
+        <div className="sllm-stage-grid" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", gap: 18, padding: processing ? "12px 4px 26px" : "0 4px 26px", opacity: processing ? 1 : 0.55 }}>
           {STAGE_LABELS.map((label, i) => {
             const active = processing && step >= i;
             const current = processing && step === i;
