@@ -90,6 +90,24 @@ input, select, textarea {
 }
 
 
+/* ==================== Redesign (2026-08-06) ====================
+   Matches the searchllm.ai reference: a light, faintly grid-lined canvas
+   behind the whole app instead of the old bordered single-card shell, plus
+   a couple of small helpers the new nav/drawer/hero markup relies on. */
+.sllm-canvas {
+  background-color: #F3F4F7;
+  background-image:
+    linear-gradient(rgba(17, 24, 39, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(17, 24, 39, 0.05) 1px, transparent 1px);
+  background-size: 32px 32px;
+}
+
+@media (max-width: 640px) {
+  /* Nav wraps to two rows on phones — logo row, then actions row. */
+  .sllm-header { flex-wrap: wrap; padding: 12px 14px !important; row-gap: 10px; }
+  .sllm-header-right { flex-wrap: wrap; gap: 10px !important; width: 100%; justify-content: flex-end; }
+}
+
 /* ===================== Mobile pass (2026-07-23) =====================
    Most shoppers — and all the Meta campaign traffic — arrive on phones.
    The rules below make the shopper surfaces genuinely phone-first:

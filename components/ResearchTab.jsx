@@ -5,7 +5,21 @@ import { trackEvent } from "@/lib/track";
 import { LOYALTY, planPriceLabel } from "@/lib/constants";
 import { t } from "@/lib/i18n";
 
-const STEPS = ["Reading your question", "Checking current options", "Weighing trade-offs", "Writing the honest version"];
+// Physics-themed processing stages — cosmetic labels over the same four
+// real steps the backend actually performs (retrieval, matching, model
+// judgment, write-up). Kept as parallel arrays: LABEL is the small
+// monospace kicker, STEPS is the human-readable line underneath it.
+const STAGE_LABELS = ["BOSONIC", "FERMIONIC", "ANYONIC", "COSMIC"];
+const STEPS = ["query synthesis", "checking current options", "weighing trade-offs", "writing the honest verdict"];
+// Two-line manifesto the hero rotates through when idle — mirrors the
+// searchllm.ai pattern of stating the trust architecture as a claim, not a
+// promise, with the load-bearing words picked out in colour.
+const MANIFESTO = [
+  { plain: ["Picks that "], colored: ["can't", "be", "bought"], trail: "." , body: "A sponsored listing is only looked up after the pick is already decided — that's the order the code runs in, not a promise we're asking you to trust." },
+  { plain: ["Picks that "], colored: ["are", "honest"], trail: ".", body: "Price is never the deciding factor unless you raise it. We say plainly when the cheap option is fine, and when it will actually fail at what you asked for." },
+];
+const GRADIENT_COLORS = ["#8B5CF6", "#EC4899", "#F59E0B", "#7C9A3D", "#0F6E56"];
+
 
 
 // Reads an image file and downscales it before upload. Phone photos are
@@ -63,6 +77,13 @@ export default function ResearchTab({ maxSearches, searchCount, onSearchComplete
     "gamepad under ₹1,500",
   ];
   const [placeholderIdx, setPlaceholderIdx] = useState(0);
+  // Rotates the two-line manifesto in the hero every 5s while idle — mirrors
+  // the progress-dot pair on searchllm.ai. Paused once a search starts.
+  const [manifestoIdx, setManifestoIdx] = useState(0);
+  useEffect(() => {
+    const t = setInterval(() => setManifestoIdx((i) => (i + 1) % MANIFESTO.length), 5000);
+    return () => clearInterval(t);
+  }, []);
   useEffect(() => {
     if (query) return; // don't churn the interval while they type
     const t = setInterval(() => setPlaceholderIdx((i) => (i + 1) % PLACEHOLDER_EXAMPLES.length), 3500);
@@ -87,6 +108,32 @@ export default function ResearchTab({ maxSearches, searchCount, onSearchComplete
   const [geoOverride, setGeoOverride] = useState("");
   const fileRef = useRef();
   const [attachment, setAttachment] = useState(null);
+  // Listing ids the shopper has already watched THIS session, so the button
+  // can flip to "Watching ✓" without a round trip. Not meant as the source
+  // of truth (the Alerts tab reads the real list from the server) — just
+  // enough to stop a double-click from firing two POSTs.
+  const [watchedIds, setWatchedIds] = useState(() => new Set());
+  const [watchBusyId, setWatchBusyId] = useState(null);
+
+  const handleWatchPrice = useCallback(async (listingId) => {
+    if (!listingId || watchedIds.has(listingId)) return;
+    setWatchBusyId(listingId);
+    try {
+      const resp = await fetch("/api/watchlist", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ listingId }),
+      });
+      if (resp.ok) {
+        setWatchedIds((prev) => new Set(prev).add(listingId));
+        trackEvent("watch_price", { listing_id: listingId });
+      }
+    } catch (e) {
+      console.error("Watch price failed:", e);
+    } finally {
+      setWatchBusyId(null);
+    }
+  }, [watchedIds]);
 
   const handleSearch = useCallback(
     async (q) => {
@@ -165,24 +212,27 @@ export default function ResearchTab({ maxSearches, searchCount, onSearchComplete
   return (
     <div>
       {!result && !processing && (
-        <div style={{ textAlign: "center", padding: "14px 0 22px" }}>
-          <p style={{ fontSize: 14, color: "var(--color-text-secondary)", margin: 0, lineHeight: 1.6 }}>
-            Ask a real shopping question. Get one clear, researched answer.
+        <div style={{ textAlign: "center", padding: "18px 0 8px" }}>
+          <h1 style={{ fontSize: "clamp(28px, 5vw, 44px)", fontWeight: 800, letterSpacing: "-0.02em", margin: "0 0 16px", lineHeight: 1.1, color: "#14161A" }}>
+            {MANIFESTO[manifestoIdx].plain[0]}
+            {MANIFESTO[manifestoIdx].colored.map((w, i) => (
+              <span key={w} style={{ color: GRADIENT_COLORS[i % GRADIENT_COLORS.length] }}> {w}</span>
+            ))}
+            {MANIFESTO[manifestoIdx].trail}
+          </h1>
+          <p style={{ fontSize: 15, color: "var(--color-text-secondary)", margin: "0 auto", lineHeight: 1.7, maxWidth: 560 }}>
+            {MANIFESTO[manifestoIdx].body}
           </p>
-          <p style={{ fontSize: 13, color: "var(--color-text-tertiary)", margin: "7px 0 0", lineHeight: 1.7 }}>
-            Live prices and reviews checked. Paid only when you shop.{" "}
-            <a href="/points" style={{ color: "var(--color-text-tertiary)", textDecoration: "underline" }}>Points</a> every time you ask.
-          </p>
-          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "center", marginTop: 16 }}>
-            {CHIP_EXAMPLES.map((ex) => (
+          {/* Manifesto progress dots — click to jump, same idea as the pair
+              on searchllm.ai, sized for a two-statement rotation. */}
+          <div style={{ display: "flex", gap: 6, justifyContent: "center", margin: "14px 0 4px" }}>
+            {MANIFESTO.map((m, i) => (
               <button
-                key={ex}
-                onClick={() => setQuery(ex)}
-                className="sllm-example-chip"
-                style={{ background: "none", border: "0.5px solid var(--color-border-tertiary)", borderRadius: 14, padding: "5px 11px", fontSize: 12, color: "var(--color-text-tertiary)", cursor: "pointer", maxWidth: "100%", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}
-              >
-                {ex}
-              </button>
+                key={m.trail + i}
+                onClick={() => setManifestoIdx(i)}
+                aria-label={`Statement ${i + 1}`}
+                style={{ width: 28, height: 3, borderRadius: 2, border: "none", cursor: "pointer", background: i === manifestoIdx ? "#4F46E5" : "var(--color-border-tertiary)", padding: 0 }}
+              />
             ))}
           </div>
         </div>
@@ -215,17 +265,9 @@ export default function ResearchTab({ maxSearches, searchCount, onSearchComplete
         </div>
       )}
 
-      <div style={{ background: "var(--color-background-secondary)", borderRadius: 12, border: "0.5px solid var(--color-border-tertiary)", padding: 14, marginBottom: 16 }}>
-        <textarea
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          onKeyDown={(e) => { if (e.key === "Enter" && e.ctrlKey) handleSearch(); }}
-          placeholder={`e.g. ${PLACEHOLDER_EXAMPLES[placeholderIdx]}`}
-          rows={3}
-          style={{ width: "100%", boxSizing: "border-box", border: "none", background: "transparent", fontSize: 14, resize: "none", outline: "none", color: "var(--color-text-primary)", fontFamily: "var(--font-sans)", lineHeight: 1.6 }}
-        />
-        <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8 }}>
-          <button onClick={() => fileRef.current?.click()} style={{ background: "none", border: "0.5px solid var(--color-border-secondary)", borderRadius: 7, padding: "5px 10px", cursor: "pointer", fontSize: 11, color: attachment ? "#0F6E56" : "var(--color-text-secondary)" }}>
+      {!result && !processing && (
+        <div style={{ display: "flex", justifyContent: "center", marginBottom: 12 }}>
+          <button onClick={() => fileRef.current?.click()} style={{ background: "#fff", border: "0.5px solid var(--color-border-secondary)", borderRadius: 10, padding: "9px 16px", cursor: "pointer", fontSize: 13, color: attachment ? "#0F6E56" : "var(--color-text-secondary)", boxShadow: "0 1px 2px rgba(16,24,40,0.04)" }}>
             {attachment ? (attachment.preparing ? tr("reading") : attachment.name) : tr("attach")}
           </button>
           <input ref={fileRef} type="file" style={{ display: "none" }} onChange={async (e) => {
@@ -244,18 +286,45 @@ export default function ResearchTab({ maxSearches, searchCount, onSearchComplete
                 setAttachment(null);
               }
             }} accept=".pdf,.txt,.docx,.csv,.png,.jpg" />
-          {attachment && <button onClick={() => setAttachment(null)} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 11, color: "#D85A30" }}>✕</button>}
-          <div style={{ flex: 1 }} />
-          <span style={{ fontSize: 10, color: "var(--color-text-tertiary)" }}>Ctrl+Enter</span>
-          <button
-            onClick={() => handleSearch()}
-            disabled={processing || !query.trim() || quotaReached}
-            style={{ background: processing || !query.trim() ? "var(--color-background-tertiary)" : "#0F6E56", color: processing || !query.trim() ? "var(--color-text-tertiary)" : "#fff", border: "none", borderRadius: 8, padding: "7px 18px", cursor: "pointer", fontSize: 13, fontWeight: 500 }}
-          >
-            {processing ? "Researching…" : "Get my pick"}
-          </button>
+          {attachment && <button onClick={() => setAttachment(null)} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 12, color: "#D85A30", marginLeft: 8 }}>✕</button>}
         </div>
+      )}
+
+      {/* The big rounded search bar — the one element that's always visible,
+          idle or not, so a shopper can immediately ask a follow-up. */}
+      <div className="sllm-search-actions" style={{ background: "#fff", borderRadius: 16, border: "0.5px solid var(--color-border-tertiary)", boxShadow: "0 2px 10px rgba(16,24,40,0.06)", padding: "16px 16px 16px 22px", marginBottom: 16, display: "flex", alignItems: "flex-end", gap: 12 }}>
+        <textarea
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter" && e.ctrlKey) handleSearch(); }}
+          placeholder={result || processing ? `e.g. ${PLACEHOLDER_EXAMPLES[placeholderIdx]}` : "What are you shopping for?"}
+          rows={1}
+          style={{ flex: 1, boxSizing: "border-box", border: "none", background: "transparent", fontSize: 16, resize: "none", outline: "none", color: "var(--color-text-primary)", fontFamily: "var(--font-sans)", lineHeight: 1.6, padding: "8px 0" }}
+        />
+        <span style={{ fontSize: 10, color: "var(--color-text-tertiary)", whiteSpace: "nowrap", marginBottom: 14 }}>Ctrl+Enter</span>
+        <button
+          onClick={() => handleSearch()}
+          disabled={processing || !query.trim() || quotaReached}
+          style={{ background: processing || !query.trim() ? "var(--color-background-tertiary)" : "#3F3F46", color: processing || !query.trim() ? "var(--color-text-tertiary)" : "#fff", border: "none", borderRadius: 10, padding: "12px 22px", cursor: "pointer", fontSize: 14, fontWeight: 600, whiteSpace: "nowrap" }}
+        >
+          {processing ? "Researching…" : "Search"}
+        </button>
       </div>
+
+      {!result && !processing && (
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "center", marginBottom: 22 }}>
+          {CHIP_EXAMPLES.map((ex) => (
+            <button
+              key={ex}
+              onClick={() => setQuery(ex)}
+              className="sllm-example-chip"
+              style={{ background: "none", border: "0.5px solid var(--color-border-tertiary)", borderRadius: 14, padding: "5px 11px", fontSize: 12, color: "var(--color-text-tertiary)", cursor: "pointer", maxWidth: "100%", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}
+            >
+              {ex}
+            </button>
+          ))}
+        </div>
+      )}
 
       {errorMsg && (
         <div style={{ background: "#D85A3011", border: "1px solid #D85A3044", borderRadius: 9, padding: "10px 14px", marginBottom: 14, fontSize: 12, color: "#D85A30" }}>
@@ -263,14 +332,30 @@ export default function ResearchTab({ maxSearches, searchCount, onSearchComplete
         </div>
       )}
 
-      {processing && (
-        <div style={{ padding: "30px 10px" }}>
-          {STEPS.map((s, i) => (
-            <div key={s} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10, opacity: step >= i ? 1 : 0.35 }}>
-              <div style={{ width: 16, height: 16, borderRadius: "50%", border: `2px solid ${step >= i ? "#0F6E56" : "var(--color-border-secondary)"}`, background: step > i ? "#0F6E56" : "transparent", flexShrink: 0 }} />
-              <span style={{ fontSize: 13, color: step >= i ? "var(--color-text-primary)" : "var(--color-text-tertiary)" }}>{s}</span>
-            </div>
-          ))}
+      {/* Four-column physics-themed process trace. Idle: a dim preview of
+          the stages a search will run through. Processing: the live one,
+          each column's bar filling and label brightening as `step` advances
+          — same visual language, so nothing jarring swaps in when a search
+          actually starts. */}
+      {(processing || !result) && (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", gap: 18, padding: processing ? "12px 4px 26px" : "0 4px 26px", opacity: processing ? 1 : 0.55 }}>
+          {STAGE_LABELS.map((label, i) => {
+            const active = processing && step >= i;
+            const current = processing && step === i;
+            return (
+              <div key={label}>
+                <div style={{ height: 3, borderRadius: 2, background: "var(--color-border-tertiary)", overflow: "hidden", marginBottom: 8 }}>
+                  <div style={{ height: "100%", width: active ? "100%" : "0%", background: "#4F46E5", transition: "width 0.6s ease", opacity: current ? 0.7 : 1 }} />
+                </div>
+                <div style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", fontSize: 10, letterSpacing: "0.08em", color: active ? "#4F46E5" : "var(--color-text-tertiary)" }}>
+                  {label}
+                </div>
+                <div style={{ fontSize: 12, color: active ? "var(--color-text-primary)" : "var(--color-text-tertiary)", marginTop: 2 }}>
+                  {STEPS[i]}
+                </div>
+              </div>
+            );
+          })}
         </div>
       )}
 
@@ -458,21 +543,43 @@ export default function ResearchTab({ maxSearches, searchCount, onSearchComplete
                     )}
                     {result.matchedListing.pitch ? ` · ${result.matchedListing.pitch}` : ""}
                   </div>
-                  <a
-                    href={`/out/${result.matchedListing.id}?ctx=research`}
-                onClick={() => trackEvent("affiliate_click", { listing_id: result.matchedListing.id, network: result.matchedListing.network })}
-                    target="_blank"
-                    rel="noopener noreferrer sponsored"
-                    style={{ display: "inline-block", fontSize: 13, fontWeight: 500, color: "#fff", background: "#854F0B", padding: "8px 16px", borderRadius: 8, textDecoration: "none" }}>
-                    {/* The link goes through /out/, which records the click
-                        server-side (replacing the old sendBeacon — blockers
-                        eat beacons, they don't eat navigations), mints the
-                        click_id for conversion attribution, and 302s to the
-                        tracked network link. */}
-                    {result.matchedListing.merchantDomain
-                      ? `View on ${result.matchedListing.merchantDomain} →`
-                      : "View and buy →"}
-                  </a>
+                  <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                    <a
+                      href={`/out/${result.matchedListing.id}?ctx=research`}
+                  onClick={() => trackEvent("affiliate_click", { listing_id: result.matchedListing.id, network: result.matchedListing.network })}
+                      target="_blank"
+                      rel="noopener noreferrer sponsored"
+                      style={{ display: "inline-block", fontSize: 13, fontWeight: 500, color: "#fff", background: "#854F0B", padding: "8px 16px", borderRadius: 8, textDecoration: "none" }}>
+                      {/* The link goes through /out/, which records the click
+                          server-side (replacing the old sendBeacon — blockers
+                          eat beacons, they don't eat navigations), mints the
+                          click_id for conversion attribution, and 302s to the
+                          tracked network link. */}
+                      {result.matchedListing.merchantDomain
+                        ? `View on ${result.matchedListing.merchantDomain} →`
+                        : "View and buy →"}
+                    </a>
+                    {/* Notifies on a genuine drop (3%+, or the shopper's own
+                        target) via the hourly price-check cron — see
+                        lib/priceAlerts.js. Deliberately its own button, not
+                        folded into "save pick": saving is a note to self,
+                        watching is asking to be interrupted later. */}
+                    <button
+                      onClick={() => handleWatchPrice(result.matchedListing.id)}
+                      disabled={watchBusyId === result.matchedListing.id || watchedIds.has(result.matchedListing.id)}
+                      style={{
+                        display: "inline-flex", alignItems: "center", gap: 5, fontSize: 12, fontWeight: 500,
+                        color: watchedIds.has(result.matchedListing.id) ? "#0F6E56" : "#854F0B",
+                        background: "transparent", border: `0.5px solid ${watchedIds.has(result.matchedListing.id) ? "#0F6E5666" : "#854F0B66"}`,
+                        padding: "7px 14px", borderRadius: 8, cursor: watchedIds.has(result.matchedListing.id) ? "default" : "pointer",
+                      }}>
+                      {watchedIds.has(result.matchedListing.id)
+                        ? "🔔 Watching"
+                        : watchBusyId === result.matchedListing.id
+                        ? "…"
+                        : "🔔 Watch price"}
+                    </button>
+                  </div>
                 </div>
               </div>
               <div style={{ fontSize: 10, color: "var(--color-text-tertiary)", marginTop: 8 }}>This never changes the price you pay, and it&apos;s never the reason this option was suggested — see alternatives below.</div>
