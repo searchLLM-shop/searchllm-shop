@@ -1,0 +1,698 @@
+"use client";
+
+import { useState, useCallback, useRef, useEffect } from "react";
+import { trackEvent } from "@/lib/track";
+import { LOYALTY, planPriceLabel } from "@/lib/constants";
+import { t } from "@/lib/i18n";
+
+const STEPS = ["Reading your question", "Checking current options", "Weighing trade-offs", "Writing the honest version"];
+
+
+// Reads an image file and downscales it before upload. Phone photos are
+// routinely 4–8MB, and base64 inflates that by a third — enough to make
+// requests slow or fail outright. 1024px on the long edge is plenty for
+// identifying a product, and keeps the payload to a few hundred KB.
+async function prepareImage(file) {
+  const MAX_EDGE = 1024;
+  const dataUrl = await new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(new Error("Could not read that file"));
+    reader.readAsDataURL(file);
+  });
+
+  const img = await new Promise((resolve, reject) => {
+    const el = new Image();
+    el.onload = () => resolve(el);
+    el.onerror = () => reject(new Error("Could not open that image"));
+    el.src = dataUrl;
+  });
+
+  const scale = Math.min(1, MAX_EDGE / Math.max(img.width, img.height));
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.round(img.width * scale);
+  canvas.height = Math.round(img.height * scale);
+  canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
+
+  // Normalise to JPEG so we send one predictable media type.
+  const out = canvas.toDataURL("image/jpeg", 0.82);
+  return { data: out.split(",")[1], mediaType: "image/jpeg" };
+}
+
+export default function ResearchTab({ maxSearches, searchCount, onSearchComplete, onSavePick, isAdmin, savedQueries = [], saveNotice, locale = "en" }) {
+  const tr = t(locale);
+  const [query, setQuery] = useState("");
+  // Rotating placeholder examples. Each models the ideal query shape —
+  // product + attribute + budget — so users learn what a good question
+  // looks like by osmosis instead of a form. Rotation pauses the moment
+  // they start typing (placeholder disappears anyway once query is set).
+  const PLACEHOLDER_EXAMPLES = [
+    "ubtan face wash under ₹300 for oily skin",
+    "55-inch smart TV around ₹1L for a bright living room",
+    "gamepad for PC games under ₹1,500",
+    "whey protein under ₹2,000 for beginners",
+    "maroon ethnic dress under ₹800 for a festive occasion",
+    "mixer grinder around ₹3,000 for a small kitchen",
+  ];
+  // Chips are separate from the rotating placeholders: they must fit one
+  // line on a 360px screen, so they're deliberately shorter while still
+  // modelling the product + constraint + budget shape.
+  const CHIP_EXAMPLES = [
+    "face wash for oily skin under ₹300",
+    "55-inch TV around ₹1L",
+    "gamepad under ₹1,500",
+  ];
+  const [placeholderIdx, setPlaceholderIdx] = useState(0);
+  useEffect(() => {
+    if (query) return; // don't churn the interval while they type
+    const t = setInterval(() => setPlaceholderIdx((i) => (i + 1) % PLACEHOLDER_EXAMPLES.length), 3500);
+    return () => clearInterval(t);
+  }, [query, PLACEHOLDER_EXAMPLES.length]);
+  const [processing, setProcessing] = useState(false);
+  const [step, setStep] = useState(-1);
+  const [result, setResult] = useState(null);
+  const [errorMsg, setErrorMsg] = useState(null);
+  const [gate, setGate] = useState(null);           // blocking search gate
+  const [gateFeedback, setGateFeedback] = useState("");
+  const [gateBusy, setGateBusy] = useState(false);
+  const [gateFeedbackSent, setGateFeedbackSent] = useState(false);
+  useEffect(() => {
+    // A blocked affiliate click lands back here with ?gate=click — show the
+    // same gate card in its click variant.
+    if (typeof window !== "undefined" && new URLSearchParams(window.location.search).get("gate") === "click") {
+      setGate({ gate: "click" });
+      window.history.replaceState({}, "", window.location.pathname);
+    }
+  }, []);
+  const [geoOverride, setGeoOverride] = useState("");
+  const fileRef = useRef();
+  const [attachment, setAttachment] = useState(null);
+  // Listing ids the shopper has already watched THIS session, so the button
+  // can flip to "Watching ✓" without a round trip. Not meant as the source
+  // of truth (the Alerts tab reads the real list from the server) — just
+  // enough to stop a double-click from firing two POSTs.
+  const [watchedIds, setWatchedIds] = useState(() => new Set());
+  const [watchBusyId, setWatchBusyId] = useState(null);
+
+  const handleWatchPrice = useCallback(async (listingId) => {
+    if (!listingId || watchedIds.has(listingId)) return;
+    setWatchBusyId(listingId);
+    try {
+      const resp = await fetch("/api/watchlist", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ listingId }),
+      });
+      if (resp.ok) {
+        setWatchedIds((prev) => new Set(prev).add(listingId));
+        trackEvent("watch_price", { listing_id: listingId });
+      }
+    } catch (e) {
+      console.error("Watch price failed:", e);
+    } finally {
+      setWatchBusyId(null);
+    }
+  }, [watchedIds]);
+
+  const handleSearch = useCallback(
+    async (q) => {
+      const searchQ = (q || query).trim();
+      if (!searchQ) return;
+      if (maxSearches !== -1 && searchCount >= maxSearches) return;
+
+      setProcessing(true);
+      setResult(null);
+      setErrorMsg(null);
+      setStep(0);
+
+      const stepTimer = setInterval(() => {
+        setStep((s) => (s < STEPS.length - 1 ? s + 1 : s));
+      }, 700);
+
+      try {
+        const resp = await fetch("/api/research", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ query: searchQ, attachment, geoOverride: geoOverride || undefined, locale }),
+        });
+
+        if (resp.status === 403) {
+          const g = await resp.json().catch(() => null);
+          if (g?.gate === "search" || g?.gate === "upgrade") {
+            setGate(g);
+            return;
+          }
+        }
+        if (resp.status === 429) {
+          setErrorMsg(
+            "That's your 8 picks for today. The count resets at midnight UTC — come back tomorrow and we'll pick up where you left off. Your saved picks stay available in the meantime."
+          );
+          clearInterval(stepTimer);
+          setStep(-1);
+          setProcessing(false);
+          return;
+        }
+        if (!resp.ok) {
+          // Pull the server's real reason so a failure is diagnosable
+          // instead of always reading "try rephrasing the question".
+          let detail = "";
+          try {
+            const errBody = await resp.json();
+            detail = errBody.detail || errBody.error || "";
+          } catch { /* non-JSON error page */ }
+          throw new Error(detail || `Request failed (${resp.status})`);
+        }
+
+        const data = await resp.json();
+        setResult({ query: searchQ, ...data, alternatives: data.alternatives || [], id: Date.now() });
+        onSearchComplete?.();
+        trackEvent("search_completed", {
+          matched_inventory: Boolean(data.matchedListing),
+          sponsored_shown: Boolean(data.matchedListing),
+        });
+      } catch (e) {
+        console.error(e);
+        setErrorMsg(
+          e.message && e.message !== "Request failed"
+            ? `Couldn't complete the research: ${e.message}`
+            : tr("researchFailed")
+        );
+      }
+
+      clearInterval(stepTimer);
+      setStep(-1);
+      setProcessing(false);
+    },
+    [query, attachment, searchCount, maxSearches, onSearchComplete]
+  );
+
+  const quotaReached = maxSearches !== -1 && searchCount >= maxSearches;
+
+  return (
+    <div>
+      {!result && !processing && (
+        <div style={{ textAlign: "center", padding: "14px 0 22px" }}>
+          <p style={{ fontSize: 14, color: "var(--color-text-secondary)", margin: 0, lineHeight: 1.6 }}>
+            Ask a real shopping question. Get one clear, researched answer.
+          </p>
+          <p style={{ fontSize: 13, color: "var(--color-text-tertiary)", margin: "7px 0 0", lineHeight: 1.7 }}>
+            Live prices and reviews checked. Paid only when you shop.{" "}
+            <a href="/points" style={{ color: "var(--color-text-tertiary)", textDecoration: "underline" }}>Points</a> every time you ask.
+          </p>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "center", marginTop: 16 }}>
+            {CHIP_EXAMPLES.map((ex) => (
+              <button
+                key={ex}
+                onClick={() => setQuery(ex)}
+                className="sllm-example-chip"
+                style={{ background: "none", border: "0.5px solid var(--color-border-tertiary)", borderRadius: 14, padding: "5px 11px", fontSize: 12, color: "var(--color-text-tertiary)", cursor: "pointer", maxWidth: "100%", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}
+              >
+                {ex}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {isAdmin && (
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10, padding: "7px 12px", background: "var(--color-background-tertiary)", borderRadius: 8, fontSize: 12, color: "var(--color-text-secondary)" }}>
+          <span style={{ fontWeight: 500 }}>Admin</span>
+          <span>· view as</span>
+          <select
+            value={geoOverride}
+            onChange={(e) => setGeoOverride(e.target.value)}
+            style={{ fontSize: 12, padding: "3px 6px", borderRadius: 6, border: "0.5px solid var(--color-border-secondary)", background: "var(--color-background-primary)", color: "var(--color-text-primary)" }}
+          >
+            <option value="">My location (detected)</option>
+            <option value="IN">India</option>
+            <option value="GB">United Kingdom</option>
+            <option value="US">United States</option>
+            <option value="AE">UAE</option>
+            <option value="AU">Australia</option>
+            <option value="CA">Canada</option>
+            <option value="DE">Germany</option>
+            <option value="SG">Singapore</option>
+          </select>
+          {geoOverride && (
+            <span style={{ color: "#0F6E56" }}>
+              simulating {geoOverride} — offers and prices will match that market
+            </span>
+          )}
+        </div>
+      )}
+
+      <div style={{ background: "var(--color-background-secondary)", borderRadius: 12, border: "0.5px solid var(--color-border-tertiary)", padding: 14, marginBottom: 16 }}>
+        <textarea
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter" && e.ctrlKey) handleSearch(); }}
+          placeholder={`e.g. ${PLACEHOLDER_EXAMPLES[placeholderIdx]}`}
+          rows={3}
+          style={{ width: "100%", boxSizing: "border-box", border: "none", background: "transparent", fontSize: 14, resize: "none", outline: "none", color: "var(--color-text-primary)", fontFamily: "var(--font-sans)", lineHeight: 1.6 }}
+        />
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8 }}>
+          <button onClick={() => fileRef.current?.click()} style={{ background: "none", border: "0.5px solid var(--color-border-secondary)", borderRadius: 7, padding: "5px 10px", cursor: "pointer", fontSize: 11, color: attachment ? "#0F6E56" : "var(--color-text-secondary)" }}>
+            {attachment ? (attachment.preparing ? tr("reading") : attachment.name) : tr("attach")}
+          </button>
+          <input ref={fileRef} type="file" style={{ display: "none" }} onChange={async (e) => {
+              const f = e.target.files[0];
+              if (!f) return;
+              if (!f.type.startsWith("image/")) {
+                setAttachment({ name: f.name, type: f.type });
+                return;
+              }
+              setAttachment({ name: f.name, type: f.type, preparing: true });
+              try {
+                const { data, mediaType } = await prepareImage(f);
+                setAttachment({ name: f.name, type: f.type, data, mediaType });
+              } catch (err) {
+                setErrorMsg(err.message);
+                setAttachment(null);
+              }
+            }} accept=".pdf,.txt,.docx,.csv,.png,.jpg" />
+          {attachment && <button onClick={() => setAttachment(null)} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 11, color: "#D85A30" }}>✕</button>}
+          <div style={{ flex: 1 }} />
+          <span style={{ fontSize: 10, color: "var(--color-text-tertiary)" }}>Ctrl+Enter</span>
+          <button
+            onClick={() => handleSearch()}
+            disabled={processing || !query.trim() || quotaReached}
+            style={{ background: processing || !query.trim() ? "var(--color-background-tertiary)" : "#0F6E56", color: processing || !query.trim() ? "var(--color-text-tertiary)" : "#fff", border: "none", borderRadius: 8, padding: "7px 18px", cursor: "pointer", fontSize: 13, fontWeight: 500 }}
+          >
+            {processing ? "Researching…" : "Get my pick"}
+          </button>
+        </div>
+      </div>
+
+      {errorMsg && (
+        <div style={{ background: "#D85A3011", border: "1px solid #D85A3044", borderRadius: 9, padding: "10px 14px", marginBottom: 14, fontSize: 12, color: "#D85A30" }}>
+          {errorMsg}
+        </div>
+      )}
+
+      {processing && (
+        <div style={{ padding: "30px 10px" }}>
+          {STEPS.map((s, i) => (
+            <div key={s} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10, opacity: step >= i ? 1 : 0.35 }}>
+              <div style={{ width: 16, height: 16, borderRadius: "50%", border: `2px solid ${step >= i ? "#0F6E56" : "var(--color-border-secondary)"}`, background: step > i ? "#0F6E56" : "transparent", flexShrink: 0 }} />
+              <span style={{ fontSize: 13, color: step >= i ? "var(--color-text-primary)" : "var(--color-text-tertiary)" }}>{s}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {gate && gate.gate === "upgrade" && (
+        <div style={{ border: "0.5px solid #C9DED6", background: "#F2F8F6", borderRadius: 12, padding: "16px 18px", margin: "14px 0" }}>
+          <div style={{ fontSize: 14, fontWeight: 600, color: "#0F6E56", marginBottom: 6 }}>
+            You&apos;re getting real value here — help keep it honest
+          </div>
+          <div style={{ fontSize: 13, color: "var(--color-text-secondary)", lineHeight: 1.7, marginBottom: 12 }}>
+            {gate.message}
+          </div>
+          <div className="sllm-gate-actions" style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+            {gate.signedIn ? (
+              <a href="/?upgrade=1" style={{ background: "#0F6E56", color: "#fff", borderRadius: 8, padding: "8px 16px", fontSize: 13, fontWeight: 500, textDecoration: "none" }}>
+                Upgrade to Plus — {planPriceLabel()}
+              </a>
+            ) : (
+              <span style={{ fontSize: 13, fontWeight: 500, color: "#0F6E56" }}>Sign in (top right) to upgrade — your points come with you.</span>
+            )}
+            <button
+              disabled={gateBusy}
+              onClick={async () => {
+                setGateBusy(true);
+                try {
+                  await fetch("/api/lifecycle", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ kind: "prompt" }) });
+                  setGate(null);
+                  handleSearch();
+                } finally { setGateBusy(false); }
+              }}
+              style={{ background: "none", color: "var(--color-text-secondary)", border: "0.5px solid var(--color-border-secondary)", borderRadius: 8, padding: "8px 16px", fontSize: 13, cursor: "pointer" }}
+            >
+              Continue for now
+            </button>
+          </div>
+        </div>
+      )}
+      {gate && gate.gate !== "upgrade" && (
+        <div style={{ border: "0.5px solid #EADFC8", background: "#FDF8EF", borderRadius: 12, padding: "16px 18px", margin: "14px 0" }}>
+          {!gateFeedbackSent ? (
+            <>
+              <div style={{ fontSize: 14, fontWeight: 600, color: "#854F0B", marginBottom: 6 }}>
+                {gate.gate === "click" ? "Product links paused — a word before we continue" : `${gate.searches} picks since your last purchase — a word before we continue`}
+              </div>
+              <div style={{ fontSize: 13, color: "var(--color-text-secondary)", lineHeight: 1.7, marginBottom: 10 }}>
+                {gate.gate === "click"
+                  ? <>You&apos;ve opened your full allowance of recommended product links since your last purchase. To keep browsing stores through us, use <strong>Increase Usage</strong> — and if you have a moment, tell us what stopped you at the store pages. We read every word.</>
+                  : <>Every pick runs real AI research and costs us real server money. To keep going, use <strong>Increase Usage</strong> below — and if you have a moment, tell us what&apos;s kept you from shopping through a recommendation. We read every word.</>}
+              </div>
+              <textarea
+                value={gateFeedback}
+                onChange={(e) => setGateFeedback(e.target.value)}
+                placeholder="optional, but genuinely valued — e.g. prices were higher on the store page…"
+                rows={2}
+                style={{ width: "100%", border: "0.5px solid var(--color-border-secondary)", borderRadius: 8, padding: "8px 10px", fontSize: 13, background: "none", color: "var(--color-text-primary)", resize: "vertical", boxSizing: "border-box" }}
+              />
+            </>
+          ) : (
+            <div style={{ fontSize: 13, color: "var(--color-text-secondary)", lineHeight: 1.7, marginBottom: 10 }}>
+              🙏 Your feedback is gratefully acknowledged — it genuinely shapes what we build. We do incur server costs for every pick, so to continue, please use Increase Usage. You&apos;ve used the platform a lot, and we deeply appreciate your continued support.
+            </div>
+          )}
+          <div className="sllm-gate-actions" style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap", alignItems: "center" }}>
+            <button
+              disabled={gateBusy}
+              onClick={async () => {
+                setGateBusy(true);
+                try {
+                  const resp = await fetch("/api/checkout", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ type: "recharge" }) });
+                  const j = await resp.json();
+                  if (j.url) window.location.href = j.url;
+                } finally { setGateBusy(false); }
+              }}
+              style={{ background: "#0F6E56", color: "#fff", border: "none", borderRadius: 8, padding: "8px 16px", fontSize: 13, fontWeight: 500, cursor: "pointer", opacity: gateBusy ? 0.5 : 1 }}
+            >
+              Increase Usage — ₹249 for 50 picks
+            </button>
+            {!gateFeedbackSent && (
+              <button
+                disabled={gateBusy || gateFeedback.trim().length < 3}
+                onClick={async () => {
+                  setGateBusy(true);
+                  try {
+                    const resp = await fetch("/api/lifecycle", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ kind: gate.gate === "click" ? "click" : "search", feedback: gateFeedback }) });
+                    if (resp.ok) setGateFeedbackSent(true);
+                  } finally { setGateBusy(false); }
+                }}
+                style={{ background: "none", color: "var(--color-text-secondary)", border: "0.5px solid var(--color-border-secondary)", borderRadius: 8, padding: "8px 16px", fontSize: 13, cursor: "pointer", opacity: gateBusy || gateFeedback.trim().length < 3 ? 0.5 : 1 }}
+              >
+                Send feedback
+              </button>
+            )}
+            <span style={{ fontSize: 11, color: "var(--color-text-tertiary)" }}>Shopping through any recommendation also resets your free picks.</span>
+          </div>
+        </div>
+      )}
+      {result && !processing && (
+        <div>
+          <div style={{ fontSize: 12, color: "var(--color-text-tertiary)", marginBottom: 10, display: "flex", alignItems: "center", gap: 8 }}>
+            <span>For: &quot;{result.query}&quot;</span>
+            {result.searchUsed && (
+              <span style={{ fontSize: 10, padding: "1px 7px", borderRadius: 20, background: "#0F6E5618", color: "#0F6E56", fontWeight: 500 }}>
+                checked current web results
+              </span>
+            )}
+          </div>
+
+          <div style={{ background: "var(--color-background-secondary)", borderRadius: 12, border: "1.5px solid #0F6E5644", padding: "18px 20px", marginBottom: 14 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10 }}>
+              <span style={{ fontSize: 10, fontWeight: 500, color: "#0F6E56", letterSpacing: "0.05em", textTransform: "uppercase" }}>Our pick</span>
+              {result.confidence && <span style={{ fontSize: 10, color: "var(--color-text-tertiary)" }}>{tr("confidence")}: {result.confidence}</span>}
+            </div>
+            {result.imageUnderstanding && (
+              <div style={{ fontSize: 12, color: "var(--color-text-secondary)", background: "var(--color-background-tertiary)", borderRadius: 8, padding: "8px 10px", marginBottom: 10 }}>
+                {tr("fromPhoto")} {result.imageUnderstanding}
+              </div>
+            )}
+            <div style={{ fontSize: 15, fontWeight: 500, marginBottom: 10, lineHeight: 1.4 }}>{result.headline}</div>
+            <div style={{ fontSize: 13, color: "var(--color-text-secondary)", lineHeight: 1.7, marginBottom: 12 }}>{result.reasoning}</div>
+            {result.whoItsFor && <div style={{ fontSize: 12, color: "var(--color-text-secondary)", marginBottom: 4 }}><strong style={{ fontWeight: 500, color: "var(--color-text-primary)" }}>{tr("goodFor")}</strong> {result.whoItsFor}</div>}
+            {result.whoShouldSkip && <div style={{ fontSize: 12, color: "var(--color-text-secondary)" }}><strong style={{ fontWeight: 500, color: "var(--color-text-primary)" }}>{tr("skipIf")}</strong> {result.whoShouldSkip}</div>}
+          </div>
+
+          {/* Admin-only matcher transparency: what was offered to the model
+              and what it chose. Present only when the API included it (it
+              never does for regular users). Turns "why is there no card"
+              into a glance instead of a debugging session. */}
+          {result.sponsoredDebug && (
+            <div style={{ fontSize: 11, color: "var(--color-text-tertiary)", background: "var(--color-background-secondary)", border: "0.5px dashed var(--color-border-secondary)", borderRadius: 8, padding: "8px 12px", marginBottom: 10 }}>
+              <strong style={{ fontWeight: 500 }}>Admin — matcher:</strong>{" "}
+              {result.sponsoredDebug.offered.length === 0
+                ? "no inventory candidates cleared the retrieval gate (score ≥2 after budget/geo filters)."
+                : `offered ${result.sponsoredDebug.offered.length}: ${result.sponsoredDebug.offered
+                    .map((o) => `${o.product.slice(0, 40)} (${o.price}, s${o.score})`)
+                    .join(" · ")} → model chose ${
+                    result.sponsoredDebug.chosenId
+                      ? `#${result.sponsoredDebug.chosenId}`
+                      : "none (judged not genuinely suitable)"
+                  }`}
+            </div>
+          )}
+          {result.matchedListing && (
+            <div style={{ background: "#BA75171A", borderRadius: 12, border: "1px solid #BA751744", padding: "16px 18px", marginBottom: 14 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+                <span style={{ fontSize: 10, fontWeight: 500, color: "#854F0B", letterSpacing: "0.05em", textTransform: "uppercase", padding: "2px 8px", background: "#BA751733", borderRadius: 20 }}>
+                  Sponsored match · affiliate link via {result.matchedListing.network}
+                </span>
+              </div>
+              <div style={{ display: "flex", gap: 14, alignItems: "flex-start" }}>
+                {/* Product image makes the recommendation concrete. Kept small
+                    and lazily loaded; a broken feed image hides itself rather
+                    than leaving a torn placeholder. */}
+                {result.matchedListing.imageUrl && (
+                  <img
+                    src={result.matchedListing.imageUrl}
+                    alt={result.matchedListing.product}
+                    loading="lazy"
+                    onError={(e) => { e.currentTarget.style.display = "none"; }}
+                    style={{ width: 84, height: 84, objectFit: "contain", borderRadius: 8, background: "#fff", flexShrink: 0, border: "0.5px solid var(--color-border-tertiary)" }}
+                  />
+                )}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 10, marginBottom: 6 }}>
+                    <span style={{ fontSize: 14, fontWeight: 500 }}>{result.matchedListing.product}</span>
+                    <span style={{ fontSize: 14, fontWeight: 500, whiteSpace: "nowrap" }}>
+                      {/* Campaign-level offers have no single price — show
+                          nothing rather than a placeholder or a stand-in. */}
+                      {result.matchedListing.price || ""}
+                      {result.matchedListing.discount && (
+                        <span style={{ fontSize: 11, color: "#0F6E56", marginLeft: 6 }}>{result.matchedListing.discount}</span>
+                      )}
+                    </span>
+                  </div>
+                  <div style={{ fontSize: 12, color: "var(--color-text-secondary)", marginBottom: 10 }}>
+                    {result.matchedListing.brand}
+                    {/* Real shopper ratings from the feed — shown because they're
+                        genuinely useful, and because they're the reason this
+                        product was chosen over other equally relevant ones. */}
+                    {result.matchedListing.rating != null && (
+                      <span style={{ marginLeft: 6 }}>
+                        · ★ {result.matchedListing.rating}
+                        {result.matchedListing.ratingCount
+                          ? ` (${Number(result.matchedListing.ratingCount).toLocaleString()})`
+                          : ""}
+                      </span>
+                    )}
+                    {result.matchedListing.pitch ? ` · ${result.matchedListing.pitch}` : ""}
+                  </div>
+                  <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                    <a
+                      href={`/out/${result.matchedListing.id}?ctx=research`}
+                  onClick={() => trackEvent("affiliate_click", { listing_id: result.matchedListing.id, network: result.matchedListing.network })}
+                      target="_blank"
+                      rel="noopener noreferrer sponsored"
+                      style={{ display: "inline-block", fontSize: 13, fontWeight: 500, color: "#fff", background: "#854F0B", padding: "8px 16px", borderRadius: 8, textDecoration: "none" }}>
+                      {/* The link goes through /out/, which records the click
+                          server-side (replacing the old sendBeacon — blockers
+                          eat beacons, they don't eat navigations), mints the
+                          click_id for conversion attribution, and 302s to the
+                          tracked network link. */}
+                      {result.matchedListing.merchantDomain
+                        ? `View on ${result.matchedListing.merchantDomain} →`
+                        : "View and buy →"}
+                    </a>
+                    {/* Notifies on a genuine drop (3%+, or the shopper's own
+                        target) via the hourly price-check cron — see
+                        lib/priceAlerts.js. Deliberately its own button, not
+                        folded into "save pick": saving is a note to self,
+                        watching is asking to be interrupted later. */}
+                    <button
+                      onClick={() => handleWatchPrice(result.matchedListing.id)}
+                      disabled={watchBusyId === result.matchedListing.id || watchedIds.has(result.matchedListing.id)}
+                      style={{
+                        display: "inline-flex", alignItems: "center", gap: 5, fontSize: 12, fontWeight: 500,
+                        color: watchedIds.has(result.matchedListing.id) ? "#0F6E56" : "#854F0B",
+                        background: "transparent", border: `0.5px solid ${watchedIds.has(result.matchedListing.id) ? "#0F6E5666" : "#854F0B66"}`,
+                        padding: "7px 14px", borderRadius: 8, cursor: watchedIds.has(result.matchedListing.id) ? "default" : "pointer",
+                      }}>
+                      {watchedIds.has(result.matchedListing.id)
+                        ? "🔔 Watching"
+                        : watchBusyId === result.matchedListing.id
+                        ? "…"
+                        : "🔔 Watch price"}
+                    </button>
+                  </div>
+                </div>
+              </div>
+              <div style={{ fontSize: 10, color: "var(--color-text-tertiary)", marginTop: 8 }}>This never changes the price you pay, and it&apos;s never the reason this option was suggested — see alternatives below.</div>
+            </div>
+          )}
+
+          {/* Model-suggested refinement chips: one tap appends the phrase to
+              the query and re-runs. This is the honest version of a filter
+              dropdown — structure offered as a follow-up, never a gate, and
+              suggested by the model with full context of THIS question. */}
+          {/* Points earned message — the retention loop made visible. Guests
+              see the day-expiring figure with the signup nudge; users see
+              earned-this-pick and today's running total. */}
+          {result.rewards && (
+            <div style={{ fontSize: 12, color: "#854F0B", background: "#FDF8EF", border: "0.5px solid #EADFC8", borderRadius: 8, padding: "8px 12px", margin: "10px 0" }}>
+              {result.rewards.kind === "user" ? (
+                result.rewards.earned > 0 ? (
+                  <>✨ You earned <strong>{result.rewards.earned} points</strong> for this pick — {result.rewards.todayTotal} today. Clicking a recommended product link earns {LOYALTY.SEARCH_POINTS.CLICK_POINTS} more. <a href="/points" style={{ color: "#854F0B", textDecoration: "underline" }}>How points work</a></>
+                ) : (
+                  <>You&apos;ve reached the {LOYALTY.ENGAGEMENT_POINTS_LIFETIME_CAP}-point maximum for searching and clicking. Points from confirmed purchases have no limit and keep adding up. <a href="/points" style={{ color: "#854F0B", textDecoration: "underline" }}>How points work</a></>
+                )
+              ) : (
+                <>✨ You&apos;ve earned <strong>{result.rewards.guestToday} points</strong> today as a guest — they expire at midnight. <strong>Sign up free to keep them</strong>, and they&apos;ll keep adding up.</>
+              )}
+            </div>
+          )}
+          {result.refinements?.length > 0 && !processing && (
+            <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", margin: "12px 0" }}>
+              <span style={{ fontSize: 11, color: "var(--color-text-tertiary)" }}>Sharpen this pick:</span>
+              {result.refinements.map((r, i) => (
+                <button
+                  key={i}
+                  onClick={() => {
+                    const refined = `${result.query} ${r}`.replace(/\s+/g, " ").trim();
+                    setQuery(refined);
+                    handleSearch(refined);
+                  }}
+                  style={{ background: "none", border: "0.5px solid var(--color-border-secondary)", borderRadius: 12, padding: "4px 11px", fontSize: 12, color: "#0F6E56", cursor: "pointer" }}
+                >
+                  ＋ {r}
+                </button>
+              ))}
+            </div>
+          )}
+          {result.amazonBrowse && (
+            <div style={{ border: "0.5px solid var(--color-border-tertiary)", borderRadius: 10, margin: "12px 0", overflow: "hidden" }}>
+              <div className="sllm-amazon-row" style={{ padding: "12px 14px", display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap", justifyContent: "space-between" }}>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontSize: 10, letterSpacing: "0.05em", textTransform: "uppercase", color: "var(--color-text-tertiary)", marginBottom: 3 }}>
+                    Not in our partner inventory — available on Amazon
+                  </div>
+                  <div style={{ fontSize: 14, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis" }}>
+                    {result.amazonBrowse.term}
+                  </div>
+                </div>
+                <a
+                  href={result.amazonBrowse.url}
+                  target="_blank"
+                  rel="noopener noreferrer sponsored"
+                  onClick={() => trackEvent("amazon_browse_click", {})}
+                  style={{ background: "#FF9900", color: "#111", borderRadius: 8, padding: "9px 16px", fontSize: 13, fontWeight: 600, textDecoration: "none", whiteSpace: "nowrap" }}
+                >
+                  Browse on Amazon ↗
+                </a>
+              </div>
+              <div style={{ padding: "7px 14px", background: "var(--color-background-secondary)", fontSize: 11, color: "var(--color-text-tertiary)" }}>
+                Partner link — as an Amazon Associate, we earn from qualifying purchases. Your price never changes, and our answer above was written without knowing this link would appear.
+              </div>
+            </div>
+          )}
+          {result.alternativesWithheld && (
+            <div style={{ fontSize: 12, color: "var(--color-text-secondary)", padding: "12px 14px", border: "0.5px solid var(--color-border-tertiary)", borderRadius: 8, margin: "10px 0", lineHeight: 1.7 }}>
+              Alternative suggestions are paused on your account — you&apos;ve used your full cycle allowance without a purchase. Your research and recommendations continue as normal.
+              {/* Plus members are never blocked from researching, so this is
+                  an option rather than a wall: a purchase restores the
+                  suggestions free, Increase Usage restores them now. */}
+              <div className="sllm-gate-actions" style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap", alignItems: "center" }}>
+                <button
+                  disabled={gateBusy}
+                  onClick={async () => {
+                    setGateBusy(true);
+                    try {
+                      const resp = await fetch("/api/checkout", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ type: "recharge" }) });
+                      const j = await resp.json();
+                      if (j.url) window.location.href = j.url;
+                    } finally { setGateBusy(false); }
+                  }}
+                  style={{ background: "#0F6E56", color: "#fff", border: "none", borderRadius: 8, padding: "7px 14px", fontSize: 12, fontWeight: 500, cursor: "pointer", opacity: gateBusy ? 0.5 : 1 }}
+                >
+                  Increase Usage — ₹{LOYALTY.RECHARGE_PRICE_INR} to restore them
+                </button>
+                <span style={{ fontSize: 11, color: "var(--color-text-tertiary)" }}>
+                  Or complete a purchase through any recommendation — that restores them free.
+                </span>
+              </div>
+            </div>
+          )}
+          {result.alternatives?.length > 0 && (
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ fontSize: 11, fontWeight: 500, color: "var(--color-text-secondary)", marginBottom: 10, letterSpacing: "0.04em", textTransform: "uppercase" }}>
+                We also considered — chosen by the AI with no knowledge of what we earn. These links go to Amazon and may earn us a commission; your price never changes. Any prices shown are rough estimates, not live.</div>
+              {result.alternatives.map((a, i) => (
+                <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0", borderTop: i > 0 ? "0.5px solid var(--color-border-tertiary)" : "none" }}>
+                  <div>
+                    {/* Tracked but NEVER monetized: /alt records the click as
+                        brand-demand evidence, then opens a neutral web search.
+                        The moment these earn money, the section stops being
+                        proof that advice comes first. */}
+                    <a
+                      onClick={() => trackEvent("alternative_click", {})}
+                      href={`/alt?p=${encodeURIComponent(a.name || "")}&ctx=research`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{ fontSize: 13, fontWeight: 500, color: "var(--color-text-primary)", textDecoration: "underline", textDecorationColor: "var(--color-border-secondary)", textUnderlineOffset: 3 }}
+                    >
+                      {a.name} ↗
+                    </a>
+                    <div style={{ fontSize: 12, color: "var(--color-text-tertiary)" }}>{a.note}</div>
+                  </div>
+                  {/* Deliberately lighter than the sponsored card's price:
+                      that one comes from the partner feed and is real; this
+                      one is the model's recollection. Same styling would
+                      imply the same reliability. */}
+                  {a.price ? (
+                    <div style={{ fontSize: 12, color: "var(--color-text-tertiary)", whiteSpace: "nowrap", marginLeft: 12 }}>
+                      ~{a.price}<span style={{ fontSize: 10 }}> est.</span>
+                    </div>
+                  ) : null}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* The Terms require users to verify before buying; saying it once in
+              a policy nobody reads isn't enough, so it appears with every answer. */}
+          <p style={{ fontSize: 11, color: "var(--color-text-tertiary)", lineHeight: 1.6, margin: "0 0 14px" }}>
+            AI can make mistakes. Check the price, availability and specifications on the
+            retailer's own page before buying. We don't sell or ship anything — purchases,
+            delivery and returns are between you and the retailer.
+          </p>
+
+          {saveNotice && (
+            <div style={{ fontSize: 12, color: "var(--color-text-secondary)", marginBottom: 8 }}>{saveNotice}</div>
+          )}
+
+          <div style={{ display: "flex", gap: 10 }}>
+            {(() => {
+              // The button gave no feedback at all when clicked, so it looked
+              // broken even though the pick was saved. Reflect the state.
+              const isSaved = savedQueries.includes((result.query || "").trim().toLowerCase().replace(/\s+/g, " "));
+              return (
+                <button
+                  onClick={() => onSavePick?.(result)}
+                  disabled={isSaved}
+                  style={{
+                    background: isSaved ? "#0F6E5614" : "none",
+                    border: `0.5px solid ${isSaved ? "#0F6E56" : "var(--color-border-secondary)"}`,
+                    borderRadius: 8,
+                    padding: "8px 14px",
+                    cursor: isSaved ? "default" : "pointer",
+                    fontSize: 13,
+                    color: isSaved ? "#0F6E56" : "var(--color-text-secondary)",
+                  }}
+                >
+                  {isSaved ? tr("saved") : tr("savePick")}
+                </button>
+              );
+            })()}
+            <button onClick={() => { setResult(null); setQuery(""); setAttachment(null); }} style={{ background: "none", border: "0.5px solid var(--color-border-secondary)", borderRadius: 8, padding: "8px 14px", cursor: "pointer", fontSize: 13, color: "var(--color-text-secondary)" }}>{tr("newQuestion")}</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
