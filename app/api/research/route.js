@@ -87,7 +87,7 @@ Null remains correct, and important, when every offered product is the wrong typ
 
 export async function POST(req) {
   try {
-    const { query, attachment, geoOverride, locale: requestedLocale } = await req.json();
+    const { query, attachment, geoOverride, locale: requestedLocale, clarifications } = await req.json();
 
     // Enforce the acceptable-use rules from the Terms before doing anything
     // else — no model call, no quota consumed, no record written.
@@ -98,6 +98,22 @@ export async function POST(req) {
     if (!query || typeof query !== "string" || !query.trim()) {
       return Response.json({ error: "Missing query" }, { status: 400 });
     }
+
+    // Answers to the pre-research clarifying question(s) from app/api/clarify
+    // — optional, and the search must work identically to today when this is
+    // absent (the shopper skipped, or the clarify step had nothing to ask).
+    // Re-validated here rather than trusted from the client: only strings,
+    // capped in count and length, exactly like every other free-text input
+    // that reaches the model prompt below.
+    const safeClarifications = Array.isArray(clarifications)
+      ? clarifications
+          .filter((c) => c && typeof c.answer === "string" && c.answer.trim())
+          .slice(0, 3)
+          .map((c) => ({
+            question: typeof c.question === "string" ? c.question.trim().slice(0, 120) : "",
+            answer: c.answer.trim().slice(0, 200),
+          }))
+      : [];
 
     const { userId } = await auth();
 
@@ -264,7 +280,16 @@ export async function POST(req) {
     // requirements, an occasion and an expected price band — so the matcher
     // searches on the right words and the answering model learns that the
     // occasion implies a product tier, not merely another keyword.
-    const intentSource = [query, vision?.productType, vision?.description].filter(Boolean).join(" ");
+    const intentSource = [
+      query,
+      vision?.productType,
+      vision?.description,
+      // Clarifying-question answers feed intent extraction the same way the
+      // typed query does, so retrievalTerms/contextQuery/priceQuery (and
+      // therefore both the listing match and the live-search arms below)
+      // reflect what the shopper actually said, not just the original query.
+      ...safeClarifications.map((c) => c.answer),
+    ].filter(Boolean).join(" ");
     const intent = await extractIntent(intentSource);
 
     // Search terms come from the typed query and, when present, from what the
@@ -400,7 +425,17 @@ export async function POST(req) {
       ? `\n\nThe shopper is in ${COUNTRY_NAMES[userCountry] || userCountry}. Recommend products that are genuinely available to buy there, from brands that sell in that market, and give prices in ${CURRENCIES[userCountry] || "the local currency"}. Do not recommend products the person cannot realistically buy or receive. Apply the same rule to the alternatives.`
       : "";
 
-    const userContent = `Query: ${query}${languageContext}${locationContext}${
+    // What the shopper told us via the pre-research clarifying question(s)
+    // (app/api/clarify) — this is what makes those answers actually reach
+    // synthesis, not just retrieval. Treated as authoritative context, same
+    // weight as the original query.
+    const clarificationContext = safeClarifications.length
+      ? `\n\nThe shopper answered a quick question before we researched:\n${safeClarifications
+          .map((c) => `- ${c.question ? `${c.question} ` : ""}${c.answer}`)
+          .join("\n")}`
+      : "";
+
+    const userContent = `Query: ${query}${languageContext}${locationContext}${clarificationContext}${
       vision?.isProduct && vision.description
         ? `\n\nThe shopper attached a photo of a product. It shows: ${vision.description}${vision.visibleBrand ? ` (visible brand: ${vision.visibleBrand})` : ""}. Treat this as what they are looking for or looking to match, and say what you can see in it so they know you understood the photo.`
         : vision && !vision.isProduct
@@ -565,6 +600,11 @@ export async function POST(req) {
             return shared / altWords.size < 0.6; // mostly the same product
           }),
       country: userCountry,
+      // What lib/clarify.js asked and what the shopper answered, if
+      // anything — recorded alongside the answer it shaped, same idea as
+      // gate_result, so the questions that actually moved a pick can be
+      // reviewed later rather than trusted blind.
+      clarifications: safeClarifications,
     });
 
     return Response.json({

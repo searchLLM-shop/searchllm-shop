@@ -500,3 +500,10 @@ ALTER TABLE microsites ADD COLUMN IF NOT EXISTS last_verified_at TIMESTAMPTZ;
 ALTER TABLE microsites ADD COLUMN IF NOT EXISTS withdrawn_at TIMESTAMPTZ;
 ALTER TABLE microsites ADD COLUMN IF NOT EXISTS withdrawn_reason TEXT;
 CREATE INDEX IF NOT EXISTS idx_microsites_hash ON microsites (content_hash);
+
+-- Pre-research clarifying questions (2026-08-08). Records what lib/clarify.js
+-- asked and what the shopper answered, if anything — [] when the step was
+-- skipped or the model judged the query already complete. Kept alongside the
+-- answer for the same reason gate_result is: so the questions/answers that
+-- actually shaped a pick can be reviewed later, not just trusted blind.
+ALTER TABLE microsites ADD COLUMN IF NOT EXISTS clarifications JSONB DEFAULT '[]';
