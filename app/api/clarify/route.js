@@ -14,7 +14,7 @@ import { generateClarifyingQuestions } from "@/lib/clarify";
 
 export async function POST(req) {
   try {
-    const { query, locale } = await req.json();
+    const { query, locale, geoOverride } = await req.json();
 
     const contentCheck = checkQuery(query);
     if (contentCheck.blocked) {
@@ -24,10 +24,18 @@ export async function POST(req) {
       return Response.json({ error: "Missing query" }, { status: 400 });
     }
 
+    // Same geo signal app/api/research/route.js uses, so a budget question
+    // shows ₹ for an Indian shopper and $ elsewhere — only used here to pick
+    // a currency symbol, so (unlike research's admin-only override) it's
+    // fine to trust the client value directly: worst case is a cosmetically
+    // wrong symbol on a question, not an actual geo-restricted offer leaking.
+    const country =
+      geoOverride || req.headers.get("x-vercel-ip-country") || req.headers.get("cf-ipcountry") || null;
+
     // Never a hard failure beyond the content-filter block above: any model
     // or parse error degrades to "no clarifying question", exactly like
     // extractIntent()'s failure mode in the main research route.
-    const questions = (await generateClarifyingQuestions(query, locale).catch((err) => {
+    const questions = (await generateClarifyingQuestions(query, locale, country).catch((err) => {
       console.error("Clarify route: generation threw:", err.message);
       return null;
     })) || [];

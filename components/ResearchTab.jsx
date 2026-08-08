@@ -251,7 +251,10 @@ export default function ResearchTab({ maxSearches, searchCount, onSearchComplete
         const resp = await fetch("/api/clarify", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ query: searchQ, locale }),
+          // geoOverride (admin-only "view as" selector) so a budget question
+          // shows the right currency symbol while testing another market —
+          // same value already sent to /api/research below.
+          body: JSON.stringify({ query: searchQ, locale, geoOverride: geoOverride || undefined }),
         });
         if (resp.ok) {
           const data = await resp.json();
