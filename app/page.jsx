@@ -288,6 +288,7 @@ export default function Home() {
             {SHOW_BRANDS_FORM && (
               <button onClick={() => { setShowAdminConsole(true); setActiveTab("brands"); }} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 13, color: "#4B5563", padding: 0 }}>For brands</button>
             )}
+            <a href="/help#how-we-decide" style={{ fontSize: 13, color: "#4B5563", textDecoration: "none" }}>How we decide</a>
             <a href="/pricing" style={{ fontSize: 13, color: "#4B5563", textDecoration: "none" }}>Pricing</a>
             {isAdminHint && (
               <button onClick={() => { setShowAdminConsole(true); setActiveTab("admin"); }} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 13, color: showAdminConsole ? "#0F6E56" : "#4B5563", fontWeight: showAdminConsole ? 600 : 400, padding: 0 }}>Admin</button>
@@ -558,6 +559,7 @@ export default function Home() {
             for the terms they agreed to. Styled as a plain link row to
             match the searchllm.ai footer pattern. */}
         <div style={{ display: "flex", gap: 16, flexWrap: "wrap", marginBottom: 10 }}>
+          <a href="/help#how-we-decide" style={{ fontSize: 13, color: "#4F46E5", textDecoration: "none" }}>How we decide</a>
           <a href="/privacy" style={{ fontSize: 13, color: "#4F46E5", textDecoration: "none" }}>Privacy Policy</a>
           <a href="/terms" style={{ fontSize: 13, color: "#4F46E5", textDecoration: "none" }}>Terms of Use</a>
           <a href="/refunds" style={{ fontSize: 13, color: "#4F46E5", textDecoration: "none" }}>Refunds</a>

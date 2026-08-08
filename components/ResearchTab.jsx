@@ -15,7 +15,7 @@ const STEPS = ["query synthesis", "checking current options", "weighing trade-of
 // searchllm.ai pattern of stating the trust architecture as a claim, not a
 // promise, with the load-bearing words picked out in colour.
 const MANIFESTO = [
-  { plain: ["Picks that "], colored: ["can't", "be", "bought"], trail: "." , body: "A sponsored listing is only looked up after the pick is already decided — that's the order the code runs in, not a promise we're asking you to trust." },
+  { plain: ["Picks that "], colored: ["can't", "be", "bought"], trail: "." , body: "The model that writes your pick never sees what we'd earn on it — only product, brand and price. Commission data is attached only after it's already chosen — the order the code runs in, not a promise we're asking you to trust." },
   { plain: ["Picks that "], colored: ["are", "honest"], trail: ".", body: "Price is never the deciding factor unless you raise it. We say plainly when the cheap option is fine, and when it will actually fail at what you asked for." },
 ];
 const GRADIENT_COLORS = ["#8B5CF6", "#EC4899", "#F59E0B", "#7C9A3D", "#0F6E56"];
