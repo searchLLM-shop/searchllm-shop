@@ -1,13 +1,17 @@
 // app/api/admin/redemptions/route.js
 //
-// The manual voucher-fulfilment queue. Deliberately manual at this stage:
-// an admin buys the voucher and pastes the code, which becomes visible to
-// the member on their Rewards tab. Voucher-API integrations are a problem
-// worth having only once the programme demonstrably works.
+// The voucher-fulfilment queue. Manual by default: an admin buys the
+// voucher and pastes the code, which becomes visible to the member on
+// their Rewards tab. An "auto" action attempts automated issuance via
+// Pine Labs/Qwikcilver first (lib/vouchers/qwikcilver.js) — a documented
+// stub until real credentials/spec exist, so it currently declines every
+// attempt with a reason rather than guessing, and the manual path below
+// stays the fallback for as long as that's true.
 
 import { auth, currentUser } from "@clerk/nextjs/server";
 import { getRedemptionQueue, resolveRedemption } from "@/lib/db";
 import { isAdminEmail } from "@/lib/isAdmin";
+import { issueVoucher, isConfigured as isVoucherApiConfigured } from "@/lib/vouchers/qwikcilver";
 
 export const maxDuration = 15;
 
@@ -20,7 +24,10 @@ export async function GET() {
   const { userId } = await auth();
   if (!userId) return Response.json({ error: "Not signed in" }, { status: 401 });
   if (!(await isAdmin())) return Response.json({ error: "Forbidden" }, { status: 403 });
-  return Response.json({ queue: await getRedemptionQueue() });
+  return Response.json({
+    queue: await getRedemptionQueue(),
+    autoIssuanceConfigured: isVoucherApiConfigured(),
+  });
 }
 
 export async function POST(req) {
@@ -43,6 +50,21 @@ export async function POST(req) {
   if (body.action === "reject") {
     const ok = await resolveRedemption(id, "reject");
     return Response.json({ ok });
+  }
+  if (body.action === "auto") {
+    // voucherType/points come from the queue row the admin is already
+    // looking at, not re-fetched — resolveRedemption below still checks
+    // status = 'requested' so a stale/double-click can't double-issue.
+    const voucherType = String(body.voucherType || "").trim();
+    const points = Number(body.points);
+    if (!voucherType || !Number.isInteger(points)) {
+      return Response.json({ ok: false, reason: "Missing voucherType/points" }, { status: 400 });
+    }
+    const result = await issueVoucher({ brand: voucherType, denomination: points, redemptionId: id });
+    if (!result.ok) return Response.json({ ok: false, reason: result.reason });
+    const fulfilled = await resolveRedemption(id, "fulfill", result.voucherCode);
+    if (!fulfilled) return Response.json({ ok: false, reason: "Issued a voucher but the redemption was already resolved — check for a duplicate code." });
+    return Response.json({ ok: true, voucherCode: result.voucherCode, automatic: true });
   }
   return Response.json({ error: "Unknown action" }, { status: 400 });
 }

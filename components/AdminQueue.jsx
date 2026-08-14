@@ -17,6 +17,9 @@ export default function AdminQueue() {
   const [syncRuns, setSyncRuns] = useState([]);
   const [inventory, setInventory] = useState([]);
   const [redemptions, setRedemptions] = useState([]);
+  const [autoIssuanceConfigured, setAutoIssuanceConfigured] = useState(false);
+  const [autoBusy, setAutoBusy] = useState(null); // redemption id currently attempting auto-issuance
+  const [autoErrors, setAutoErrors] = useState({}); // { [redemptionId]: reason }
   const [syncing, setSyncing] = useState(false);
   const [syncResult, setSyncResult] = useState(null);
   const [bulkBusy, setBulkBusy] = useState(false);
@@ -125,6 +128,7 @@ export default function AdminQueue() {
       if (rResp.ok) {
         const rData = await rResp.json();
         setRedemptions(rData.queue || []);
+        setAutoIssuanceConfigured(Boolean(rData.autoIssuanceConfigured));
       }
     } catch (e) {
       console.error("Failed to load sync status", e);
@@ -282,31 +286,63 @@ export default function AdminQueue() {
               Voucher redemptions awaiting fulfilment
             </div>
             {redemptions.filter((r) => r.status === "requested").map((r) => (
-              <div key={r.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, fontSize: 12, padding: "4px 0", color: "var(--color-text-secondary)" }}>
-                <span>{Number(r.points).toLocaleString()} pts → {r.voucher_type} · {r.user_id.slice(0, 14)}… · {new Date(r.created_at).toLocaleDateString()}</span>
-                <span style={{ display: "flex", gap: 6 }}>
-                  <button
-                    onClick={async () => {
-                      const code = window.prompt(`Voucher code for ${r.points} pts ${r.voucher_type}:`);
-                      if (!code) return;
-                      await fetch("/api/admin/redemptions", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: r.id, action: "fulfill", voucherCode: code.trim() }) });
-                      loadSyncStatus();
-                    }}
-                    style={{ background: "#0F6E56", color: "#fff", border: "none", borderRadius: 6, padding: "3px 10px", fontSize: 11, cursor: "pointer" }}
-                  >
-                    Fulfil
-                  </button>
-                  <button
-                    onClick={async () => {
-                      if (!window.confirm("Reject this redemption? Points return to the member.")) return;
-                      await fetch("/api/admin/redemptions", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: r.id, action: "reject" }) });
-                      loadSyncStatus();
-                    }}
-                    style={{ background: "none", border: "0.5px solid var(--color-border-secondary)", borderRadius: 6, padding: "3px 10px", fontSize: 11, cursor: "pointer", color: "var(--color-text-secondary)" }}
-                  >
-                    Reject
-                  </button>
-                </span>
+              <div key={r.id} style={{ padding: "4px 0" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, fontSize: 12, color: "var(--color-text-secondary)" }}>
+                  <span>{Number(r.points).toLocaleString()} pts → {r.voucher_type} · {r.user_id.slice(0, 14)}… · {new Date(r.created_at).toLocaleDateString()}</span>
+                  <span style={{ display: "flex", gap: 6 }}>
+                    {autoIssuanceConfigured && (
+                      <button
+                        disabled={autoBusy === r.id}
+                        onClick={async () => {
+                          setAutoBusy(r.id);
+                          setAutoErrors((e) => ({ ...e, [r.id]: undefined }));
+                          try {
+                            const resp = await fetch("/api/admin/redemptions", {
+                              method: "POST",
+                              headers: { "Content-Type": "application/json" },
+                              body: JSON.stringify({ id: r.id, action: "auto", voucherType: r.voucher_type, points: r.points }),
+                            });
+                            const data = await resp.json().catch(() => ({}));
+                            if (data.ok) {
+                              loadSyncStatus();
+                            } else {
+                              setAutoErrors((e) => ({ ...e, [r.id]: data.reason || "Automatic issuance failed." }));
+                            }
+                          } finally {
+                            setAutoBusy(null);
+                          }
+                        }}
+                        style={{ background: "#0F6E56", color: "#fff", border: "none", borderRadius: 6, padding: "3px 10px", fontSize: 11, cursor: "pointer", opacity: autoBusy === r.id ? 0.6 : 1 }}
+                      >
+                        {autoBusy === r.id ? "Issuing…" : "Try automatic"}
+                      </button>
+                    )}
+                    <button
+                      onClick={async () => {
+                        const code = window.prompt(`Voucher code for ${r.points} pts ${r.voucher_type}:`);
+                        if (!code) return;
+                        await fetch("/api/admin/redemptions", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: r.id, action: "fulfill", voucherCode: code.trim() }) });
+                        loadSyncStatus();
+                      }}
+                      style={{ background: autoIssuanceConfigured ? "none" : "#0F6E56", color: autoIssuanceConfigured ? "var(--color-text-secondary)" : "#fff", border: autoIssuanceConfigured ? "0.5px solid var(--color-border-secondary)" : "none", borderRadius: 6, padding: "3px 10px", fontSize: 11, cursor: "pointer" }}
+                    >
+                      {autoIssuanceConfigured ? "Fulfil manually" : "Fulfil"}
+                    </button>
+                    <button
+                      onClick={async () => {
+                        if (!window.confirm("Reject this redemption? Points return to the member.")) return;
+                        await fetch("/api/admin/redemptions", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: r.id, action: "reject" }) });
+                        loadSyncStatus();
+                      }}
+                      style={{ background: "none", border: "0.5px solid var(--color-border-secondary)", borderRadius: 6, padding: "3px 10px", fontSize: 11, cursor: "pointer", color: "var(--color-text-secondary)" }}
+                    >
+                      Reject
+                    </button>
+                  </span>
+                </div>
+                {autoErrors[r.id] && (
+                  <div style={{ fontSize: 11, color: "#D85A30", marginTop: 2 }}>{autoErrors[r.id]}</div>
+                )}
               </div>
             ))}
           </div>

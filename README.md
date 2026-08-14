@@ -89,6 +89,23 @@ team for, so filling it in later is a contained, well-scoped task rather
 than a rebuild. Until then, vCommission listings still go through the
 manual "For brands" form.
 
+## Gift-voucher redemption — manual, with an automated path being built
+
+`app/api/admin/redemptions/route.js` is the queue an admin works through
+to fulfil a member's points redemption (see `LOYALTY.DENOMINATIONS`/
+`VOUCHER_CATALOG` in `lib/constants.js`): buy the voucher, paste the code,
+it appears on the member's Rewards tab. `lib/vouchers/qwikcilver.js` is
+the same kind of deliberate stub as `lib/feeds/vcommission.js` above —
+Pine Labs/Qwikcilver publish only marketing-level names for their partner
+APIs, with the real technical spec (endpoints, auth, request/response
+shapes) gated behind partner onboarding. The proxy plumbing these calls
+will need (a QuotaGuard static-IP pair for Pine Labs to allowlist, see
+`.env.example`) is real and wired up; the actual request-building isn't,
+and `issueVoucher()` says so explicitly rather than guessing. The admin
+queue only shows a "Try automatic" button once `QWIKCILVER_API_KEY` /
+`QWIKCILVER_API_BASE` are set and at least one brand is mapped in that
+file's `BRAND_SKU_MAP` — until then it's the manual flow, unchanged.
+
 ### How the sync runs
 
 - **Automatic**: every 6 hours via Vercel Cron (see `vercel.json`).
