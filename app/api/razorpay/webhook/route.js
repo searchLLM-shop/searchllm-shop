@@ -6,8 +6,14 @@
 //   Settings -> Webhooks -> Add:  https://searchllm.shop/api/razorpay/webhook
 //   Subscribe to: subscription.activated, subscription.charged,
 //                 subscription.cancelled, subscription.halted,
-//                 subscription.completed
-// and set the same secret in RAZORPAY_WEBHOOK_SECRET.
+//                 subscription.completed, subscription.paused,
+//                 payment_link.paid
+// and set the same secret in RAZORPAY_WEBHOOK_SECRET. payment_link.paid is
+// easy to miss here since it's unrelated to the Plus subscription — it's
+// what unlocks the next search block after a ₹249 "Increase Usage"
+// recharge (see app/api/checkout/route.js's rechargeBody branch). Without
+// it subscribed, a recharge payment succeeds and the user is charged, but
+// never gets unlocked.
 
 import { createHmac, timingSafeEqual } from "crypto";
 import { upsertUserPlan, resolveCheckpoint } from "@/lib/db";
@@ -44,7 +50,7 @@ export async function POST(req) {
     // block as paid-resolved, unlocking the next 50 picks. Idempotent by
     // the (user, kind, block) unique key, so webhook retries no-op.
     if (type === "payment_link.paid") {
-      const pl = body?.payload?.payment_link?.entity;
+      const pl = event.payload?.payment_link?.entity;
       const rechargeUser = pl?.notes?.clerkUserId;
       if (rechargeUser && pl?.notes?.type === "recharge") {
         try {
