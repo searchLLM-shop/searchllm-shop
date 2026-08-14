@@ -89,22 +89,33 @@ team for, so filling it in later is a contained, well-scoped task rather
 than a rebuild. Until then, vCommission listings still go through the
 manual "For brands" form.
 
-## Gift-voucher redemption — manual, with an automated path being built
+## Gift-voucher redemption — automated issuance via Pine Labs Qwikcilver
 
 `app/api/admin/redemptions/route.js` is the queue an admin works through
 to fulfil a member's points redemption (see `LOYALTY.DENOMINATIONS`/
-`VOUCHER_CATALOG` in `lib/constants.js`): buy the voucher, paste the code,
-it appears on the member's Rewards tab. `lib/vouchers/qwikcilver.js` is
-the same kind of deliberate stub as `lib/feeds/vcommission.js` above —
-Pine Labs/Qwikcilver publish only marketing-level names for their partner
-APIs, with the real technical spec (endpoints, auth, request/response
-shapes) gated behind partner onboarding. The proxy plumbing these calls
-will need (a QuotaGuard static-IP pair for Pine Labs to allowlist, see
-`.env.example`) is real and wired up; the actual request-building isn't,
-and `issueVoucher()` says so explicitly rather than guessing. The admin
-queue only shows a "Try automatic" button once `QWIKCILVER_API_KEY` /
-`QWIKCILVER_API_BASE` are set and at least one brand is mapped in that
-file's `BRAND_SKU_MAP` — until then it's the manual flow, unchanged.
+`VOUCHER_CATALOG` in `lib/constants.js`): buy the voucher, paste the
+code, it appears on the member's Rewards tab. `lib/vouchers/qwikcilver.js`
+implements the real thing against Pine Labs' QwikGiftAPI
+(developers.woohoo.in/docs/rest-api-v3-revamp — self-serve, unlike
+vCommission above) — OAuth2 token exchange, the HMAC-SHA512 request
+signing scheme, and the Order API call that actually issues a voucher and
+returns its code synchronously, all built from that real spec.
+
+What's still a gap, deliberately, rather than guessed: real account
+credentials (`QWIKCILVER_CLIENT_ID`/`SECRET`/`USERNAME`/`PASSWORD`, from
+Pine Labs' onboarding), and the mapping from our voucher brands (Amazon
+Pay, Flipkart, ...) to Qwikcilver's own SKU codes, which is
+account-specific and can't be known in advance. `BRAND_SKU_MAP` in that
+file starts empty; `app/api/admin/qwikcilverdiag/route.js` (same
+diagnostic-first pattern as `/api/admin/feeddiag`) browses the real
+sandbox catalog once credentials exist, so filling the map in is a
+lookup, not a guess. The proxy plumbing these calls will need (a
+QuotaGuard static-IP pair for Pine Labs to allowlist, see
+`.env.example`) is wired up too.
+
+The admin queue only shows a "Try automatic" button once credentials are
+set and at least one brand is mapped — until then it's the manual flow,
+unchanged.
 
 ### How the sync runs
 
