@@ -53,20 +53,42 @@ async function prepareImage(file) {
   return { data: out.split(",")[1], mediaType: "image/jpeg" };
 }
 
-// Progressive reveal for the streamed answer (2026-08-19). /api/research now
-// streams the model's raw JSON text as it's generated (see the NDJSON "delta"
-// events read in runResearch below) rather than waiting for the whole object
-// to close. Rather than a general partial-JSON parser (fragile against
-// mid-string truncation), this only ever reveals a field once its VALUE has
-// actually finished streaming — i.e. the regex requires a real closing
-// quote, which for a well-formed JSON string can only appear once that
-// value is complete. Order-independent (searches each key separately), so
-// it doesn't assume anything about the model's field ordering, only that
-// SYSTEM_PROMPT's schema puts these prose fields early enough to matter.
+// Progressive reveal for the streamed answer (2026-08-19, revised same day
+// after the first version read as "sections popping in abruptly" rather
+// than smooth streaming). /api/research streams the model's raw JSON text
+// as it's generated (see the NDJSON "delta" events read in runResearch
+// below) rather than waiting for the whole object to close.
+//
+// Two tiers, tried in order for each field:
+//   1. A CLOSED match — a real closing quote has streamed in — is the
+//      authoritative, correctly-unescaped value (via JSON.parse on the
+//      matched string literal). Once a field closes it never changes.
+//   2. An OPEN match — the field's opening quote has arrived but not yet
+//      its closing one — is a best-effort, hand-unescaped PARTIAL value:
+//      whatever text has streamed in so far, growing on every render. This
+//      is what makes text appear to type in smoothly word-by-word instead
+//      of whole sentences popping in only once complete.
+// Order-independent (searches each key separately), so it doesn't assume
+// anything about the model's field ordering, only that SYSTEM_PROMPT's
+// schema puts these prose fields early enough to matter.
 function extractStreamingField(rawText, key) {
-  const match = rawText.match(new RegExp(`"${key}"\\s*:\\s*("(?:[^"\\\\]|\\\\.)*")`));
-  if (!match) return undefined;
-  try { return JSON.parse(match[1]); } catch { return undefined; }
+  const closed = rawText.match(new RegExp(`"${key}"\\s*:\\s*("(?:[^"\\\\]|\\\\.)*")`));
+  if (closed) {
+    try { return JSON.parse(closed[1]); } catch { /* fall through to open-match below */ }
+  }
+  const open = rawText.match(new RegExp(`"${key}"\\s*:\\s*"((?:[^"\\\\]|\\\\.)*)$`));
+  if (open) {
+    // Best-effort unescape of the most common JSON escapes. A trailing lone
+    // backslash means we're mid-escape-sequence — drop it for this render,
+    // it resolves itself once the next chunk completes the escape.
+    return open[1]
+      .replace(/\\n/g, "\n")
+      .replace(/\\t/g, "\t")
+      .replace(/\\"/g, '"')
+      .replace(/\\\\/g, "\\")
+      .replace(/\\$/, "");
+  }
+  return undefined;
 }
 function extractStreamingFields(rawText) {
   const out = {};
@@ -267,10 +289,11 @@ export default function ResearchTab({ maxSearches, searchCount, onSearchComplete
                 setStep(-1);
                 setProcessing(false); // reveals the result card, still partial
               }
-              // Throttled: a re-render on every single token is wasted work
-              // and reads as jitter, not progress. ~8/sec is plenty smooth.
+              // Throttled: a re-render on every single token is wasted work.
+              // ~15/sec reads as smooth continuous typing without hammering
+              // React on a fast connection.
               const now = Date.now();
-              if (now - lastRender > 120) {
+              if (now - lastRender > 65) {
                 lastRender = now;
                 const partial = extractStreamingFields(rawText);
                 setResult((prev) => ({
@@ -281,6 +304,22 @@ export default function ResearchTab({ maxSearches, searchCount, onSearchComplete
                   ...partial,
                 }));
               }
+            } else if (evt.type === "pick") {
+              // Arrives well before "final" — the server extracts the
+              // product pick + alternatives as soon as those specific
+              // fields finish, without waiting for the admin-only
+              // diagnostic fields that follow them in the same response
+              // (see extractBalancedValue in app/api/research/route.js).
+              // This is what shortens the wait for the actual pick card.
+              lastRender = Date.now(); // avoid an immediately-following throttled delta overwriting this
+              setResult((prev) => ({
+                query: searchQ,
+                id: "streaming",
+                ...(prev || {}),
+                matchedListing: evt.matchedListing,
+                alternatives: evt.alternatives || [],
+                alternativesWithheld: evt.alternativesWithheld,
+              }));
             } else if (evt.type === "final") {
               finalData = evt;
             } else if (evt.type === "error") {

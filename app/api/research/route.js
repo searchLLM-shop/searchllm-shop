@@ -525,6 +525,8 @@ export async function POST(req) {
         // stop_reason (the max_tokens truncation check below).
         let raw = "";
         let stopReason = null;
+        let pickSent = false;
+        const offeredIdsEarly = new Set(topMatches.map((m) => m.listing.id));
         try {
           const reader = anthropicResp.body.getReader();
           const decoder = new TextDecoder();
@@ -544,6 +546,36 @@ export async function POST(req) {
               if (evt.type === "content_block_delta" && evt.delta?.type === "text_delta") {
                 raw += evt.delta.text;
                 send({ type: "delta", text: evt.delta.text });
+
+                // Early pick: the moment "alternatives" (schema field 8)
+                // has actually closed, sponsoredChoiceId (field 6, earlier
+                // in the same object) is guaranteed complete too — send the
+                // pick card now rather than making the shopper wait through
+                // candidateFitment and the rest of the bookkeeping fields
+                // that follow it in the same JSON object.
+                if (!pickSent) {
+                  const altsRaw = extractBalancedValue(raw, "alternatives");
+                  if (altsRaw !== null) {
+                    try {
+                      const altsParsed = JSON.parse(altsRaw);
+                      const idRaw = extractBareValue(raw, "sponsoredChoiceId");
+                      let pickChosenId = idRaw && idRaw !== "null" ? Number(idRaw) : null;
+                      if (pickChosenId !== null && !offeredIdsEarly.has(pickChosenId)) pickChosenId = null;
+                      const pickChosenMatch = pickChosenId ? candidates.find((l) => l.id === pickChosenId) || null : null;
+                      pickSent = true;
+                      send({
+                        type: "pick",
+                        matchedListing: buildClientListingPayload(pickChosenMatch),
+                        alternatives: Array.isArray(altsParsed) ? altsParsed.slice(0, 3) : [],
+                        alternativesWithheld: suppressAlternatives || undefined,
+                      });
+                    } catch {
+                      // Not actually valid JSON yet despite balanced
+                      // brackets (mid-escape edge case) — the "final" event
+                      // will carry this correctly once the stream completes.
+                    }
+                  }
+                }
               } else if (evt.type === "message_delta" && evt.delta?.stop_reason) {
                 stopReason = evt.delta.stop_reason;
               }
@@ -828,6 +860,60 @@ export async function POST(req) {
       { status: 500 }
     );
   }
+}
+
+// --- Mid-stream partial extraction (2026-08-19 speed pass) ---------------
+//
+// The product pick + alternatives (fields 6-8 of SYSTEM_PROMPT's schema)
+// are what a shopper is actually waiting to see, but candidateFitment and
+// the other backend-only bookkeeping fields that follow them in the same
+// JSON object can add real generation time on top — time the shopper has
+// no reason to wait through before seeing their pick. These two helpers let
+// the SSE relay loop below detect the moment "alternatives" has actually
+// closed and send matchedListing/alternatives immediately, well before the
+// full response (and its "final" event) is done.
+//
+// String-aware balanced-bracket extraction: returns the raw JSON substring
+// for `"key": [...]` or `"key": {...}` once its closing bracket has
+// actually streamed in (brackets inside quoted strings don't count), or
+// null if the key isn't found yet or its value isn't closed yet.
+function extractBalancedValue(text, key) {
+  const keyIdx = text.indexOf(`"${key}"`);
+  if (keyIdx === -1) return null;
+  const colonIdx = text.indexOf(":", keyIdx + key.length + 2);
+  if (colonIdx === -1) return null;
+  let i = colonIdx + 1;
+  while (i < text.length && /\s/.test(text[i])) i++;
+  const openChar = text[i];
+  if (openChar !== "[" && openChar !== "{") return null;
+  const closeChar = openChar === "[" ? "]" : "}";
+  let depth = 0;
+  let inStr = false;
+  let esc = false;
+  for (let j = i; j < text.length; j++) {
+    const ch = text[j];
+    if (inStr) {
+      if (esc) esc = false;
+      else if (ch === "\\") esc = true;
+      else if (ch === '"') inStr = false;
+      continue;
+    }
+    if (ch === '"') { inStr = true; continue; }
+    if (ch === openChar) depth++;
+    else if (ch === closeChar) {
+      depth--;
+      if (depth === 0) return text.slice(i, j + 1);
+    }
+  }
+  return null; // not closed yet
+}
+
+// A bare (unquoted) value — number or null — followed by a real delimiter,
+// so a still-typing "4" isn't mistaken for a complete "4" when it's about
+// to become "42".
+function extractBareValue(text, key) {
+  const m = text.match(new RegExp(`"${key}"\\s*:\\s*(-?\\d+|null)\\s*[,}]`));
+  return m ? m[1] : null;
 }
 
 async function hashQuery(text) {
