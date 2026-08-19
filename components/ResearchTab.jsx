@@ -53,6 +53,30 @@ async function prepareImage(file) {
   return { data: out.split(",")[1], mediaType: "image/jpeg" };
 }
 
+// Progressive reveal for the streamed answer (2026-08-19). /api/research now
+// streams the model's raw JSON text as it's generated (see the NDJSON "delta"
+// events read in runResearch below) rather than waiting for the whole object
+// to close. Rather than a general partial-JSON parser (fragile against
+// mid-string truncation), this only ever reveals a field once its VALUE has
+// actually finished streaming — i.e. the regex requires a real closing
+// quote, which for a well-formed JSON string can only appear once that
+// value is complete. Order-independent (searches each key separately), so
+// it doesn't assume anything about the model's field ordering, only that
+// SYSTEM_PROMPT's schema puts these prose fields early enough to matter.
+function extractStreamingField(rawText, key) {
+  const match = rawText.match(new RegExp(`"${key}"\\s*:\\s*("(?:[^"\\\\]|\\\\.)*")`));
+  if (!match) return undefined;
+  try { return JSON.parse(match[1]); } catch { return undefined; }
+}
+function extractStreamingFields(rawText) {
+  const out = {};
+  for (const key of ["headline", "reasoning", "whoItsFor", "whoShouldSkip", "confidence"]) {
+    const v = extractStreamingField(rawText, key);
+    if (v !== undefined) out[key] = v;
+  }
+  return out;
+}
+
 export default function ResearchTab({ maxSearches, searchCount, onSearchComplete, onSavePick, isAdmin, savedQueries = [], saveNotice, locale = "en" }) {
   const tr = t(locale);
   const [query, setQuery] = useState("");
@@ -207,7 +231,71 @@ export default function ResearchTab({ maxSearches, searchCount, onSearchComplete
           throw new Error(detail || `Request failed (${resp.status})`);
         }
 
-        const data = await resp.json();
+        // --- Streamed response: NDJSON lines, {"type":"delta","text":...}
+        // while the model writes, one {"type":"final", ...payload} once
+        // everything (validation, the DB write, rewards) is done server-
+        // side — see app/api/research/route.js. As soon as the first delta
+        // arrives, drop the stage-grid and reveal the (still-filling-in)
+        // result card, so the shopper watches the pick appear instead of
+        // waiting through the model's entire generation.
+        const reader = resp.body.getReader();
+        const decoder = new TextDecoder();
+        let buf = "";
+        let rawText = "";
+        let revealedYet = false;
+        let finalData = null;
+        let streamError = null;
+        let lastRender = 0;
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buf += decoder.decode(value, { stream: true });
+          const lines = buf.split("\n");
+          buf = lines.pop(); // last (possibly partial) line stays buffered
+
+          for (const line of lines) {
+            if (!line.trim()) continue;
+            let evt;
+            try { evt = JSON.parse(line); } catch { continue; }
+
+            if (evt.type === "delta") {
+              rawText += evt.text;
+              if (!revealedYet) {
+                revealedYet = true;
+                clearInterval(stepTimer);
+                setStep(-1);
+                setProcessing(false); // reveals the result card, still partial
+              }
+              // Throttled: a re-render on every single token is wasted work
+              // and reads as jitter, not progress. ~8/sec is plenty smooth.
+              const now = Date.now();
+              if (now - lastRender > 120) {
+                lastRender = now;
+                const partial = extractStreamingFields(rawText);
+                setResult((prev) => ({
+                  query: searchQ,
+                  alternatives: [],
+                  id: "streaming",
+                  ...(prev || {}),
+                  ...partial,
+                }));
+              }
+            } else if (evt.type === "final") {
+              finalData = evt;
+            } else if (evt.type === "error") {
+              streamError = evt;
+            }
+          }
+        }
+
+        if (streamError) {
+          throw new Error(streamError.detail || streamError.error || "Research engine error");
+        }
+        if (!finalData) {
+          throw new Error("Connection closed before the answer finished.");
+        }
+        const { type: _finalType, ...data } = finalData;
         setResult({ query: searchQ, ...data, alternatives: data.alternatives || [], id: Date.now() });
         onSearchComplete?.();
         trackEvent("search_completed", {
@@ -216,6 +304,12 @@ export default function ResearchTab({ maxSearches, searchCount, onSearchComplete
         });
       } catch (e) {
         console.error(e);
+        // If streaming had already started revealing a partial pick before
+        // this failure, clear it — matching the pre-streaming behaviour of
+        // never showing a result alongside an error banner. A half-written
+        // answer next to "couldn't complete the research" reads as broken,
+        // not as progress.
+        setResult(null);
         setErrorMsg(
           e.message && e.message !== "Request failed"
             ? `Couldn't complete the research: ${e.message}`

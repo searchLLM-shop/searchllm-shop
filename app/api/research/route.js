@@ -468,7 +468,7 @@ export async function POST(req) {
         : ""
     }${formatIntentContext(intent)}${searchContext}`;
 
-    const resp = await fetch("https://api.anthropic.com/v1/messages", {
+    const anthropicResp = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -492,258 +492,332 @@ export async function POST(req) {
         temperature: 0.2,
         system: SYSTEM_PROMPT,
         messages: [{ role: "user", content: userContent }],
+        // Streamed (2026-08-19): this call is comfortably the longest single
+        // leg of the whole pipeline — a large structured JSON response from
+        // Sonnet, made larger still by candidateFitment. Streaming lets the
+        // shopper watch the pick appear as it's written instead of staring
+        // at a spinner for the entire generation. Nothing downstream
+        // (parsing, validation, gating, the DB write, rewards) changes — it
+        // still only runs once the full response has accumulated; only the
+        // wire format to OUR client changes, from one JSON body to a
+        // sequence of NDJSON lines ending in one "final" line carrying
+        // exactly the same payload shape this route has always returned.
+        stream: true,
       }),
     });
 
-    if (!resp.ok) {
-      const errText = await resp.text();
-      console.error("Anthropic API error:", resp.status, errText);
+    if (!anthropicResp.ok) {
+      const errText = await anthropicResp.text();
+      console.error("Anthropic API error:", anthropicResp.status, errText);
       return Response.json({ error: "Research engine error" }, { status: 502 });
     }
 
-    const data = await resp.json();
+    const encoder = new TextEncoder();
+    const outStream = new ReadableStream({
+      async start(controller) {
+        const send = (obj) => controller.enqueue(encoder.encode(JSON.stringify(obj) + "\n"));
 
-    // If the model hit the token ceiling, its JSON is cut off mid-object and
-    // will never parse. Say so plainly rather than reporting a vague
-    // "unexpected response" — this exact case broke searches when the
-    // alternatives field was added without raising max_tokens.
-    if (data.stop_reason === "max_tokens") {
-      console.error("Model response truncated at max_tokens — raise the cap.");
-      return Response.json(
-        { error: "Research engine error", detail: "The answer was cut off before it finished. Try a shorter question." },
-        { status: 502 }
-      );
-    }
-
-    let raw = data.content?.map((c) => c.text || "").join("").trim();
-    // The model sometimes wraps its JSON in markdown code fences
-    // (```json ... ```). Strip them before parsing, otherwise JSON.parse
-    // throws on the leading backticks even though the answer is valid.
-    if (raw.startsWith("```")) {
-      raw = raw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "").trim();
-    }
-    let parsed;
-    try {
-      parsed = JSON.parse(raw);
-    } catch (firstErr) {
-      // Repair the classic shopping-content malformation before failing:
-      // an inch mark inside a string ('At ₹1 lakh for a 55"+ TV...') is an
-      // unescaped quote to JSON.parse. A digit + quote NOT followed by a
-      // JSON structural character (, } ] :) is an inch symbol — rewrite it
-      // as "-inch" and retry. Seen in production 2026-07-22.
-      try {
-        const repaired = raw.replace(/(\d)\s*"(?=\s*[^,}\]:\s]|\s+[a-zA-Z+&(₹])/g, "$1-inch");
-        parsed = JSON.parse(repaired);
-        console.warn("Model JSON needed inch-mark repair; recovered.");
-      } catch (e) {
-      console.error("Failed to parse model response as JSON:", raw);
-      return Response.json(
-        {
-          error: "Research engine returned an unexpected response",
-          detail: `Could not parse the answer (${raw?.length || 0} chars). Starts: ${String(raw).slice(0, 80)}`,
-        },
-        { status: 502 }
-      );
-      }
-    }
-
-    // Resolve the model's sponsored choice. The id must be one we actually
-    // offered — a hallucinated or stale id resolves to nothing, so the model
-    // can only ever select from the shortlist, never inject a product. Null
-    // or absent means the model judged nothing genuinely relevant, and no
-    // card is shown. (Legacy sponsoredRelevant handled during the schema
-    // transition: true selects the top candidate, false selects nothing.)
-    const offeredIds = new Set(topMatches.map((m) => m.listing.id));
-    let chosenId = Number(parsed.sponsoredChoiceId);
-    if (!offeredIds.has(chosenId)) chosenId = null;
-    if (chosenId === null && parsed.sponsoredRelevant === true && topMatches.length > 0) {
-      chosenId = topMatches[0].listing.id;
-    }
-    const chosenMatch = chosenId ? candidates.find((l) => l.id === chosenId) || null : null;
-
-    // Validate taskType against the fixed taxonomy — microsite linking
-    // (matching microsites by shared task type) depends on exact string
-    // equality, so a stray capitalization or typo from the model would
-    // silently break that feature without this check.
-    const VALID_TASK_TYPES = ["research", "creative", "technical", "predictive", "analysis"];
-    const taskType = VALID_TASK_TYPES.includes(parsed.taskType) ? parsed.taskType : "research";
-
-    // Fermionic/anyonic fitment — validate ids belong to what was actually
-    // offered, same guard as sponsoredChoiceId above: a hallucinated id is
-    // dropped rather than trusted. Admin-only (see sponsoredDebug below),
-    // this is the explicit "why we said no" record for every candidate, not
-    // just the one that was picked.
-    const candidateFitment = Array.isArray(parsed.candidateFitment)
-      ? parsed.candidateFitment
-          .filter((c) => c && offeredIds.has(Number(c.id)))
-          .map((c) => ({
-            id: Number(c.id),
-            fits: c.fits === true,
-            reason: typeof c.reason === "string" ? c.reason.slice(0, 200) : "",
-            valueStatement: c.fits === true && typeof c.valueStatement === "string" ? c.valueStatement.slice(0, 200) : "",
-          }))
-      : [];
-
-    // Cosmic popularity signal — the model's own judgment, validated against
-    // the fixed taxonomy lib/publicationGate.js understands. Never blocks:
-    // an invalid/missing value is stored as null, which the gate treats as
-    // "unknown, don't block" rather than a failure.
-    const VALID_POPULARITY = ["high", "medium", "low", "niche"];
-    const popularityLevel = VALID_POPULARITY.includes(parsed.popularityLevel) ? parsed.popularityLevel : null;
-
-    // --- Write the microsite record. Note: queryHash, not the raw query, ---
-    // --- is stored, so no individual user's question is ever retained.  ---
-    const queryHash = await hashQuery(query);
-    // Build a publishable page from the answer — but only when the model was
-    // able to reduce the question to a generic shopping topic. A question too
-    // personal to generalise gets stored as before and never becomes a page.
-    const publicTopic = typeof parsed.publicTopic === "string" ? parsed.publicTopic.trim() : "";
-    let slug = null;
-    if (publicTopic.length > 8) {
-      const base = slugify(publicTopic);
-      if (base) {
-        try { slug = await reserveSlug(base); } catch { slug = null; }
-      }
-    }
-
-    // Fire-and-forget (2026-08-19 speed pass): nothing in the response below
-    // reads from this call's result, so awaiting it before responding was
-    // pure added latency — one DB round trip the shopper waited through for
-    // no reason. Same pattern already used for recordEvent/recordSearchQuery
-    // above. Bonus: a write hiccup here (sitemap/analytics bookkeeping) can
-    // no longer fail the whole request — previously an insertMicrosite error
-    // would throw past this point and turn a successful answer into a 500.
-    insertMicrosite({
-      title: parsed.micrositeTitle,
-      summary: parsed.micrositeSummary,
-      taskType,
-      // Gate input: a page written without live retrieval has no original
-      // evidence behind it and cannot earn an indexed URL.
-      searchPerformed: searchUsed,
-      learnings: parsed.learnings,
-      listingId: chosenMatch?.id || null,
-      queryHash,
-      slug,
-      topic: publicTopic || null,
-      headline: parsed.headline,
-      body: parsed.reasoning,
-      whoFor: parsed.whoItsFor,
-      whoSkip: parsed.whoShouldSkip,
-      // Safety net for the prompt rule above: drop any alternative that
-      // names the product we already showed as the sponsored pick.
-      alternatives: suppressAlternatives
-        ? []
-        : (parsed.alternatives || []).filter((a) => {
-            if (!chosenMatch || !a?.name) return true;
-            const alt = String(a.name).toLowerCase().replace(/[^a-z0-9 ]/g, " ");
-            const picked = `${chosenMatch.brand || ""} ${chosenMatch.product || ""}`
-              .toLowerCase()
-              .replace(/[^a-z0-9 ]/g, " ");
-            const altWords = new Set(alt.split(/\s+/).filter((w) => w.length > 3));
-            const pickWords = new Set(picked.split(/\s+/).filter((w) => w.length > 3));
-            if (!altWords.size) return true;
-            let shared = 0;
-            for (const w of altWords) if (pickWords.has(w)) shared++;
-            return shared / altWords.size < 0.6; // mostly the same product
-          }),
-      country: userCountry,
-      // What lib/clarify.js asked and what the shopper answered, if
-      // anything — recorded alongside the answer it shaped, same idea as
-      // gate_result, so the questions that actually moved a pick can be
-      // reviewed later rather than trusted blind.
-      clarifications: safeClarifications,
-      // Cosmic gate input — see lib/publicationGate.js's popularity check.
-      // Recorded even when null (model didn't return a valid value): a
-      // missing signal is "unknown, don't block", never a silent failure.
-      popularityLevel,
-    }).catch((err) => console.error("insertMicrosite failed:", err.message));
-
-    return Response.json({
-      headline: parsed.headline,
-      reasoning: parsed.reasoning,
-      whoItsFor: parsed.whoItsFor,
-      whoShouldSkip: parsed.whoShouldSkip,
-      confidence: parsed.confidence,
-      imageUnderstanding: vision?.isProduct ? vision.description : null,
-      alternatives: Array.isArray(parsed.alternatives) ? parsed.alternatives.slice(0, 3) : [],
-      taskType,
-      // The model's judgment now decides whether a paid placement appears.
-      // Previously the card rendered whenever the keyword matcher found
-      // something, even when the model had just told the reader the product
-      // was irrelevant — showing a buy button under an explanation of why not
-      // to buy it. A sponsored slot we can't defend is worth less than an
-      // empty one.
-      matchedListing: buildClientListingPayload(chosenMatch),
-      alternativesWithheld: suppressAlternatives || undefined,
-      // Amazon Associates browse link — ONLY when no partner product
-      // matched, so it monetizes otherwise-unmonetized queries without
-      // competing with the sponsored card or touching the (provably
-      // neutral) alternatives. Direct link, no redirect: Amazon's rules
-      // require the destination be apparent; click tracking happens via
-      // the client dataLayer event instead. Renders only when the
-      // AMAZON_ASSOCIATES_TAG env var is set.
-      // Amazon needs a PRODUCT term, not the question. Searching Amazon for
-      // "compare borngood detergent with other and suggest the best in
-      // quality" returns nothing useful, and showing the question back as a
-      // card title looks broken. Prefer the model's shoppingTerm, fall back
-      // to the leading alternative's name, and only then the raw query.
-      amazonBrowse: (() => {
-        if (chosenMatch || !process.env.AMAZON_ASSOCIATES_TAG) return undefined;
-        const term = [
-          typeof parsed.shoppingTerm === "string" ? parsed.shoppingTerm.trim() : "",
-          parsed.alternatives?.[0]?.name || "",
-          typeof query === "string" ? query.trim() : "",
-        ].find((t) => t && t.length > 2);
-        if (!term) return undefined;
-        return {
-          term: term.slice(0, 80),
-          url: `https://www.amazon.in/s?k=${encodeURIComponent(term.slice(0, 120))}&tag=${process.env.AMAZON_ASSOCIATES_TAG}`,
-        };
-      })(),
-      // Search points: registered users earn per pick under a daily cap;
-      // guests see a day-expiring figure computed from today's picks (never
-      // stored — vanishes at midnight unless they sign up and claim). Both
-      // are best-effort: a rewards hiccup must never fail a search.
-      rewards: await (async () => {
+        // --- Relay Anthropic's SSE stream, accumulating the full text as
+        // it arrives and forwarding each text delta to our own client
+        // immediately. Anthropic's stream is a sequence of `data: {...}`
+        // lines (blank-line separated); we only care about
+        // content_block_delta (the actual text) and message_delta's
+        // stop_reason (the max_tokens truncation check below).
+        let raw = "";
+        let stopReason = null;
         try {
-          if (userId) {
-            const sp = await creditSearchPoints(userId);
-            return { kind: "user", ...sp };
+          const reader = anthropicResp.body.getReader();
+          const decoder = new TextDecoder();
+          let buf = "";
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            buf += decoder.decode(value, { stream: true });
+            const lines = buf.split("\n");
+            buf = lines.pop(); // last (possibly partial) line stays buffered
+            for (const line of lines) {
+              if (!line.startsWith("data: ")) continue;
+              const payload = line.slice(6).trim();
+              if (!payload || payload === "[DONE]") continue;
+              let evt;
+              try { evt = JSON.parse(payload); } catch { continue; }
+              if (evt.type === "content_block_delta" && evt.delta?.type === "text_delta") {
+                raw += evt.delta.text;
+                send({ type: "delta", text: evt.delta.text });
+              } else if (evt.type === "message_delta" && evt.delta?.stop_reason) {
+                stopReason = evt.delta.stop_reason;
+              }
+            }
           }
-          const guestToday = picksUsedToday !== null
-            ? picksUsedToday * LOYALTY.SEARCH_POINTS.GUEST_PER_PICK
-            : await getGuestDayPoints(identity);
-          return { kind: "guest", guestToday, perPick: LOYALTY.SEARCH_POINTS.GUEST_PER_PICK };
-        } catch (e) {
-          console.error("Search points failed:", e.message);
-          return null;
+        } catch (err) {
+          console.error("Anthropic stream read failed:", err.message);
+          send({ type: "error", error: "Research engine error", detail: String(err?.message || err) });
+          controller.close();
+          return;
         }
-      })(),
-      // Model-suggested refinements, hard-capped and length-limited — these
-      // render as tappable chips that append to the query and re-run.
-      refinements: Array.isArray(parsed.refinements)
-        ? parsed.refinements.filter((r) => typeof r === "string" && r.trim() && r.length <= 40).slice(0, 3)
-        : [],
-      // Admins only: what the matcher offered and what the model chose, so
-      // "why is there no card" is answerable by looking, not by inference.
-      // Never sent to regular users — it names inventory they weren't shown.
-      ...(admin
-        ? {
-            sponsoredDebug: {
-              offered: topMatches.map((m) => ({ id: m.listing.id, product: m.listing.product, price: m.listing.price, score: Number(m.score.toFixed(1)) })),
-              chosenId: chosenMatch?.id || null,
-              // Fermionic/anyonic — why every offered candidate was or
-              // wasn't a fit, not just the one that was picked. Admin-only,
-              // same as the rest of sponsoredDebug: it names inventory
-              // shoppers weren't shown.
-              candidateFitment,
-              popularityLevel,
-            },
+
+        // If the model hit the token ceiling, its JSON is cut off mid-object
+        // and will never parse. Say so plainly rather than reporting a vague
+        // "unexpected response" — this exact case broke searches when the
+        // alternatives field was added without raising max_tokens.
+        if (stopReason === "max_tokens") {
+          console.error("Model response truncated at max_tokens — raise the cap.");
+          send({ type: "error", error: "Research engine error", detail: "The answer was cut off before it finished. Try a shorter question." });
+          controller.close();
+          return;
+        }
+
+        // --- Everything below is the same parsing/validation/write logic
+        // this route has always run, now inside the stream so a failure
+        // here becomes a clean {type:"error"} line instead of either an
+        // unhandled rejection or a client left waiting forever.
+        try {
+          raw = raw.trim();
+          // The model sometimes wraps its JSON in markdown code fences
+          // (```json ... ```). Strip them before parsing, otherwise
+          // JSON.parse throws on the leading backticks even though the
+          // answer is valid.
+          if (raw.startsWith("```")) {
+            raw = raw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "").trim();
           }
-        : {}),
-      plan,
-      limit,
-      searchUsed,
+          let parsed;
+          try {
+            parsed = JSON.parse(raw);
+          } catch (firstErr) {
+            // Repair the classic shopping-content malformation before
+            // failing: an inch mark inside a string ('At ₹1 lakh for a
+            // 55"+ TV...') is an unescaped quote to JSON.parse. A digit +
+            // quote NOT followed by a JSON structural character (, } ] :)
+            // is an inch symbol — rewrite it as "-inch" and retry. Seen in
+            // production 2026-07-22.
+            try {
+              const repaired = raw.replace(/(\d)\s*"(?=\s*[^,}\]:\s]|\s+[a-zA-Z+&(₹])/g, "$1-inch");
+              parsed = JSON.parse(repaired);
+              console.warn("Model JSON needed inch-mark repair; recovered.");
+            } catch (e) {
+              console.error("Failed to parse model response as JSON:", raw);
+              send({
+                type: "error",
+                error: "Research engine returned an unexpected response",
+                detail: `Could not parse the answer (${raw?.length || 0} chars). Starts: ${String(raw).slice(0, 80)}`,
+              });
+              controller.close();
+              return;
+            }
+          }
+
+          // Resolve the model's sponsored choice. The id must be one we
+          // actually offered — a hallucinated or stale id resolves to
+          // nothing, so the model can only ever select from the shortlist,
+          // never inject a product. Null or absent means the model judged
+          // nothing genuinely relevant, and no card is shown. (Legacy
+          // sponsoredRelevant handled during the schema transition: true
+          // selects the top candidate, false selects nothing.)
+          const offeredIds = new Set(topMatches.map((m) => m.listing.id));
+          let chosenId = Number(parsed.sponsoredChoiceId);
+          if (!offeredIds.has(chosenId)) chosenId = null;
+          if (chosenId === null && parsed.sponsoredRelevant === true && topMatches.length > 0) {
+            chosenId = topMatches[0].listing.id;
+          }
+          const chosenMatch = chosenId ? candidates.find((l) => l.id === chosenId) || null : null;
+
+          // Validate taskType against the fixed taxonomy — microsite linking
+          // (matching microsites by shared task type) depends on exact
+          // string equality, so a stray capitalization or typo from the
+          // model would silently break that feature without this check.
+          const VALID_TASK_TYPES = ["research", "creative", "technical", "predictive", "analysis"];
+          const taskType = VALID_TASK_TYPES.includes(parsed.taskType) ? parsed.taskType : "research";
+
+          // Fermionic/anyonic fitment — validate ids belong to what was
+          // actually offered, same guard as sponsoredChoiceId above: a
+          // hallucinated id is dropped rather than trusted. Admin-only (see
+          // sponsoredDebug below), this is the explicit "why we said no"
+          // record for every candidate, not just the one that was picked.
+          const candidateFitment = Array.isArray(parsed.candidateFitment)
+            ? parsed.candidateFitment
+                .filter((c) => c && offeredIds.has(Number(c.id)))
+                .map((c) => ({
+                  id: Number(c.id),
+                  fits: c.fits === true,
+                  reason: typeof c.reason === "string" ? c.reason.slice(0, 200) : "",
+                  valueStatement: c.fits === true && typeof c.valueStatement === "string" ? c.valueStatement.slice(0, 200) : "",
+                }))
+            : [];
+
+          // Cosmic popularity signal — the model's own judgment, validated
+          // against the fixed taxonomy lib/publicationGate.js understands.
+          // Never blocks: an invalid/missing value is stored as null, which
+          // the gate treats as "unknown, don't block" rather than a failure.
+          const VALID_POPULARITY = ["high", "medium", "low", "niche"];
+          const popularityLevel = VALID_POPULARITY.includes(parsed.popularityLevel) ? parsed.popularityLevel : null;
+
+          // --- Write the microsite record. Note: queryHash, not the raw ---
+          // --- query, is stored, so no user's question is ever retained. ---
+          const queryHash = await hashQuery(query);
+          // Build a publishable page from the answer — but only when the
+          // model was able to reduce the question to a generic shopping
+          // topic. A question too personal to generalise gets stored as
+          // before and never becomes a page.
+          const publicTopic = typeof parsed.publicTopic === "string" ? parsed.publicTopic.trim() : "";
+          let slug = null;
+          if (publicTopic.length > 8) {
+            const base = slugify(publicTopic);
+            if (base) {
+              try { slug = await reserveSlug(base); } catch { slug = null; }
+            }
+          }
+
+          // Fire-and-forget (2026-08-19 speed pass): nothing in the
+          // response below reads from this call's result, so awaiting it
+          // before responding was pure added latency — one DB round trip
+          // the shopper waited through for no reason. Same pattern already
+          // used for recordEvent/recordSearchQuery above. Bonus: a write
+          // hiccup here (sitemap/analytics bookkeeping) can no longer fail
+          // the whole request.
+          insertMicrosite({
+            title: parsed.micrositeTitle,
+            summary: parsed.micrositeSummary,
+            taskType,
+            // Gate input: a page written without live retrieval has no
+            // original evidence behind it and cannot earn an indexed URL.
+            searchPerformed: searchUsed,
+            learnings: parsed.learnings,
+            listingId: chosenMatch?.id || null,
+            queryHash,
+            slug,
+            topic: publicTopic || null,
+            headline: parsed.headline,
+            body: parsed.reasoning,
+            whoFor: parsed.whoItsFor,
+            whoSkip: parsed.whoShouldSkip,
+            // Safety net for the prompt rule above: drop any alternative
+            // that names the product we already showed as the sponsored pick.
+            alternatives: suppressAlternatives
+              ? []
+              : (parsed.alternatives || []).filter((a) => {
+                  if (!chosenMatch || !a?.name) return true;
+                  const alt = String(a.name).toLowerCase().replace(/[^a-z0-9 ]/g, " ");
+                  const picked = `${chosenMatch.brand || ""} ${chosenMatch.product || ""}`
+                    .toLowerCase()
+                    .replace(/[^a-z0-9 ]/g, " ");
+                  const altWords = new Set(alt.split(/\s+/).filter((w) => w.length > 3));
+                  const pickWords = new Set(picked.split(/\s+/).filter((w) => w.length > 3));
+                  if (!altWords.size) return true;
+                  let shared = 0;
+                  for (const w of altWords) if (pickWords.has(w)) shared++;
+                  return shared / altWords.size < 0.6; // mostly the same product
+                }),
+            country: userCountry,
+            // What lib/clarify.js asked and what the shopper answered, if
+            // anything — recorded alongside the answer it shaped, same idea
+            // as gate_result, so the questions that actually moved a pick
+            // can be reviewed later rather than trusted blind.
+            clarifications: safeClarifications,
+            // Cosmic gate input — see lib/publicationGate.js's popularity
+            // check. Recorded even when null (model didn't return a valid
+            // value): a missing signal is "unknown, don't block", never a
+            // silent failure.
+            popularityLevel,
+          }).catch((err) => console.error("insertMicrosite failed:", err.message));
+
+          send({
+            type: "final",
+            headline: parsed.headline,
+            reasoning: parsed.reasoning,
+            whoItsFor: parsed.whoItsFor,
+            whoShouldSkip: parsed.whoShouldSkip,
+            confidence: parsed.confidence,
+            imageUnderstanding: vision?.isProduct ? vision.description : null,
+            alternatives: Array.isArray(parsed.alternatives) ? parsed.alternatives.slice(0, 3) : [],
+            taskType,
+            // The model's judgment now decides whether a paid placement
+            // appears. Previously the card rendered whenever the keyword
+            // matcher found something, even when the model had just told
+            // the reader the product was irrelevant — showing a buy button
+            // under an explanation of why not to buy it. A sponsored slot
+            // we can't defend is worth less than an empty one.
+            matchedListing: buildClientListingPayload(chosenMatch),
+            alternativesWithheld: suppressAlternatives || undefined,
+            // Amazon Associates browse link — ONLY when no partner product
+            // matched, so it monetizes otherwise-unmonetized queries
+            // without competing with the sponsored card or touching the
+            // (provably neutral) alternatives. Direct link, no redirect:
+            // Amazon's rules require the destination be apparent; click
+            // tracking happens via the client dataLayer event instead.
+            // Renders only when the AMAZON_ASSOCIATES_TAG env var is set.
+            // Amazon needs a PRODUCT term, not the question. Prefer the
+            // model's shoppingTerm, fall back to the leading alternative's
+            // name, and only then the raw query.
+            amazonBrowse: (() => {
+              if (chosenMatch || !process.env.AMAZON_ASSOCIATES_TAG) return undefined;
+              const term = [
+                typeof parsed.shoppingTerm === "string" ? parsed.shoppingTerm.trim() : "",
+                parsed.alternatives?.[0]?.name || "",
+                typeof query === "string" ? query.trim() : "",
+              ].find((t) => t && t.length > 2);
+              if (!term) return undefined;
+              return {
+                term: term.slice(0, 80),
+                url: `https://www.amazon.in/s?k=${encodeURIComponent(term.slice(0, 120))}&tag=${process.env.AMAZON_ASSOCIATES_TAG}`,
+              };
+            })(),
+            // Search points: registered users earn per pick under a daily
+            // cap; guests see a day-expiring figure computed from today's
+            // picks (never stored — vanishes at midnight unless they sign
+            // up and claim). Both are best-effort: a rewards hiccup must
+            // never fail a search.
+            rewards: await (async () => {
+              try {
+                if (userId) {
+                  const sp = await creditSearchPoints(userId);
+                  return { kind: "user", ...sp };
+                }
+                const guestToday = picksUsedToday !== null
+                  ? picksUsedToday * LOYALTY.SEARCH_POINTS.GUEST_PER_PICK
+                  : await getGuestDayPoints(identity);
+                return { kind: "guest", guestToday, perPick: LOYALTY.SEARCH_POINTS.GUEST_PER_PICK };
+              } catch (e) {
+                console.error("Search points failed:", e.message);
+                return null;
+              }
+            })(),
+            // Model-suggested refinements, hard-capped and length-limited —
+            // these render as tappable chips that append to the query and
+            // re-run.
+            refinements: Array.isArray(parsed.refinements)
+              ? parsed.refinements.filter((r) => typeof r === "string" && r.trim() && r.length <= 40).slice(0, 3)
+              : [],
+            // Admins only: what the matcher offered and what the model
+            // chose, so "why is there no card" is answerable by looking, not
+            // by inference. Never sent to regular users — it names
+            // inventory they weren't shown.
+            ...(admin
+              ? {
+                  sponsoredDebug: {
+                    offered: topMatches.map((m) => ({ id: m.listing.id, product: m.listing.product, price: m.listing.price, score: Number(m.score.toFixed(1)) })),
+                    chosenId: chosenMatch?.id || null,
+                    // Fermionic/anyonic — why every offered candidate was or
+                    // wasn't a fit, not just the one that was picked.
+                    candidateFitment,
+                    popularityLevel,
+                  },
+                }
+              : {}),
+            plan,
+            limit,
+            searchUsed,
+          });
+        } catch (err) {
+          console.error("Research route post-processing error:", err);
+          send({ type: "error", error: "Unable to complete research", detail: String(err?.message || err) });
+        } finally {
+          controller.close();
+        }
+      },
+    });
+
+    return new Response(outStream, {
+      headers: { "Content-Type": "application/x-ndjson; charset=utf-8" },
     });
   } catch (err) {
     console.error("Research route error:", err);
