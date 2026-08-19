@@ -298,6 +298,24 @@ export async function POST(req) {
     ].filter(Boolean).join(" ");
     const intent = await extractIntent(intentSource);
 
+    // --- Retrieval arms 1+2 START HERE, concurrently with the candidate DB
+    // lookup below (2026-08-19 speed pass) — they only need `intent`/`query`,
+    // never the candidate shortlist, so there was no reason they were
+    // waiting on that DB round trip to even begin. webSearch() is an async
+    // function, so a promise it returns can only ever REJECT, never throw
+    // synchronously here — any failure is caught where these are awaited,
+    // in the try/catch further down. Arm 3 (thin-rating review) still has
+    // to wait for topMatches and is added to this same array once known.
+    const wantSearch = shouldSearch() || isFactSensitive(query);
+    const earlySearchJobs = wantSearch
+      ? [
+          webSearch(intent?.contextQuery || query, searchDepth(query), userCountry, contextSearchProvider())
+            .then((res) => formatSearchContext(res, "What the web says about this need (perspective, comparisons, owner reports)")),
+          webSearch(intent?.priceQuery || query, 4, userCountry, priceSearchProvider())
+            .then((res) => formatSearchContext(res, "Current prices found for this product in India (use these figures, not your recollection)")),
+        ]
+      : [];
+
     // Search terms come from the typed query and, when present, from what the
     // image turned out to be. A photo with no typed question still searches.
     // Intent terms ADD precision on top — they never replace the mechanical
@@ -344,20 +362,21 @@ export async function POST(req) {
       }).catch(() => {});
     }
 
-    // --- Retrieval: two arms, fired in parallel -------------------------
+    // --- Retrieval: two arms already firing above, joined by a third here --
     //
-    // One search engine cannot serve both jobs. Perspective ("is this any
-    // good, what goes wrong with it, what do owners say") and price tail
-    // ("what does it cost right now in India") reward completely different
-    // queries and different indexes — measured 2026-07-30: Brave alone
-    // returns forum discussions, Serper alone reliably surfaces Indian
+    // One search engine cannot serve both of arms 1+2's jobs. Perspective
+    // ("is this any good, what goes wrong with it, what do owners say") and
+    // price tail ("what does it cost right now in India") reward completely
+    // different queries and different indexes — measured 2026-07-30: Brave
+    // alone returns forum discussions, Serper alone reliably surfaces Indian
     // price-aggregator pages with live rupee figures. Running both, on two
     // queries written by the intent layer for their separate purposes,
     // gives the synthesis layer two genuinely different views instead of
     // one view twice.
     //
     // A third, conditional arm: when the leading partner candidate has thin
-    // rating evidence, a targeted review lookup on that exact product.
+    // rating evidence, a targeted review lookup on that exact product — this
+    // one DOES need topMatches, so it's only ever addable here, not above.
     //
     // All arms run concurrently and every one degrades to silence — live
     // retrieval improves an answer, it must never be able to prevent one.
@@ -366,21 +385,8 @@ export async function POST(req) {
     try {
       const lead = topMatches[0]?.listing;
       const leadIsThin = lead && Number(lead.ratingCount || 0) < THIN_RATING_COUNT;
-      const wantSearch = shouldSearch() || isFactSensitive(query);
-      const jobs = [];
+      const jobs = [...earlySearchJobs];
 
-      if (wantSearch) {
-        // Arm 1 — perspective.
-        jobs.push(
-          webSearch(intent?.contextQuery || query, searchDepth(query), userCountry, contextSearchProvider())
-            .then((res) => formatSearchContext(res, "What the web says about this need (perspective, comparisons, owner reports)"))
-        );
-        // Arm 2 — price tail.
-        jobs.push(
-          webSearch(intent?.priceQuery || query, 4, userCountry, priceSearchProvider())
-            .then((res) => formatSearchContext(res, "Current prices found for this product in India (use these figures, not your recollection)"))
-        );
-      }
       if (leadIsThin) {
         const name = `${lead.brand || ""} ${lead.product || ""}`.trim().slice(0, 90);
         jobs.push(
@@ -600,7 +606,14 @@ export async function POST(req) {
       }
     }
 
-    await insertMicrosite({
+    // Fire-and-forget (2026-08-19 speed pass): nothing in the response below
+    // reads from this call's result, so awaiting it before responding was
+    // pure added latency — one DB round trip the shopper waited through for
+    // no reason. Same pattern already used for recordEvent/recordSearchQuery
+    // above. Bonus: a write hiccup here (sitemap/analytics bookkeeping) can
+    // no longer fail the whole request — previously an insertMicrosite error
+    // would throw past this point and turn a successful answer into a 500.
+    insertMicrosite({
       title: parsed.micrositeTitle,
       summary: parsed.micrositeSummary,
       taskType,
@@ -643,7 +656,7 @@ export async function POST(req) {
       // Recorded even when null (model didn't return a valid value): a
       // missing signal is "unknown, don't block", never a silent failure.
       popularityLevel,
-    });
+    }).catch((err) => console.error("insertMicrosite failed:", err.message));
 
     return Response.json({
       headline: parsed.headline,

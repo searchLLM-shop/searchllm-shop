@@ -301,6 +301,13 @@ export default function ResearchTab({ maxSearches, searchCount, onSearchComplete
   // then ask the engine for the next round. Disabled in the UI when nothing
   // has been answered yet — "Skip" is the always-available way to move on
   // without answering this particular question.
+  //
+  // Deliberately does NOT clear clarifyCurrent here (that was the bug behind
+  // the card flashing back to the homepage hero between rounds: with
+  // clarifyCurrent briefly null and processing still false, showIdle went
+  // true for one render). The card stays mounted, just visually busy, until
+  // fetchClarifyStep replaces it with the next question or hands off to
+  // runResearch — so there's no gap where nothing is showing.
   const handleClarifyContinue = useCallback(() => {
     if (!clarifyCurrent) return;
     const answer = clarifyAnswerDraft.trim();
@@ -308,7 +315,6 @@ export default function ResearchTab({ maxSearches, searchCount, onSearchComplete
       ? [...clarifyHistory, { question: clarifyCurrent.question, answer }]
       : clarifyHistory;
     setClarifyHistory(newHistory);
-    setClarifyCurrent(null);
     setClarifyBusy(true);
     fetchClarifyStep(clarifyQuery, newHistory);
   }, [clarifyCurrent, clarifyAnswerDraft, clarifyHistory, clarifyQuery, fetchClarifyStep]);
@@ -494,7 +500,7 @@ export default function ResearchTab({ maxSearches, searchCount, onSearchComplete
           <div style={{ fontSize: 14, fontWeight: 600, color: "#3F3F46", marginBottom: 12 }}>
             {tr("clarifyHeading")}
           </div>
-          <div style={{ marginBottom: 12 }}>
+          <div style={{ marginBottom: 12, opacity: clarifyBusy ? 0.5 : 1, transition: "opacity 0.15s ease" }}>
             <div style={{ fontSize: 13, fontWeight: 500, color: "var(--color-text-primary)", marginBottom: 8 }}>
               {clarifyCurrent.question}
             </div>
@@ -505,6 +511,7 @@ export default function ResearchTab({ maxSearches, searchCount, onSearchComplete
                   return (
                     <button
                       key={chip}
+                      disabled={clarifyBusy}
                       onClick={() => setClarifyAnswerDraft(selected ? "" : chip)}
                       style={{
                         background: selected ? "#4F46E5" : "#fff",
@@ -513,7 +520,7 @@ export default function ResearchTab({ maxSearches, searchCount, onSearchComplete
                         borderRadius: 14,
                         padding: "6px 13px",
                         fontSize: 12,
-                        cursor: "pointer",
+                        cursor: clarifyBusy ? "default" : "pointer",
                       }}
                     >
                       {chip}
@@ -526,6 +533,7 @@ export default function ResearchTab({ maxSearches, searchCount, onSearchComplete
               value={clarifyAnswerDraft}
               onChange={(e) => setClarifyAnswerDraft(e.target.value)}
               placeholder={tr("clarifyCustomPlaceholder")}
+              disabled={clarifyBusy}
               style={{ width: "100%", boxSizing: "border-box", border: "0.5px solid var(--color-border-secondary)", borderRadius: 8, padding: "7px 10px", fontSize: 12, background: "#fff", color: "var(--color-text-primary)" }}
             />
           </div>
