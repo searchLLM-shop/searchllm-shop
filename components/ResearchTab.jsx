@@ -53,21 +53,23 @@ async function prepareImage(file) {
   return { data: out.split(",")[1], mediaType: "image/jpeg" };
 }
 
-// Progressive reveal for the streamed answer (2026-08-19, revised same day
-// after the first version read as "sections popping in abruptly" rather
-// than smooth streaming). /api/research streams the model's raw JSON text
-// as it's generated (see the NDJSON "delta" events read in runResearch
-// below) rather than waiting for the whole object to close.
+// Extracts the verdict text (headline etc.) from the raw JSON accumulated
+// so far. Called ONCE, at the moment runResearch's "pick" event arrives
+// (2026-08-19: an earlier version called this on every "delta" for a live
+// typing effect — reverted, it read as jumpy "sections popping in abruptly"
+// rather than smooth streaming; see runResearch below for the current,
+// single-reveal approach that keeps the actual speed win without it).
 //
 // Two tiers, tried in order for each field:
 //   1. A CLOSED match — a real closing quote has streamed in — is the
 //      authoritative, correctly-unescaped value (via JSON.parse on the
-//      matched string literal). Once a field closes it never changes.
-//   2. An OPEN match — the field's opening quote has arrived but not yet
-//      its closing one — is a best-effort, hand-unescaped PARTIAL value:
-//      whatever text has streamed in so far, growing on every render. This
-//      is what makes text appear to type in smoothly word-by-word instead
-//      of whole sentences popping in only once complete.
+//      matched string literal). This is the expected path: by the time
+//      "pick" fires, these fields (1-5 in the schema) are always already
+//      closed, since they precede "alternatives" (field 8).
+//   2. An OPEN match — a defensive fallback for the (should-not-happen)
+//      case where a field is somehow still mid-value at that point —
+//      returns a best-effort, hand-unescaped partial value rather than
+//      nothing.
 // Order-independent (searches each key separately), so it doesn't assume
 // anything about the model's field ordering, only that SYSTEM_PROMPT's
 // schema puts these prose fields early enough to matter.
@@ -254,21 +256,27 @@ export default function ResearchTab({ maxSearches, searchCount, onSearchComplete
           throw new Error(detail || `Request failed (${resp.status})`);
         }
 
-        // --- Streamed response: NDJSON lines, {"type":"delta","text":...}
-        // while the model writes, one {"type":"final", ...payload} once
-        // everything (validation, the DB write, rewards) is done server-
-        // side — see app/api/research/route.js. As soon as the first delta
-        // arrives, drop the stage-grid and reveal the (still-filling-in)
-        // result card, so the shopper watches the pick appear instead of
-        // waiting through the model's entire generation.
+        // --- Streamed response: NDJSON lines from app/api/research/route.js.
+        // Deliberately NOT rendered progressively (tried that; character-by-
+        // character reveal read as jumpy "sections popping in"). Instead the
+        // stage-grid keeps showing while "delta" lines silently accumulate,
+        // and the FIRST thing actually shown is the "pick" event — the
+        // product card + alternatives, which the server sends the moment
+        // those specific fields finish, without waiting for candidateFitment
+        // and the other admin-only fields that follow them in the same
+        // response. That's the real speed win: not the typing effect, but
+        // not making the shopper wait through the whole response either. At
+        // that same moment the verdict text (headline etc., which the
+        // schema always finishes before alternatives) is extracted from
+        // what's accumulated so far and shown alongside it, as one clean,
+        // complete reveal. "final" — the same fully-validated payload this
+        // route has always returned — replaces it moments later.
         const reader = resp.body.getReader();
         const decoder = new TextDecoder();
         let buf = "";
         let rawText = "";
-        let revealedYet = false;
         let finalData = null;
         let streamError = null;
-        let lastRender = 0;
 
         while (true) {
           const { done, value } = await reader.read();
@@ -283,44 +291,20 @@ export default function ResearchTab({ maxSearches, searchCount, onSearchComplete
             try { evt = JSON.parse(line); } catch { continue; }
 
             if (evt.type === "delta") {
-              rawText += evt.text;
-              if (!revealedYet) {
-                revealedYet = true;
-                clearInterval(stepTimer);
-                setStep(-1);
-                setProcessing(false); // reveals the result card, still partial
-              }
-              // Throttled: a re-render on every single token is wasted work.
-              // ~15/sec reads as smooth continuous typing without hammering
-              // React on a fast connection.
-              const now = Date.now();
-              if (now - lastRender > 65) {
-                lastRender = now;
-                const partial = extractStreamingFields(rawText);
-                setResult((prev) => ({
-                  query: searchQ,
-                  alternatives: [],
-                  id: "streaming",
-                  ...(prev || {}),
-                  ...partial,
-                }));
-              }
+              rawText += evt.text; // accumulate only — no per-delta render
             } else if (evt.type === "pick") {
-              // Arrives well before "final" — the server extracts the
-              // product pick + alternatives as soon as those specific
-              // fields finish, without waiting for the admin-only
-              // diagnostic fields that follow them in the same response
-              // (see extractBalancedValue in app/api/research/route.js).
-              // This is what shortens the wait for the actual pick card.
-              lastRender = Date.now(); // avoid an immediately-following throttled delta overwriting this
-              setResult((prev) => ({
+              clearInterval(stepTimer);
+              setStep(-1);
+              setProcessing(false);
+              const fields = extractStreamingFields(rawText);
+              setResult({
                 query: searchQ,
                 id: "streaming",
-                ...(prev || {}),
+                ...fields,
                 matchedListing: evt.matchedListing,
                 alternatives: evt.alternatives || [],
                 alternativesWithheld: evt.alternativesWithheld,
-              }));
+              });
             } else if (evt.type === "final") {
               finalData = evt;
             } else if (evt.type === "error") {
