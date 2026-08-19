@@ -145,9 +145,10 @@ export default function ResearchTab({ maxSearches, searchCount, onSearchComplete
   // live textarea value), so editing the box while the loop is open can't
   // desync which question belongs to which search. clarifyHistory
   // accumulates answered {question, answer} pairs across rounds; the
-  // shopper's answer to clarifyCurrent (chip pick or free text) lives in
-  // clarifyAnswerDraft until "Continue" commits it and fetches the next
-  // round (or runs research, once the engine says done).
+  // shopper's typed answer to clarifyCurrent lives in clarifyAnswerDraft
+  // (a chip tap commits itself immediately via submitClarifyAnswer, so it
+  // never needs to sit in this field at all) until it fetches the next
+  // round, or runs research once the engine says done.
   const [clarifyQuery, setClarifyQuery] = useState("");
   const [clarifyHistory, setClarifyHistory] = useState([]);
   const [clarifyCurrent, setClarifyCurrent] = useState(null); // {question, chips} | null
@@ -365,7 +366,7 @@ export default function ResearchTab({ maxSearches, searchCount, onSearchComplete
 
   // Fetches one round of the clarify loop and either shows the next
   // question or runs research. Shared by handleSearch (round 1, empty
-  // history) and handleClarifyContinue (subsequent rounds). Never blocks a
+  // history) and submitClarifyAnswer (subsequent rounds). Never blocks a
   // search: any failure here falls straight through to runResearch with
   // whatever's been gathered so far — same "must never prevent an answer"
   // principle the live-search arms already follow.
@@ -430,10 +431,12 @@ export default function ResearchTab({ maxSearches, searchCount, onSearchComplete
     [query, attachment, searchCount, maxSearches, fetchClarifyStep, runResearch]
   );
 
-  // "Continue": commit the current question's answer (if any) into history,
-  // then ask the engine for the next round. Disabled in the UI when nothing
-  // has been answered yet — "Skip" is the always-available way to move on
-  // without answering this particular question.
+  // Commits an answer to the current question and immediately asks the
+  // engine for the next round — no separate "Continue" step. Takes the
+  // answer as an explicit argument rather than reading clarifyAnswerDraft
+  // from state, so a chip tap can commit its own value in the same click
+  // without a stale-closure race (setState from the same handler that
+  // reads it back a line later isn't guaranteed to have landed yet).
   //
   // Deliberately does NOT clear clarifyCurrent here (that was the bug behind
   // the card flashing back to the homepage hero between rounds: with
@@ -441,16 +444,16 @@ export default function ResearchTab({ maxSearches, searchCount, onSearchComplete
   // true for one render). The card stays mounted, just visually busy, until
   // fetchClarifyStep replaces it with the next question or hands off to
   // runResearch — so there's no gap where nothing is showing.
-  const handleClarifyContinue = useCallback(() => {
-    if (!clarifyCurrent) return;
-    const answer = clarifyAnswerDraft.trim();
-    const newHistory = answer
-      ? [...clarifyHistory, { question: clarifyCurrent.question, answer }]
-      : clarifyHistory;
+  const submitClarifyAnswer = useCallback((answerText) => {
+    if (!clarifyCurrent || clarifyBusy) return;
+    const answer = (answerText || "").trim();
+    if (!answer) return; // nothing typed/tapped — Skip is the way past an unanswered question
+    const newHistory = [...clarifyHistory, { question: clarifyCurrent.question, answer }];
     setClarifyHistory(newHistory);
+    setClarifyAnswerDraft("");
     setClarifyBusy(true);
     fetchClarifyStep(clarifyQuery, newHistory);
-  }, [clarifyCurrent, clarifyAnswerDraft, clarifyHistory, clarifyQuery, fetchClarifyStep]);
+  }, [clarifyCurrent, clarifyBusy, clarifyHistory, clarifyQuery, fetchClarifyStep]);
 
   // Always available, every round: stop asking, run research with whatever
   // was already answered (an unanswered current question is simply
@@ -622,12 +625,11 @@ export default function ResearchTab({ maxSearches, searchCount, onSearchComplete
       )}
 
       {/* Pre-research clarifying loop (bosonic layer) — one question per
-          round from /api/clarify, see fetchClarifyStep/handleClarifyContinue
-          above. Answering is always optional: "Skip — just search" runs
-          research immediately with whatever's been answered so far, at any
-          round. Continue is disabled until something's answered THIS round
-          — it's the only way this card would otherwise stall, since Skip
-          remains the always-available way past it. */}
+          round from /api/clarify, see fetchClarifyStep/submitClarifyAnswer
+          above. No separate "Continue" step: tapping a chip commits it and
+          immediately advances; typing a custom answer and pressing Enter
+          does the same. "Skip — just search" is the always-available way
+          past a question without answering it, at any round. */}
       {clarifyCurrent && !processing && (
         <div style={{ border: "0.5px solid #C7D2E0", background: "#F5F7FB", borderRadius: 12, padding: "16px 18px", margin: "14px 0" }}>
           <div style={{ fontSize: 14, fontWeight: 600, color: "#3F3F46", marginBottom: 12 }}>
@@ -639,56 +641,43 @@ export default function ResearchTab({ maxSearches, searchCount, onSearchComplete
             </div>
             {clarifyCurrent.chips?.length > 0 && (
               <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8 }}>
-                {clarifyCurrent.chips.map((chip) => {
-                  const selected = clarifyAnswerDraft === chip;
-                  return (
-                    <button
-                      key={chip}
-                      disabled={clarifyBusy}
-                      onClick={() => setClarifyAnswerDraft(selected ? "" : chip)}
-                      style={{
-                        background: selected ? "#4F46E5" : "#fff",
-                        color: selected ? "#fff" : "var(--color-text-secondary)",
-                        border: `0.5px solid ${selected ? "#4F46E5" : "var(--color-border-secondary)"}`,
-                        borderRadius: 14,
-                        padding: "6px 13px",
-                        fontSize: 12,
-                        cursor: clarifyBusy ? "default" : "pointer",
-                      }}
-                    >
-                      {chip}
-                    </button>
-                  );
-                })}
+                {clarifyCurrent.chips.map((chip) => (
+                  <button
+                    key={chip}
+                    disabled={clarifyBusy}
+                    onClick={() => submitClarifyAnswer(chip)}
+                    style={{
+                      background: "#fff",
+                      color: "var(--color-text-secondary)",
+                      border: "0.5px solid var(--color-border-secondary)",
+                      borderRadius: 14,
+                      padding: "6px 13px",
+                      fontSize: 12,
+                      cursor: clarifyBusy ? "default" : "pointer",
+                    }}
+                  >
+                    {chip}
+                  </button>
+                ))}
               </div>
             )}
             <input
               value={clarifyAnswerDraft}
               onChange={(e) => setClarifyAnswerDraft(e.target.value)}
-              placeholder={tr("clarifyCustomPlaceholder")}
+              onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); submitClarifyAnswer(clarifyAnswerDraft); } }}
+              placeholder={`${tr("clarifyCustomPlaceholder")} (Enter to submit)`}
               disabled={clarifyBusy}
               style={{ width: "100%", boxSizing: "border-box", border: "0.5px solid var(--color-border-secondary)", borderRadius: 8, padding: "7px 10px", fontSize: 12, background: "#fff", color: "var(--color-text-primary)" }}
             />
           </div>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginTop: 4 }}>
             <button
-              onClick={handleClarifyContinue}
-              disabled={!clarifyAnswerDraft.trim() || clarifyBusy}
-              style={{
-                background: !clarifyAnswerDraft.trim() || clarifyBusy ? "var(--color-background-tertiary)" : "#3F3F46",
-                color: !clarifyAnswerDraft.trim() || clarifyBusy ? "var(--color-text-tertiary)" : "#fff",
-                border: "none", borderRadius: 8, padding: "9px 18px", fontSize: 13, fontWeight: 600,
-                cursor: !clarifyAnswerDraft.trim() || clarifyBusy ? "default" : "pointer",
-              }}
-            >
-              {clarifyBusy ? "…" : tr("clarifyContinue")}
-            </button>
-            <button
               onClick={handleClarifySkip}
               style={{ background: "none", color: "var(--color-text-secondary)", border: "0.5px solid var(--color-border-secondary)", borderRadius: 8, padding: "9px 16px", fontSize: 13, cursor: "pointer" }}
             >
               {tr("skipJustSearch")}
             </button>
+            {clarifyBusy && <span style={{ fontSize: 12, color: "var(--color-text-tertiary)" }}>…</span>}
           </div>
         </div>
       )}

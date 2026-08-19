@@ -137,6 +137,18 @@ export default function Home() {
   const [showAccountDrawer, setShowAccountDrawer] = useState(false);
   const [drawerTab, setDrawerTab] = useState("saved");
   const [showAdminConsole, setShowAdminConsole] = useState(false);
+  // Bumped on every logo click, passed to ResearchTab as `key` below — the
+  // simplest correct way to reset ALL of that component's internal state
+  // (query text, an active result, the clarify loop, everything) on a
+  // "go home" click without threading individual reset callbacks through
+  // its already-large prop surface. React treats a key change as "this is
+  // a new instance" and remounts it fresh, same as any other key-based reset.
+  const [homeKey, setHomeKey] = useState(0);
+  const goHome = useCallback(() => {
+    setShowAdminConsole(false);
+    setShowAccountDrawer(false);
+    setHomeKey((k) => k + 1);
+  }, []);
   const [upgrading, setUpgrading] = useState(false);
   const [checkoutError, setCheckoutError] = useState(null);
   const [locale, setLocale] = useState(DEFAULT_LOCALE);
@@ -276,7 +288,14 @@ export default function Home() {
       )}
 
       <div className="sllm-header" style={{ padding: "16px 24px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 14 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }} onClick={() => { setShowAdminConsole(false); setShowAccountDrawer(false); }}>
+        <div
+          role="button"
+          tabIndex={0}
+          aria-label="SearchLLM.shop — back to home"
+          onClick={goHome}
+          onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); goHome(); } }}
+          style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }}
+        >
           <span style={{ fontSize: 19, fontWeight: 800, letterSpacing: "-0.01em", color: "#14161A" }}>
             SearchLLM<span style={{ color: "#0F6E56" }}>.shop</span>
           </span>
@@ -399,6 +418,7 @@ export default function Home() {
       ) : (
         <div className="sllm-main" style={{ flex: 1, padding: "20px 20px 40px", maxWidth: 780, width: "100%", margin: "0 auto", boxSizing: "border-box" }}>
           <ResearchTab
+            key={homeKey}
             isAdmin={isAdminHint}
             locale={locale}
             maxSearches={limit}
