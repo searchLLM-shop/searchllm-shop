@@ -37,7 +37,9 @@ Price is not quality. A cheap product that does the job well is a legitimate rec
   "publicTopic": "the question rephrased as a generic, searchable shopping topic many different people would type (e.g. 'best whey protein under ₹2000'), in the same language as the rest of your answer. Empty string if the question is too personal, niche, or situation-specific to be useful as a public page",
   "refinements": ["up to 3 SHORT phrases (each under 6 words) the person could APPEND to their query to get a sharper, more personal answer — e.g. a budget ('under ₹500'), a use case ('for oily skin'), a form/spec ('resin form'). Each must read naturally when appended to their exact query text. Empty array when the query is already specific enough that refining would not change the answer"],
   "taskType": "research|creative|technical|predictive|analysis",
-  "learnings": ["short reusable knowledge fragment", "another one", "a third"]
+  "learnings": ["short reusable knowledge fragment", "another one", "a third"],
+  "candidateFitment": [{"id": the numeric id of an offered partner product, "fits": true or false, "reason": "one short phrase — why it does or doesn't fit what you know about the person's need and purpose, from the section below", "valueStatement": "what buying this says about or does for the shopper — ONLY when fits is true, empty string otherwise"}],
+  "popularityLevel": "high|medium|low|niche — your own calibrated judgment of how commonly shoppers search for and buy this product or category, not a fact you need evidence for"
 }
 Provide 2-3 alternatives that are genuinely relevant to the specific product the person asked about — never generic or unrelated items. Where you have a genuine choice, prefer alternatives that appear in the live web results below — those are the ones you can quote a real price for, and an alternative with a price is more useful to the reader than one without. NEVER list the product you selected as sponsoredChoiceId among the alternatives: it is already shown to the reader as the pick, and repeating it there makes the comparison look padded.
 
@@ -80,6 +82,10 @@ RESTRICTED CATEGORIES — this service does not research, recommend, or answer q
 Your entire response must be strictly valid JSON. NEVER use the double-quote inch symbol (") inside any string value — write "55-inch", not 55". An unescaped quote breaks the JSON and the person gets an error instead of your answer.
 
 When partner products are offered to you, decide honestly which single one — if any — answers the question, and return its id as sponsoredChoiceId. Two things are never rejection reasons: being cheaper than a stated budget, and not being the absolute best value on the wider market — both belong in your answer text as honest context, alongside the pick.
+
+CANDIDATE FITMENT — fill in candidateFitment for EVERY offered partner product, not just the one you pick. This is the explicit record of why each one was or wasn't a fit, judged against everything you know from the "What the person is asking for" section below — including why they want it and what they expect out of it, when given, not just the bare spec. A product can match every stated attribute and still not fit the underlying purpose; say so in reason when that's what's happening. fits should agree with sponsoredChoiceId: the product you selected must have fits:true, and any product you declined must have fits:false with a real, specific reason — never a placeholder like "not the best option". This is read by the team, not shown to the shopper, so be direct.
+
+POPULARITY — popularityLevel is your own estimate of how commonly shoppers in general search for and buy this product or category, independent of whether any offered product fits. "high" for everyday, broadly-searched categories (phone chargers, running shoes, rice cookers); "niche" for something only a narrow slice of shoppers would ever look for (a specific specialist tool, a very unusual combination of requirements). This is a judgment call, not a fact — unlike prices and specs, you are not required to have evidence for it, just a calibrated sense of demand.
 
 Worked example of the required calibration: the query is "tv around ₹1 lakh" and the offered list includes a well-rated 55-inch at ₹80,000. That IS a genuine answer — select it, and say in your answer text that stretching toward ₹1.1–1.3 lakh buys OLED-class quality. Returning null there is WRONG: "they could do better at the top of their range" is context for your prose, never a reason to withhold a solid, right-type, in-range product. If you find yourself writing "these are solid products, but…" — select the best of them and put the "but" in your answer.
 
@@ -465,7 +471,12 @@ export async function POST(req) {
       },
       body: JSON.stringify({
         model: "claude-sonnet-4-6",
-        max_tokens: 1800,
+        // Raised from 1800 (2026-08-19): candidateFitment adds up to ~8
+        // more small objects to the response. See the max_tokens comment
+        // below this call — the same truncation failure that broke
+        // searches when alternatives was added is exactly what under-
+        // provisioning headroom on a schema change causes again.
+        max_tokens: 2400,
         // Low temperature deliberately (2026-07-30). The default of 1.0 made
         // identical questions produce materially different verdicts run to
         // run — one call selected a product, the next declined entirely.
@@ -551,6 +562,29 @@ export async function POST(req) {
     const VALID_TASK_TYPES = ["research", "creative", "technical", "predictive", "analysis"];
     const taskType = VALID_TASK_TYPES.includes(parsed.taskType) ? parsed.taskType : "research";
 
+    // Fermionic/anyonic fitment — validate ids belong to what was actually
+    // offered, same guard as sponsoredChoiceId above: a hallucinated id is
+    // dropped rather than trusted. Admin-only (see sponsoredDebug below),
+    // this is the explicit "why we said no" record for every candidate, not
+    // just the one that was picked.
+    const candidateFitment = Array.isArray(parsed.candidateFitment)
+      ? parsed.candidateFitment
+          .filter((c) => c && offeredIds.has(Number(c.id)))
+          .map((c) => ({
+            id: Number(c.id),
+            fits: c.fits === true,
+            reason: typeof c.reason === "string" ? c.reason.slice(0, 200) : "",
+            valueStatement: c.fits === true && typeof c.valueStatement === "string" ? c.valueStatement.slice(0, 200) : "",
+          }))
+      : [];
+
+    // Cosmic popularity signal — the model's own judgment, validated against
+    // the fixed taxonomy lib/publicationGate.js understands. Never blocks:
+    // an invalid/missing value is stored as null, which the gate treats as
+    // "unknown, don't block" rather than a failure.
+    const VALID_POPULARITY = ["high", "medium", "low", "niche"];
+    const popularityLevel = VALID_POPULARITY.includes(parsed.popularityLevel) ? parsed.popularityLevel : null;
+
     // --- Write the microsite record. Note: queryHash, not the raw query, ---
     // --- is stored, so no individual user's question is ever retained.  ---
     const queryHash = await hashQuery(query);
@@ -605,6 +639,10 @@ export async function POST(req) {
       // gate_result, so the questions that actually moved a pick can be
       // reviewed later rather than trusted blind.
       clarifications: safeClarifications,
+      // Cosmic gate input — see lib/publicationGate.js's popularity check.
+      // Recorded even when null (model didn't return a valid value): a
+      // missing signal is "unknown, don't block", never a silent failure.
+      popularityLevel,
     });
 
     return Response.json({
@@ -681,6 +719,12 @@ export async function POST(req) {
             sponsoredDebug: {
               offered: topMatches.map((m) => ({ id: m.listing.id, product: m.listing.product, price: m.listing.price, score: Number(m.score.toFixed(1)) })),
               chosenId: chosenMatch?.id || null,
+              // Fermionic/anyonic — why every offered candidate was or
+              // wasn't a fit, not just the one that was picked. Admin-only,
+              // same as the rest of sponsoredDebug: it names inventory
+              // shoppers weren't shown.
+              candidateFitment,
+              popularityLevel,
             },
           }
         : {}),

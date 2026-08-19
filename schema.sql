@@ -507,3 +507,11 @@ CREATE INDEX IF NOT EXISTS idx_microsites_hash ON microsites (content_hash);
 -- answer for the same reason gate_result is: so the questions/answers that
 -- actually shaped a pick can be reviewed later, not just trusted blind.
 ALTER TABLE microsites ADD COLUMN IF NOT EXISTS clarifications JSONB DEFAULT '[]';
+
+-- Cosmic-layer popularity gate (2026-08-19). The synthesis model's own
+-- calibrated judgment of demand for this product/category — 'high' |
+-- 'medium' | 'low' | 'niche' | NULL. NULL means either the model didn't
+-- return a valid value, or the row predates this column: lib/publicationGate.js
+-- treats NULL as "unknown, don't block" on purpose, so this can never
+-- retroactively fail an already-in-flight draft.
+ALTER TABLE microsites ADD COLUMN IF NOT EXISTS popularity_level TEXT;

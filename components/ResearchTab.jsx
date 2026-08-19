@@ -93,13 +93,20 @@ export default function ResearchTab({ maxSearches, searchCount, onSearchComplete
   const [step, setStep] = useState(-1);
   const [result, setResult] = useState(null);
   const [errorMsg, setErrorMsg] = useState(null);
-  // Pre-research clarifying question(s) from /api/clarify. clarifyQuery holds
-  // the query the card is currently attached to, separately from `query`
-  // (the live textarea value), so editing the box while the card is open
-  // can't desync which question belongs to which search.
-  const [clarifyQuestions, setClarifyQuestions] = useState([]);
-  const [clarifyAnswers, setClarifyAnswers] = useState({});
+  // Pre-research clarifying loop (bosonic layer) — one question at a time
+  // from /api/clarify, looping until it says done. clarifyQuery holds the
+  // query the loop is currently attached to, separately from `query` (the
+  // live textarea value), so editing the box while the loop is open can't
+  // desync which question belongs to which search. clarifyHistory
+  // accumulates answered {question, answer} pairs across rounds; the
+  // shopper's answer to clarifyCurrent (chip pick or free text) lives in
+  // clarifyAnswerDraft until "Continue" commits it and fetches the next
+  // round (or runs research, once the engine says done).
   const [clarifyQuery, setClarifyQuery] = useState("");
+  const [clarifyHistory, setClarifyHistory] = useState([]);
+  const [clarifyCurrent, setClarifyCurrent] = useState(null); // {question, chips} | null
+  const [clarifyAnswerDraft, setClarifyAnswerDraft] = useState("");
+  const [clarifyBusy, setClarifyBusy] = useState(false);
   const [gate, setGate] = useState(null);           // blocking search gate
   const [gateFeedback, setGateFeedback] = useState("");
   const [gateBusy, setGateBusy] = useState(false);
@@ -145,16 +152,18 @@ export default function ResearchTab({ maxSearches, searchCount, onSearchComplete
   // The actual research call — unchanged except it now also sends whatever
   // clarifying-question answers the shopper gave (or [] if they skipped, or
   // clarification never triggered). Called either straight from handleSearch
-  // (no questions / image search / clarify check failed) or from the Clarify
-  // card's "Get my pick" / "Skip" actions below.
+  // (no questions / image search / clarify check failed) or once the
+  // clarify loop below finishes (engine says done, or the shopper hits
+  // "Skip — just search" mid-loop).
   const runResearch = useCallback(
     async (q, clarifications = []) => {
       const searchQ = (q || query).trim();
       if (!searchQ) return;
       if (maxSearches !== -1 && searchCount >= maxSearches) return;
 
-      setClarifyQuestions([]);
-      setClarifyAnswers({});
+      setClarifyCurrent(null);
+      setClarifyHistory([]);
+      setClarifyAnswerDraft("");
       setProcessing(true);
       setResult(null);
       setErrorMsg(null);
@@ -221,6 +230,42 @@ export default function ResearchTab({ maxSearches, searchCount, onSearchComplete
     [query, attachment, searchCount, maxSearches, onSearchComplete]
   );
 
+  // Fetches one round of the clarify loop and either shows the next
+  // question or runs research. Shared by handleSearch (round 1, empty
+  // history) and handleClarifyContinue (subsequent rounds). Never blocks a
+  // search: any failure here falls straight through to runResearch with
+  // whatever's been gathered so far — same "must never prevent an answer"
+  // principle the live-search arms already follow.
+  const fetchClarifyStep = useCallback(
+    async (searchQ, history) => {
+      try {
+        const resp = await fetch("/api/clarify", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          // geoOverride (admin-only "view as" selector) so a budget question
+          // shows the right currency symbol while testing another market —
+          // same value already sent to /api/research below.
+          body: JSON.stringify({ query: searchQ, history, locale, geoOverride: geoOverride || undefined }),
+        });
+        if (resp.ok) {
+          const data = await resp.json();
+          if (data?.done === false && data.question) {
+            setClarifyCurrent({ question: data.question, chips: data.chips || [] });
+            setClarifyAnswerDraft("");
+            setProcessing(false);
+            setClarifyBusy(false);
+            setStep(-1);
+            return;
+          }
+        }
+      } catch (e) {
+        console.error("Clarify step failed, searching with what's known:", e);
+      }
+      runResearch(searchQ, history);
+    },
+    [locale, geoOverride, runResearch]
+  );
+
   // Button/Enter entry point. Checks whether the engine has a clarifying
   // question worth asking before committing to the full (quota-consuming)
   // research call — see app/api/clarify/route.js, which sits outside the
@@ -244,58 +289,42 @@ export default function ResearchTab({ maxSearches, searchCount, onSearchComplete
       setResult(null);
       setErrorMsg(null);
       setStep(0);
-      setClarifyQuestions([]);
-      setClarifyAnswers({});
-
-      try {
-        const resp = await fetch("/api/clarify", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          // geoOverride (admin-only "view as" selector) so a budget question
-          // shows the right currency symbol while testing another market —
-          // same value already sent to /api/research below.
-          body: JSON.stringify({ query: searchQ, locale, geoOverride: geoOverride || undefined }),
-        });
-        if (resp.ok) {
-          const data = await resp.json();
-          if (Array.isArray(data.questions) && data.questions.length > 0) {
-            setClarifyQuery(searchQ);
-            setClarifyQuestions(data.questions);
-            setProcessing(false);
-            setStep(-1);
-            return;
-          }
-        }
-      } catch (e) {
-        // Never lets a clarify failure block the search — same "must never
-        // prevent an answer" principle the live-search arms already follow.
-        console.error("Clarify check failed, searching directly:", e);
-      }
-
-      runResearch(searchQ, []);
+      setClarifyQuery(searchQ);
+      setClarifyHistory([]);
+      setClarifyCurrent(null);
+      await fetchClarifyStep(searchQ, []);
     },
-    [query, attachment, searchCount, maxSearches, locale, runResearch]
+    [query, attachment, searchCount, maxSearches, fetchClarifyStep, runResearch]
   );
 
-  const handleClarifySubmit = useCallback(() => {
-    const clarifications = clarifyQuestions
-      .map((q) => {
-        const answer = (clarifyAnswers[q.question] || "").trim();
-        return answer ? { question: q.question, answer } : null;
-      })
-      .filter(Boolean);
-    runResearch(clarifyQuery, clarifications);
-  }, [clarifyQuestions, clarifyAnswers, clarifyQuery, runResearch]);
+  // "Continue": commit the current question's answer (if any) into history,
+  // then ask the engine for the next round. Disabled in the UI when nothing
+  // has been answered yet — "Skip" is the always-available way to move on
+  // without answering this particular question.
+  const handleClarifyContinue = useCallback(() => {
+    if (!clarifyCurrent) return;
+    const answer = clarifyAnswerDraft.trim();
+    const newHistory = answer
+      ? [...clarifyHistory, { question: clarifyCurrent.question, answer }]
+      : clarifyHistory;
+    setClarifyHistory(newHistory);
+    setClarifyCurrent(null);
+    setClarifyBusy(true);
+    fetchClarifyStep(clarifyQuery, newHistory);
+  }, [clarifyCurrent, clarifyAnswerDraft, clarifyHistory, clarifyQuery, fetchClarifyStep]);
 
+  // Always available, every round: stop asking, run research with whatever
+  // was already answered (an unanswered current question is simply
+  // dropped, never sent as an empty answer).
   const handleClarifySkip = useCallback(() => {
-    runResearch(clarifyQuery, []);
-  }, [clarifyQuery, runResearch]);
+    runResearch(clarifyQuery, clarifyHistory);
+  }, [clarifyQuery, clarifyHistory, runResearch]);
 
   const quotaReached = maxSearches !== -1 && searchCount >= maxSearches;
   // Idle chrome (hero, attach button, example chips, dim stage preview)
   // hides while the Clarify card is up so the card reads as the one thing
   // to act on, not another element competing with the manifesto/hero.
-  const showIdle = !result && !processing && clarifyQuestions.length === 0;
+  const showIdle = !result && !processing && !clarifyCurrent;
 
   return (
     <div>
@@ -431,7 +460,7 @@ export default function ResearchTab({ maxSearches, searchCount, onSearchComplete
           each column's bar filling and label brightening as `step` advances
           — same visual language, so nothing jarring swaps in when a search
           actually starts. */}
-      {(processing || (!result && clarifyQuestions.length === 0)) && (
+      {(processing || (!result && !clarifyCurrent)) && (
         <div className="sllm-stage-grid" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", gap: 18, padding: processing ? "12px 4px 26px" : "0 4px 26px", opacity: processing ? 1 : 0.55 }}>
           {STAGE_LABELS.map((label, i) => {
             const active = processing && step >= i;
@@ -453,58 +482,65 @@ export default function ResearchTab({ maxSearches, searchCount, onSearchComplete
         </div>
       )}
 
-      {/* Pre-research clarifying question(s) from /api/clarify — see
-          handleSearch above. Answering is always optional: "Skip — just
-          search" runs the same query with no clarification context, exactly
-          like this card never appeared. */}
-      {clarifyQuestions.length > 0 && !processing && (
+      {/* Pre-research clarifying loop (bosonic layer) — one question per
+          round from /api/clarify, see fetchClarifyStep/handleClarifyContinue
+          above. Answering is always optional: "Skip — just search" runs
+          research immediately with whatever's been answered so far, at any
+          round. Continue is disabled until something's answered THIS round
+          — it's the only way this card would otherwise stall, since Skip
+          remains the always-available way past it. */}
+      {clarifyCurrent && !processing && (
         <div style={{ border: "0.5px solid #C7D2E0", background: "#F5F7FB", borderRadius: 12, padding: "16px 18px", margin: "14px 0" }}>
           <div style={{ fontSize: 14, fontWeight: 600, color: "#3F3F46", marginBottom: 12 }}>
             {tr("clarifyHeading")}
           </div>
-          {clarifyQuestions.map((q, qi) => (
-            <div key={qi} style={{ marginBottom: qi < clarifyQuestions.length - 1 ? 16 : 12 }}>
-              <div style={{ fontSize: 13, fontWeight: 500, color: "var(--color-text-primary)", marginBottom: 8 }}>
-                {q.question}
-              </div>
-              {q.chips?.length > 0 && (
-                <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8 }}>
-                  {q.chips.map((chip) => {
-                    const selected = clarifyAnswers[q.question] === chip;
-                    return (
-                      <button
-                        key={chip}
-                        onClick={() => setClarifyAnswers((prev) => ({ ...prev, [q.question]: selected ? "" : chip }))}
-                        style={{
-                          background: selected ? "#4F46E5" : "#fff",
-                          color: selected ? "#fff" : "var(--color-text-secondary)",
-                          border: `0.5px solid ${selected ? "#4F46E5" : "var(--color-border-secondary)"}`,
-                          borderRadius: 14,
-                          padding: "6px 13px",
-                          fontSize: 12,
-                          cursor: "pointer",
-                        }}
-                      >
-                        {chip}
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
-              <input
-                value={clarifyAnswers[q.question] || ""}
-                onChange={(e) => setClarifyAnswers((prev) => ({ ...prev, [q.question]: e.target.value }))}
-                placeholder={tr("clarifyCustomPlaceholder")}
-                style={{ width: "100%", boxSizing: "border-box", border: "0.5px solid var(--color-border-secondary)", borderRadius: 8, padding: "7px 10px", fontSize: 12, background: "#fff", color: "var(--color-text-primary)" }}
-              />
+          <div style={{ marginBottom: 12 }}>
+            <div style={{ fontSize: 13, fontWeight: 500, color: "var(--color-text-primary)", marginBottom: 8 }}>
+              {clarifyCurrent.question}
             </div>
-          ))}
+            {clarifyCurrent.chips?.length > 0 && (
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8 }}>
+                {clarifyCurrent.chips.map((chip) => {
+                  const selected = clarifyAnswerDraft === chip;
+                  return (
+                    <button
+                      key={chip}
+                      onClick={() => setClarifyAnswerDraft(selected ? "" : chip)}
+                      style={{
+                        background: selected ? "#4F46E5" : "#fff",
+                        color: selected ? "#fff" : "var(--color-text-secondary)",
+                        border: `0.5px solid ${selected ? "#4F46E5" : "var(--color-border-secondary)"}`,
+                        borderRadius: 14,
+                        padding: "6px 13px",
+                        fontSize: 12,
+                        cursor: "pointer",
+                      }}
+                    >
+                      {chip}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+            <input
+              value={clarifyAnswerDraft}
+              onChange={(e) => setClarifyAnswerDraft(e.target.value)}
+              placeholder={tr("clarifyCustomPlaceholder")}
+              style={{ width: "100%", boxSizing: "border-box", border: "0.5px solid var(--color-border-secondary)", borderRadius: 8, padding: "7px 10px", fontSize: 12, background: "#fff", color: "var(--color-text-primary)" }}
+            />
+          </div>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginTop: 4 }}>
             <button
-              onClick={handleClarifySubmit}
-              style={{ background: "#3F3F46", color: "#fff", border: "none", borderRadius: 8, padding: "9px 18px", fontSize: 13, fontWeight: 600, cursor: "pointer" }}
+              onClick={handleClarifyContinue}
+              disabled={!clarifyAnswerDraft.trim() || clarifyBusy}
+              style={{
+                background: !clarifyAnswerDraft.trim() || clarifyBusy ? "var(--color-background-tertiary)" : "#3F3F46",
+                color: !clarifyAnswerDraft.trim() || clarifyBusy ? "var(--color-text-tertiary)" : "#fff",
+                border: "none", borderRadius: 8, padding: "9px 18px", fontSize: 13, fontWeight: 600,
+                cursor: !clarifyAnswerDraft.trim() || clarifyBusy ? "default" : "pointer",
+              }}
             >
-              {tr("getMyPick")}
+              {clarifyBusy ? "…" : tr("clarifyContinue")}
             </button>
             <button
               onClick={handleClarifySkip}
