@@ -147,14 +147,20 @@ export default function ResearchTab({ maxSearches, searchCount, onSearchComplete
   // live textarea value), so editing the box while the loop is open can't
   // desync which question belongs to which search. clarifyHistory
   // accumulates answered {question, answer} pairs across rounds; the
-  // shopper's typed answer to clarifyCurrent lives in clarifyAnswerDraft
-  // (a chip tap commits itself immediately via submitClarifyAnswer, so it
-  // never needs to sit in this field at all) until it fetches the next
-  // round, or runs research once the engine says done.
+  // shopper's answer to clarifyCurrent lives in clarifyAnswerDraft — set
+  // immediately on a chip tap too (so the chip visibly confirms blue) even
+  // though the actual submission is deliberately delayed a beat, see
+  // clarifySubmittingRef below.
   const [clarifyQuery, setClarifyQuery] = useState("");
   const [clarifyHistory, setClarifyHistory] = useState([]);
   const [clarifyCurrent, setClarifyCurrent] = useState(null); // {question, chips} | null
   const [clarifyAnswerDraft, setClarifyAnswerDraft] = useState("");
+  // Guards the brief window between a chip tap and its delayed submission
+  // (see the chip's onClick below) against a second tap firing a duplicate
+  // submit before clarifyBusy has actually been set — a ref rather than
+  // state because it must be read/written synchronously at click time, not
+  // through a setState that might not have landed yet.
+  const clarifySubmittingRef = useRef(false);
   const [clarifyBusy, setClarifyBusy] = useState(false);
   const [gate, setGate] = useState(null);           // blocking search gate
   const [gateFeedback, setGateFeedback] = useState("");
@@ -625,24 +631,40 @@ export default function ResearchTab({ maxSearches, searchCount, onSearchComplete
             </div>
             {clarifyCurrent.chips?.length > 0 && (
               <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8 }}>
-                {clarifyCurrent.chips.map((chip) => (
-                  <button
-                    key={chip}
-                    disabled={clarifyBusy}
-                    onClick={() => submitClarifyAnswer(chip)}
-                    style={{
-                      background: "#fff",
-                      color: "var(--color-text-secondary)",
-                      border: "0.5px solid var(--color-border-secondary)",
-                      borderRadius: 14,
-                      padding: "6px 13px",
-                      fontSize: 12,
-                      cursor: clarifyBusy ? "default" : "pointer",
-                    }}
-                  >
-                    {chip}
-                  </button>
-                ))}
+                {clarifyCurrent.chips.map((chip) => {
+                  const selected = clarifyAnswerDraft === chip;
+                  return (
+                    <button
+                      key={chip}
+                      disabled={clarifyBusy}
+                      onClick={() => {
+                        // Confirm-then-advance: show the tap registered
+                        // (chip turns blue) before moving on, rather than
+                        // jumping straight to the next question/search with
+                        // no visible acknowledgement of what was picked.
+                        if (clarifyBusy || clarifySubmittingRef.current) return;
+                        clarifySubmittingRef.current = true;
+                        setClarifyAnswerDraft(chip);
+                        setTimeout(() => {
+                          clarifySubmittingRef.current = false;
+                          submitClarifyAnswer(chip);
+                        }, 220);
+                      }}
+                      style={{
+                        background: selected ? "#4F46E5" : "#fff",
+                        color: selected ? "#fff" : "var(--color-text-secondary)",
+                        border: `0.5px solid ${selected ? "#4F46E5" : "var(--color-border-secondary)"}`,
+                        borderRadius: 14,
+                        padding: "6px 13px",
+                        fontSize: 12,
+                        cursor: clarifyBusy ? "default" : "pointer",
+                        transition: "background 0.12s ease, color 0.12s ease, border-color 0.12s ease",
+                      }}
+                    >
+                      {chip}
+                    </button>
+                  );
+                })}
               </div>
             )}
             <input
