@@ -87,8 +87,13 @@ export async function POST(req) {
       },
       body: JSON.stringify({
         plan_id: planId,
-        // Number of billing cycles to authorize. 60 = five years of a
-        // monthly plan; adjust to your plan's period in the dashboard.
+        // Number of billing cycles to authorize. The plan is yearly
+        // (₹499/year, see PLANS.plus in lib/constants.js), so 60 cycles is
+        // ~60 years — a long enough authorization window that a subscriber
+        // is never asked to reauthorize; it does not mean 60 charges will
+        // actually happen, only that cancellation (not re-mandate) is how
+        // it ends. Was previously miscommented as "five years of a monthly
+        // plan" — the plan has always been yearly, the comment just lagged.
         total_count: 60,
         customer_notify: 1,
         // clerkUserId in notes is how the webhook knows which user to

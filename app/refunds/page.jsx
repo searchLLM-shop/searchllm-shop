@@ -2,7 +2,7 @@ import LegalPage from "@/components/LegalPage";
 
 export const metadata = { title: "Cancellation & Refunds — SearchLLM" };
 
-const CONTENT = `SearchLLM Plus is a monthly subscription to a digital service. There is no physical product and nothing is shipped.
+const CONTENT = `SearchLLM Plus is a yearly subscription to a digital service. There is no physical product and nothing is shipped.
 
 CANCELLATION
 
@@ -18,7 +18,7 @@ If you are charged in error — for example a duplicate charge, or a charge afte
 
 If you are unhappy with the service within 7 days of your first payment, contact us and we will refund that payment in full, no explanation needed.
 
-Beyond that window, we do not refund partial months, because you keep access for the full period you paid for. If something has gone genuinely wrong, contact us anyway — we would rather sort it out than argue over a month's fee.
+Beyond that window, we do not refund partial years, because you keep access for the full period you paid for. If something has gone genuinely wrong, contact us anyway — we would rather sort it out than argue over a year's fee.
 
 HOW REFUNDS ARE PAID
 

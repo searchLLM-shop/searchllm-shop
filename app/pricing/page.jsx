@@ -1,5 +1,5 @@
 import LegalPage from "@/components/LegalPage";
-import { PLANS } from "@/lib/constants";
+import { PLANS, planPriceLabel } from "@/lib/constants";
 
 export const metadata = { title: "Pricing — SearchLLM" };
 
@@ -11,7 +11,7 @@ Where we have an affiliate relationship with a retailer, that option is labelled
 
 BILLING
 
-Plus is billed monthly in Indian Rupees through Razorpay. The subscription renews automatically each month until you cancel. You can cancel at any time — see our Cancellation & Refunds page.
+Plus is billed yearly in Indian Rupees through Razorpay. The subscription renews automatically each year until you cancel. You can cancel at any time — see our Cancellation & Refunds page.
 
 Prices shown include applicable taxes where required. You will receive an email receipt from Razorpay for every payment.
 
@@ -26,7 +26,12 @@ export default function Page() {
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 8 }}>
               <span style={{ fontSize: 15, fontWeight: 600, color: "var(--color-text-primary)" }}>{plan.name}</span>
               <span style={{ fontSize: 15, fontWeight: 600, color: "#0F6E56" }}>
-                {plan.price === 0 ? "Free" : `₹${plan.price}/month`}
+                {/* Hardcoded "/month" here (2026-08-20 fix) was exactly the
+                    drift lib/constants.js's PLANS.plus comment warns about —
+                    this card kept saying /month even while Plus was ₹499/year
+                    everywhere else. planPriceLabel() is the single render
+                    path now, same as every other upgrade prompt. */}
+                {plan.price === 0 ? "Free" : planPriceLabel(key)}
               </span>
             </div>
             <ul style={{ margin: 0, paddingLeft: 18, fontSize: 13 }}>
