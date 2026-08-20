@@ -287,9 +287,9 @@ export default function AdminQueue() {
             </div>
             {redemptions.filter((r) => r.status === "requested").map((r) => (
               <div key={r.id} style={{ padding: "4px 0" }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, fontSize: 12, color: "var(--color-text-secondary)" }}>
+                <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "space-between", alignItems: "center", gap: 10, rowGap: 6, fontSize: 12, color: "var(--color-text-secondary)" }}>
                   <span>{Number(r.points).toLocaleString()} pts → {r.voucher_type} · {r.user_id.slice(0, 14)}… · {new Date(r.created_at).toLocaleDateString()}</span>
-                  <span style={{ display: "flex", gap: 6 }}>
+                  <span style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
                     {autoIssuanceConfigured && (
                       <button
                         disabled={autoBusy === r.id}

@@ -461,7 +461,18 @@ export default function ResearchTab({ maxSearches, searchCount, onSearchComplete
   return (
     <div>
       {showIdle && (
-        <div style={{ textAlign: "center", padding: "18px 0 8px" }}>
+        // Reserved height (2026-08-20): the two manifesto statements wrap to
+        // different numbers of lines, especially on narrow screens (variant
+        // 0's longer body vs. variant 1's shorter one measured up to an 82px
+        // difference at 375px wide). Without a fixed floor, every 5s
+        // rotation reflowed everything below it, including the search bar —
+        // exactly the shift a shopper mid-typing would feel as the box
+        // jumping under their cursor. The clamp() below was fitted against
+        // real measurements at 320/360/375/414/480/780+px (see the rendered
+        // heights checked via the Browser tool) so the hero's OUTER height
+        // never changes between variants at any of them, decoupling the
+        // search bar's position from which statement happens to be showing.
+        <div style={{ textAlign: "center", padding: "18px 0 8px", minHeight: "clamp(200px, 400px - 30vw, 320px)", display: "flex", flexDirection: "column", justifyContent: "center", boxSizing: "border-box" }}>
           <h1 style={{ fontSize: "clamp(28px, 5vw, 44px)", fontWeight: 800, letterSpacing: "-0.02em", margin: "0 0 16px", lineHeight: 1.1, color: "#14161A" }}>
             {MANIFESTO[manifestoIdx].plain[0]}
             {MANIFESTO[manifestoIdx].colored.map((w, i) => (
@@ -671,7 +682,14 @@ export default function ResearchTab({ maxSearches, searchCount, onSearchComplete
               value={clarifyAnswerDraft}
               onChange={(e) => setClarifyAnswerDraft(e.target.value)}
               onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); submitClarifyAnswer(clarifyAnswerDraft); } }}
-              placeholder={`${tr("clarifyCustomPlaceholder")} (Enter to submit)`}
+              // Just the base placeholder, not "(Enter to submit)" tacked on
+              // — that got clipped on a 375px phone screen with no ellipsis
+              // (caught via a live mobile check against production, 2026-08-20:
+              // "or type your own answer… (Enter to s"). Chips are the
+              // primary path; Enter-to-submit on a text input is a common
+              // enough convention not to need an explicit, truncation-prone
+              // callout in the placeholder itself.
+              placeholder={tr("clarifyCustomPlaceholder")}
               disabled={clarifyBusy}
               style={{ width: "100%", boxSizing: "border-box", border: "0.5px solid var(--color-border-secondary)", borderRadius: 8, padding: "7px 10px", fontSize: 12, background: "#fff", color: "var(--color-text-primary)" }}
             />
