@@ -6,11 +6,11 @@ const CONTENT = `SearchLLM Plus is a yearly subscription to a digital service. T
 
 CANCELLATION
 
-You can cancel your Plus subscription at any time. Cancellation stops all future billing immediately — you will not be charged again.
+Plus is a one-time yearly payment, not a recurring subscription — it does not auto-renew, and you will never be charged again automatically once your year of access has been paid for. There is no future billing to cancel out of, because none is scheduled.
 
-After cancelling, your Plus features remain active until the end of the billing period you have already paid for. At that point the account reverts to the Free plan, which continues to work at the free daily limit.
+At the end of your paid year, the account automatically reverts to the Free plan, which continues to work at the free daily limit, unless you choose to upgrade again.
 
-To cancel, email us at the address on our Contact page with the email address on your account, and we will process it and confirm.
+If you would rather stop using Plus before your year is up, email us at the address on our Contact page with the email address on your account, and we will turn it off early.
 
 REFUNDS
 

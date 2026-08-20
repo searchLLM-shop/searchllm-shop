@@ -11,7 +11,7 @@ Where we have an affiliate relationship with a retailer, that option is labelled
 
 BILLING
 
-Plus is billed yearly in Indian Rupees through Razorpay. The subscription renews automatically each year until you cancel. You can cancel at any time — see our Cancellation & Refunds page.
+Plus is billed once in Indian Rupees through Razorpay and gives you a full year of access. It does not renew automatically — there is no ongoing mandate and no surprise charge at the end of the year. To keep Plus going, upgrade again when it ends. You can also stop using it at any time before then — see our Cancellation & Refunds page.
 
 Prices shown include applicable taxes where required. You will receive an email receipt from Razorpay for every payment.
 

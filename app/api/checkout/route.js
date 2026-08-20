@@ -87,14 +87,17 @@ export async function POST(req) {
       },
       body: JSON.stringify({
         plan_id: planId,
-        // Number of billing cycles to authorize. The plan is yearly
-        // (₹499/year, see PLANS.plus in lib/constants.js), so 60 cycles is
-        // ~60 years — a long enough authorization window that a subscriber
-        // is never asked to reauthorize; it does not mean 60 charges will
-        // actually happen, only that cancellation (not re-mandate) is how
-        // it ends. Was previously miscommented as "five years of a monthly
-        // plan" — the plan has always been yearly, the comment just lagged.
-        total_count: 60,
+        // Number of billing cycles to authorize (2026-08-20, deliberate):
+        // exactly 1. Razorpay charges once, then the subscription reaches
+        // total_count and fires subscription.completed — which
+        // app/api/razorpay/webhook/route.js's DOWNGRADE_EVENTS already
+        // treats as a downgrade to Free. So a year in, access lapses on
+        // its own with no silent auto-renewal charge; continuing Plus
+        // means the shopper deliberately hits Upgrade again and goes
+        // through a fresh ₹499 checkout, not an automatic yearly debit
+        // under the original mandate. (Previously 60, i.e. ~60 years of
+        // auto-renewal under one mandate — the opposite of this.)
+        total_count: 1,
         customer_notify: 1,
         // clerkUserId in notes is how the webhook knows which user to
         // upgrade — Razorpay echoes notes back in every subscription event.
