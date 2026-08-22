@@ -216,6 +216,18 @@ export default function ResearchTab({ maxSearches, searchCount, onSearchComplete
       if (!searchQ) return;
       if (maxSearches !== -1 && searchCount >= maxSearches) return;
 
+      // Fold clarification answers into what's actually shown as "the
+      // query" — the search bar and the "For: ..." label should reflect
+      // everything that shaped the answer, not just the bare text the
+      // shopper first typed, especially since the clarify loop can add
+      // several rounds of real detail. The request to the backend below
+      // is unchanged (original query + clarifications sent separately) —
+      // this is purely what's displayed and left editable.
+      const enrichedQuery = clarifications.length
+        ? [searchQ, ...clarifications.map((c) => c.answer)].join(", ")
+        : searchQ;
+      setQuery(enrichedQuery);
+
       setClarifyCurrent(null);
       setClarifyHistory([]);
       setClarifyAnswerDraft("");
@@ -304,12 +316,18 @@ export default function ResearchTab({ maxSearches, searchCount, onSearchComplete
               setProcessing(false);
               const fields = extractStreamingFields(rawText);
               setResult({
-                query: searchQ,
+                query: enrichedQuery,
                 id: "streaming",
                 ...fields,
                 matchedListing: evt.matchedListing,
                 alternatives: evt.alternatives || [],
                 alternativesWithheld: evt.alternativesWithheld,
+                // The Amazon fallback card — same field the "final" event
+                // carries, just also sent this early now: on a no-match
+                // answer it's the ONLY actionable product card, and it used
+                // to only arrive with "final", several seconds after
+                // everything else was already visible.
+                amazonBrowse: evt.amazonBrowse,
               });
             } else if (evt.type === "final") {
               finalData = evt;
@@ -326,7 +344,7 @@ export default function ResearchTab({ maxSearches, searchCount, onSearchComplete
           throw new Error("Connection closed before the answer finished.");
         }
         const { type: _finalType, ...data } = finalData;
-        setResult({ query: searchQ, ...data, alternatives: data.alternatives || [], id: Date.now() });
+        setResult({ query: enrichedQuery, ...data, alternatives: data.alternatives || [], id: Date.now() });
         onSearchComplete?.();
         trackEvent("search_completed", {
           matched_inventory: Boolean(data.matchedListing),

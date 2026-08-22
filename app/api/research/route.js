@@ -562,12 +562,39 @@ export async function POST(req) {
                       let pickChosenId = idRaw && idRaw !== "null" ? Number(idRaw) : null;
                       if (pickChosenId !== null && !offeredIdsEarly.has(pickChosenId)) pickChosenId = null;
                       const pickChosenMatch = pickChosenId ? candidates.find((l) => l.id === pickChosenId) || null : null;
+
+                      // Amazon Associates fallback (2026-08-22): the ONLY
+                      // actionable product card when nothing was offered or
+                      // nothing offered fit — this was a "final"-only field
+                      // before, so on a no-match answer the shopper saw the
+                      // verdict text and refinement chips early but no
+                      // product card at all until candidateFitment and the
+                      // rest finished streaming, several seconds later. Same
+                      // logic as the final event's amazonBrowse, computed
+                      // here instead so it arrives at the same moment as
+                      // everything else.
+                      const earlyAlternatives = Array.isArray(altsParsed) ? altsParsed.slice(0, 3) : [];
+                      const amazonBrowseEarly = (() => {
+                        if (pickChosenMatch || !process.env.AMAZON_ASSOCIATES_TAG) return undefined;
+                        const term = [
+                          extractStringField(raw, "shoppingTerm") || "",
+                          earlyAlternatives[0]?.name || "",
+                          typeof query === "string" ? query.trim() : "",
+                        ].find((t) => t && t.length > 2);
+                        if (!term) return undefined;
+                        return {
+                          term: term.slice(0, 80),
+                          url: `https://www.amazon.in/s?k=${encodeURIComponent(term.slice(0, 120))}&tag=${process.env.AMAZON_ASSOCIATES_TAG}`,
+                        };
+                      })();
+
                       pickSent = true;
                       send({
                         type: "pick",
                         matchedListing: buildClientListingPayload(pickChosenMatch),
-                        alternatives: Array.isArray(altsParsed) ? altsParsed.slice(0, 3) : [],
+                        alternatives: earlyAlternatives,
                         alternativesWithheld: suppressAlternatives || undefined,
+                        amazonBrowse: amazonBrowseEarly,
                       });
                     } catch {
                       // Not actually valid JSON yet despite balanced
@@ -914,6 +941,16 @@ function extractBalancedValue(text, key) {
 function extractBareValue(text, key) {
   const m = text.match(new RegExp(`"${key}"\\s*:\\s*(-?\\d+|null)\\s*[,}]`));
   return m ? m[1] : null;
+}
+
+// A closed string value — real closing quote required, so a still-typing
+// value isn't returned half-written. Used at "pick" time for shoppingTerm,
+// which by then (field 7 of the schema, one before alternatives) is
+// guaranteed to have already closed.
+function extractStringField(text, key) {
+  const m = text.match(new RegExp(`"${key}"\\s*:\\s*("(?:[^"\\\\]|\\\\.)*")`));
+  if (!m) return null;
+  try { return JSON.parse(m[1]); } catch { return null; }
 }
 
 async function hashQuery(text) {
