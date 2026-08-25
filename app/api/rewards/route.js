@@ -51,12 +51,36 @@ export async function POST(req) {
       if (!LOYALTY.VOUCHER_CATALOG.some((v) => v.brand === voucherType)) {
         return Response.json({ error: "Pick a voucher from the list." }, { status: 400 });
       }
+
+      // RBI mandate for gift vouchers issued in India: name, mobile, email
+      // and address are required and must be explicitly (re-)confirmed on
+      // EVERY redemption, even when prefilled from what's on file — see
+      // requestRedemption in lib/db.js for how this is stored.
+      const kyc = {
+        name: String(body.kyc?.name || "").trim().slice(0, 120),
+        mobile: String(body.kyc?.mobile || "").trim().slice(0, 15),
+        email: String(body.kyc?.email || "").trim().slice(0, 200),
+        address: String(body.kyc?.address || "").trim().slice(0, 400),
+      };
+      if (!kyc.name || !kyc.address) {
+        return Response.json({ error: "Name and address are required for gift voucher issuance." }, { status: 400 });
+      }
+      if (!/^\d{10}$/.test(kyc.mobile)) {
+        return Response.json({ error: "Enter a valid 10-digit mobile number." }, { status: 400 });
+      }
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(kyc.email)) {
+        return Response.json({ error: "Enter a valid email address." }, { status: 400 });
+      }
+      if (body.kycConfirmed !== true) {
+        return Response.json({ error: "Please confirm your details before redeeming — required for gift voucher issuance in India." }, { status: 400 });
+      }
+
       const summary = await getRewardsSummary(userId);
       if (!summary.isMember) return Response.json({ error: "Join the programme first." }, { status: 400 });
       if (summary.plan !== "plus") {
         return Response.json({ error: "Redemption is a Plus feature — upgrade to redeem your points. They keep accumulating meanwhile." }, { status: 403 });
       }
-      const ok = await requestRedemption(userId, points, voucherType);
+      const ok = await requestRedemption(userId, points, voucherType, kyc);
       if (!ok) return Response.json({ error: "Not enough available points for that voucher." }, { status: 400 });
       return Response.json({ ok: true });
     }

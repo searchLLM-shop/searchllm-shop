@@ -586,3 +586,28 @@ CREATE TABLE IF NOT EXISTS price_alerts (
 );
 CREATE INDEX IF NOT EXISTS idx_price_alerts_identity ON price_alerts (identity, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_price_alerts_unseen ON price_alerts (identity) WHERE seen_at IS NULL;
+
+-- =========================================================================
+-- REWARDS ENGINE REDESIGN (2026-08-25): flat points, points-driven Plus
+-- upgrade, and RBI-mandated KYC on gift voucher redemption.
+-- =========================================================================
+
+-- loyalty_members.kyc_* is the durable "on file" profile — collected once,
+-- reused/prefilled on every later redemption per RBI rules for gift
+-- vouchers issued in India, but always re-shown and re-confirmed there
+-- (see requestRedemption in lib/db.js). Nullable/additive: existing members
+-- have none until their first redemption under this policy.
+ALTER TABLE loyalty_members ADD COLUMN IF NOT EXISTS kyc_name TEXT;
+ALTER TABLE loyalty_members ADD COLUMN IF NOT EXISTS kyc_mobile TEXT;
+ALTER TABLE loyalty_members ADD COLUMN IF NOT EXISTS kyc_email TEXT;
+ALTER TABLE loyalty_members ADD COLUMN IF NOT EXISTS kyc_address TEXT;
+ALTER TABLE loyalty_members ADD COLUMN IF NOT EXISTS kyc_updated_at TIMESTAMPTZ;
+
+-- redemptions.kyc_* is an immutable per-redemption SNAPSHOT of what was
+-- shown and confirmed at that moment — the RBI-relevant audit record, kept
+-- even if the member's on-file profile changes later.
+ALTER TABLE redemptions ADD COLUMN IF NOT EXISTS kyc_name TEXT;
+ALTER TABLE redemptions ADD COLUMN IF NOT EXISTS kyc_mobile TEXT;
+ALTER TABLE redemptions ADD COLUMN IF NOT EXISTS kyc_email TEXT;
+ALTER TABLE redemptions ADD COLUMN IF NOT EXISTS kyc_address TEXT;
+ALTER TABLE redemptions ADD COLUMN IF NOT EXISTS kyc_confirmed_at TIMESTAMPTZ;

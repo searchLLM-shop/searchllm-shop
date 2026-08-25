@@ -126,11 +126,12 @@ export async function POST(req) {
     // --- Real quota check, backed by the database, scoped per identity ---
     const identity = userId || (await getOrCreateGuestId());
 
-    // Lifecycle matrix (v3): evaluated for EVERY identity, guests included.
-    // Free/guest: stage 1 → blocking upgrade interstitial (acknowledgeable),
-    // stage 2 → hard Increase Usage gate. Plus: never blocked; alternatives
-    // withheld instead (handled after the model call). IP limits backstop
-    // identity-hopping for anyone without a payment/purchase history.
+    // Lifecycle gate (redesigned 2026-08-25): free users and guests are
+    // NEVER blocked here any more — the old query/click checkpoint ladder
+    // is gone. The only remaining gate is Plus-only: LOYALTY.PLUS_QUERY_CYCLE_LIMIT
+    // queries with zero purchases since the last reset → hard Increase
+    // Usage gate. IP limits still backstop identity-hopping for anyone
+    // without a payment/purchase history, for everyone.
     //
     // OPERATION BUDGET (consolidated 2026-07-27): this whole block is now
     // 2 queries for a normal search — one lifecycle statement (which also
@@ -138,28 +139,16 @@ export async function POST(req) {
     // IP record-and-check. Admins skip both entirely.
     const ipHash = hashIp(req.headers.get("x-vercel-forwarded-for") || req.headers.get("x-forwarded-for")?.split(",")[0]?.trim());
     const admin = isAdminEmail((await currentUser())?.emailAddresses?.[0]?.emailAddress);
-    let suppressAlternatives = false;
     let storedPlan = "free";
-    let engagementPoints = 0;
     try {
       if (!admin) {
         const lifecycle = await getLifecycleStatus(identity);
-        suppressAlternatives = lifecycle.suppressAlternatives;
         storedPlan = lifecycle.plan;
-        engagementPoints = lifecycle.engagementPoints;
-        if (lifecycle.stage === "upgrade") {
-          return Response.json({
-            gate: "upgrade",
-            searches: lifecycle.searches,
-            signedIn: Boolean(userId),
-            message: "You're clearly getting value from the research — that's exactly what we built. Honest answers cost real server money, and upgrading is how the platform stays honest instead of ad-driven. Plus unlocks gift-voucher redemption for the points you're already earning.",
-          }, { status: 403 });
-        }
         if (lifecycle.stage === "recharge") {
           return Response.json({
             gate: "search",
             searches: lifecycle.searches,
-            message: `You've made ${lifecycle.searches} picks since your last purchase. Every pick runs paid AI research — to continue, please use Increase Usage. Completing a purchase through any recommendation also resets your free picks.`,
+            message: `You've made ${lifecycle.searches} picks since your last purchase or Increase Usage payment. Every pick runs paid AI research — to continue, please use Increase Usage (₹${LOYALTY.RECHARGE_PRICE_INR}). Completing a purchase through any recommendation also resets the cycle for free.`,
           }, { status: 403 });
         }
         // Records this hit and returns the rolling window in one statement.
@@ -178,13 +167,9 @@ export async function POST(req) {
     // Admins get unlimited picks. Testing the product shouldn't require
     // burning a paid subscription or waiting for the daily reset.
     const plan = admin ? "plus" : storedPlan;
-    // Registering lifts the daily cap; hitting the 250-point engagement
-    // ceiling puts it back. One shared rule, so the header can't promise
-    // a different number than the quota check enforces.
     const limit = dailyPickLimit({
       signedIn: Boolean(userId),
       plan,
-      engagementPoints,
       isAdmin: admin,
     });
 
@@ -593,7 +578,6 @@ export async function POST(req) {
                         type: "pick",
                         matchedListing: buildClientListingPayload(pickChosenMatch),
                         alternatives: earlyAlternatives,
-                        alternativesWithheld: suppressAlternatives || undefined,
                         amazonBrowse: amazonBrowseEarly,
                       });
                     } catch {
@@ -751,21 +735,19 @@ export async function POST(req) {
             whoSkip: parsed.whoShouldSkip,
             // Safety net for the prompt rule above: drop any alternative
             // that names the product we already showed as the sponsored pick.
-            alternatives: suppressAlternatives
-              ? []
-              : (parsed.alternatives || []).filter((a) => {
-                  if (!chosenMatch || !a?.name) return true;
-                  const alt = String(a.name).toLowerCase().replace(/[^a-z0-9 ]/g, " ");
-                  const picked = `${chosenMatch.brand || ""} ${chosenMatch.product || ""}`
-                    .toLowerCase()
-                    .replace(/[^a-z0-9 ]/g, " ");
-                  const altWords = new Set(alt.split(/\s+/).filter((w) => w.length > 3));
-                  const pickWords = new Set(picked.split(/\s+/).filter((w) => w.length > 3));
-                  if (!altWords.size) return true;
-                  let shared = 0;
-                  for (const w of altWords) if (pickWords.has(w)) shared++;
-                  return shared / altWords.size < 0.6; // mostly the same product
-                }),
+            alternatives: (parsed.alternatives || []).filter((a) => {
+              if (!chosenMatch || !a?.name) return true;
+              const alt = String(a.name).toLowerCase().replace(/[^a-z0-9 ]/g, " ");
+              const picked = `${chosenMatch.brand || ""} ${chosenMatch.product || ""}`
+                .toLowerCase()
+                .replace(/[^a-z0-9 ]/g, " ");
+              const altWords = new Set(alt.split(/\s+/).filter((w) => w.length > 3));
+              const pickWords = new Set(picked.split(/\s+/).filter((w) => w.length > 3));
+              if (!altWords.size) return true;
+              let shared = 0;
+              for (const w of altWords) if (pickWords.has(w)) shared++;
+              return shared / altWords.size < 0.6; // mostly the same product
+            }),
             country: userCountry,
             // What lib/clarify.js asked and what the shopper answered, if
             // anything — recorded alongside the answer it shaped, same idea
@@ -796,7 +778,6 @@ export async function POST(req) {
             // under an explanation of why not to buy it. A sponsored slot
             // we can't defend is worth less than an empty one.
             matchedListing: buildClientListingPayload(chosenMatch),
-            alternativesWithheld: suppressAlternatives || undefined,
             // Amazon Associates browse link — ONLY when no partner product
             // matched, so it monetizes otherwise-unmonetized queries
             // without competing with the sponsored card or touching the
@@ -832,9 +813,9 @@ export async function POST(req) {
                   return { kind: "user", ...sp };
                 }
                 const guestToday = picksUsedToday !== null
-                  ? picksUsedToday * LOYALTY.SEARCH_POINTS.GUEST_PER_PICK
+                  ? picksUsedToday * LOYALTY.POINTS.GUEST_PER_PICK
                   : await getGuestDayPoints(identity);
-                return { kind: "guest", guestToday, perPick: LOYALTY.SEARCH_POINTS.GUEST_PER_PICK };
+                return { kind: "guest", guestToday, perPick: LOYALTY.POINTS.GUEST_PER_PICK };
               } catch (e) {
                 console.error("Search points failed:", e.message);
                 return null;

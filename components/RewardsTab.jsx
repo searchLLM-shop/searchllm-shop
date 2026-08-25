@@ -50,6 +50,11 @@ export default function RewardsTab() {
   const [redeemPoints, setRedeemPoints] = useState("");
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState(null);
+  // RBI KYC confirmation step (2026-08-25): clicking a denomination no
+  // longer redeems immediately — it opens this inline form, prefilled from
+  // whatever's on file, and every redemption re-confirms it explicitly.
+  const [pendingDenom, setPendingDenom] = useState(null);
+  const [kyc, setKyc] = useState({ name: "", mobile: "", email: "", address: "" });
 
   const load = useCallback(async () => {
     if (!isSignedIn) { setLoading(false); return; }
@@ -116,10 +121,10 @@ export default function RewardsTab() {
       <div style={{ maxWidth: 560 }}>
         <h2 style={{ fontSize: 18, fontWeight: 500, marginBottom: 8 }}>Join the rewards programme</h2>
         <p style={{ fontSize: 13, color: "var(--color-text-secondary)", lineHeight: 1.8, marginBottom: 8 }}>
-          Earn points three ways: <strong>every pick you research</strong> ({cfg.SEARCH_POINTS?.USER_PER_PICK} points each), <strong>every recommended product link you click</strong> ({cfg.SEARCH_POINTS?.CLICK_POINTS} points, once per product per day), and <strong>every purchase a partner store confirms</strong> (based on what the store pays us — {cfg.PLUS_MULTIPLIER}× for Plus members, uncapped). 1 point = ₹1 of voucher value. Points accumulate free forever; redeeming them for {(cfg.DENOMINATIONS || []).join("/")}-point vouchers (Amazon Pay, Flipkart, Myntra, Swiggy) is a Plus benefit.
+          Earn points three ways, the same rate for everyone: <strong>every pick you research</strong> ({cfg.POINTS?.SEARCH} points each), <strong>every recommended product link you click</strong> ({cfg.POINTS?.CLICK} points, once per product per day), and <strong>every purchase a partner store confirms</strong> ({cfg.POINTS?.PURCHASE} points, whatever the order size). 1 point = ₹1 of voucher value. Points accumulate free forever, with no limit; once your total reaches {cfg.VOUCHER_UNLOCK_POINTS}, you can pay for Plus to redeem your first voucher.
         </p>
         <p style={{ fontSize: 12, color: "var(--color-text-tertiary)", lineHeight: 1.7, marginBottom: 14 }}>
-          Points show as pending first, and confirm once the store approves the sale — typically 30–90 days after purchase, because stores wait out the return window. Returned or cancelled orders don&apos;t earn.
+          Points show as pending first, and confirm once the store approves the sale — typically 30–90 days after purchase, because stores wait out the return window. Returned or cancelled orders don&apos;t earn. Redeeming a voucher (Plus only) asks for your name, mobile, email and address each time — a gift-voucher rule set by the RBI in India, not something we chose.
         </p>
         <label style={{ display: "flex", gap: 8, alignItems: "flex-start", fontSize: 12, color: "var(--color-text-secondary)", lineHeight: 1.6, marginBottom: 14, cursor: "pointer" }}>
           <input type="checkbox" checked={consentChecked} onChange={(e) => setConsentChecked(e.target.checked)} style={{ marginTop: 2 }} />
@@ -163,43 +168,91 @@ export default function RewardsTab() {
         </div>
       </div>
       <div style={{ fontSize: 11, color: "var(--color-text-tertiary)", marginBottom: 18 }}>
-        {data.searchPointsToday || 0} engagement points earned today — every pick earns {cfg.SEARCH_POINTS?.USER_PER_PICK}, every product-link click earns {cfg.SEARCH_POINTS?.CLICK_POINTS}, and confirmed purchases earn on top. <a href="/points" style={{ color: "#0F6E56" }}>How points work</a>
+        {data.searchPointsToday || 0} points earned today — every pick earns {cfg.POINTS?.SEARCH}, every product-link click earns {cfg.POINTS?.CLICK}, and confirmed purchases earn {cfg.POINTS?.PURCHASE} each. <a href="/points" style={{ color: "#0F6E56" }}>How points work</a>
       </div>
 
-      <div style={{ border: "0.5px solid var(--color-border-tertiary)", borderRadius: 10, padding: "14px 16px", marginBottom: 20 }}>
-        <div style={{ fontSize: 13, fontWeight: 500, marginBottom: 8 }}>Redeem points</div>
-        {data.plan !== "plus" ? (
+      {data.plan !== "plus" && (
+        <div style={{ border: "0.5px solid var(--color-border-tertiary)", borderRadius: 10, padding: "14px 16px", marginBottom: 20 }}>
+          <div style={{ fontSize: 13, fontWeight: 500, marginBottom: 8 }}>
+            {data.canClaimVoucher ? "You can now claim a voucher" : "Progress toward your first voucher"}
+          </div>
+          <div style={{ height: 8, borderRadius: 4, background: "var(--color-background-tertiary)", overflow: "hidden", marginBottom: 8 }}>
+            <div style={{ height: "100%", width: `${Math.min(100, (data.totalPoints / (cfg.VOUCHER_UNLOCK_POINTS || 250)) * 100)}%`, background: "#0F6E56", borderRadius: 4 }} />
+          </div>
           <div style={{ fontSize: 12, color: "var(--color-text-secondary)", lineHeight: 1.7 }}>
-            🔒 Your points are safe and keep accumulating — <strong>redeeming them is a Plus benefit</strong>. Plus also raises your allowance to {cfg.GATE_LIMITS?.plus?.searches} picks and {cfg.GATE_LIMITS?.plus?.clicks} product links per purchase cycle (vs {cfg.GATE_LIMITS?.free?.searches}/{cfg.GATE_LIMITS?.free?.clicks} free), with {cfg.PLUS_MULTIPLIER}× purchase points.
+            {data.canClaimVoucher
+              ? <>You&apos;ve earned {n(data.totalPoints)} of {n(cfg.VOUCHER_UNLOCK_POINTS)} points — 🔒 <strong>redeeming a voucher is a Plus benefit</strong>. Your points are safe and keep accumulating either way.</>
+              : <>{n(data.totalPoints)} of {n(cfg.VOUCHER_UNLOCK_POINTS)} points — once you reach {n(cfg.VOUCHER_UNLOCK_POINTS)}, you can pay for Plus and claim your first voucher.</>}
             <div style={{ marginTop: 8 }}>
               <a href="/?upgrade=1" style={{ display: "inline-block", background: "#0F6E56", color: "#fff", borderRadius: 6, padding: "7px 14px", fontSize: 12, fontWeight: 500, textDecoration: "none" }}>Upgrade to Plus — {planPriceLabel()}</a>
             </div>
             <VoucherShowcase caption="What your points can become the moment you upgrade:" />
           </div>
-        ) : (
-          <>
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-              <select value={voucherType} onChange={(e) => setVoucherType(e.target.value)} style={{ border: "0.5px solid var(--color-border-secondary)", borderRadius: 6, padding: "6px 8px", fontSize: 12, background: "none", color: "var(--color-text-primary)" }}>
-                {(cfg.VOUCHER_CATALOG || []).map((v) => <option key={v.brand} value={v.brand}>{v.brand} · {v.category}</option>)}
-              </select>
-              {(cfg.DENOMINATIONS || []).map((d) => (
+        </div>
+      )}
+
+      {data.plan === "plus" && (
+        <div style={{ border: "0.5px solid var(--color-border-tertiary)", borderRadius: 10, padding: "14px 16px", marginBottom: 20 }}>
+          <div style={{ fontSize: 13, fontWeight: 500, marginBottom: 8 }}>Redeem points</div>
+          {pendingDenom == null ? (
+            <>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                <select value={voucherType} onChange={(e) => setVoucherType(e.target.value)} style={{ border: "0.5px solid var(--color-border-secondary)", borderRadius: 6, padding: "6px 8px", fontSize: 12, background: "none", color: "var(--color-text-primary)" }}>
+                  {(cfg.VOUCHER_CATALOG || []).map((v) => <option key={v.brand} value={v.brand}>{v.brand} · {v.category}</option>)}
+                </select>
+                {(cfg.DENOMINATIONS || []).map((d) => (
+                  <button
+                    key={d}
+                    disabled={busy || d > available}
+                    onClick={() => { setKyc({ name: data.storedKyc?.name || "", mobile: data.storedKyc?.mobile || "", email: data.storedKyc?.email || "", address: data.storedKyc?.address || "" }); setPendingDenom(d); setNotice(null); }}
+                    style={{ background: d <= available ? "#854F0B" : "none", color: d <= available ? "#fff" : "var(--color-text-tertiary)", border: "0.5px solid var(--color-border-secondary)", borderRadius: 6, padding: "7px 14px", fontSize: 12, fontWeight: 500, cursor: d <= available ? "pointer" : "default", opacity: busy ? 0.5 : 1 }}
+                  >
+                    ₹{n(d)}
+                  </button>
+                ))}
+              </div>
+              <div style={{ fontSize: 11, color: "var(--color-text-tertiary)", marginTop: 8 }}>
+                Vouchers come in fixed denominations; the points equivalent is deducted from your available balance.
+              </div>
+            </>
+          ) : (
+            <div>
+              <div style={{ fontSize: 12, color: "var(--color-text-secondary)", lineHeight: 1.7, marginBottom: 10 }}>
+                Confirm the details this ₹{n(pendingDenom)} {voucherType} voucher will be issued against — required every time by the RBI&apos;s rules for gift vouchers in India, even when it&apos;s the same as last time.
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 8, marginBottom: 10 }}>
+                <input placeholder="Full name" value={kyc.name} onChange={(e) => setKyc((k) => ({ ...k, name: e.target.value }))} style={{ border: "0.5px solid var(--color-border-secondary)", borderRadius: 6, padding: "7px 9px", fontSize: 12, background: "none", color: "var(--color-text-primary)" }} />
+                <input placeholder="Mobile (10 digits)" value={kyc.mobile} onChange={(e) => setKyc((k) => ({ ...k, mobile: e.target.value.replace(/\D/g, "").slice(0, 10) }))} style={{ border: "0.5px solid var(--color-border-secondary)", borderRadius: 6, padding: "7px 9px", fontSize: 12, background: "none", color: "var(--color-text-primary)" }} />
+                <input placeholder="Email" value={kyc.email} onChange={(e) => setKyc((k) => ({ ...k, email: e.target.value }))} style={{ border: "0.5px solid var(--color-border-secondary)", borderRadius: 6, padding: "7px 9px", fontSize: 12, background: "none", color: "var(--color-text-primary)" }} />
+                <input placeholder="Address" value={kyc.address} onChange={(e) => setKyc((k) => ({ ...k, address: e.target.value }))} style={{ border: "0.5px solid var(--color-border-secondary)", borderRadius: 6, padding: "7px 9px", fontSize: 12, background: "none", color: "var(--color-text-primary)", gridColumn: "1 / -1" }} />
+              </div>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
                 <button
-                  key={d}
-                  disabled={busy || d > available}
-                  onClick={() => act({ action: "redeem", voucherType, points: d }, "Redemption requested — your voucher code will appear below once issued (usually within 2 working days).")}
-                  style={{ background: d <= available ? "#854F0B" : "none", color: d <= available ? "#fff" : "var(--color-text-tertiary)", border: "0.5px solid var(--color-border-secondary)", borderRadius: 6, padding: "7px 14px", fontSize: 12, fontWeight: 500, cursor: d <= available ? "pointer" : "default", opacity: busy ? 0.5 : 1 }}
+                  disabled={busy || !kyc.name.trim() || !kyc.address.trim() || !/^\d{10}$/.test(kyc.mobile) || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(kyc.email)}
+                  onClick={async () => {
+                    await act(
+                      { action: "redeem", voucherType, points: pendingDenom, kyc, kycConfirmed: true },
+                      "Redemption requested — your voucher code will appear below once issued (usually within 2 working days)."
+                    );
+                    setPendingDenom(null);
+                  }}
+                  style={{ background: "#0F6E56", color: "#fff", border: "none", borderRadius: 6, padding: "7px 16px", fontSize: 12, fontWeight: 500, cursor: "pointer", opacity: busy ? 0.5 : 1 }}
                 >
-                  ₹{n(d)}
+                  Confirm & redeem
                 </button>
-              ))}
+                <button
+                  disabled={busy}
+                  onClick={() => setPendingDenom(null)}
+                  style={{ background: "none", color: "var(--color-text-secondary)", border: "0.5px solid var(--color-border-secondary)", borderRadius: 6, padding: "7px 16px", fontSize: 12, cursor: "pointer" }}
+                >
+                  Cancel
+                </button>
+              </div>
             </div>
-            <div style={{ fontSize: 11, color: "var(--color-text-tertiary)", marginTop: 8 }}>
-              Vouchers come in fixed denominations; the points equivalent is deducted from your available balance.
-            </div>
-          </>
-        )}
-        {notice && <div style={{ fontSize: 12, color: "var(--color-text-secondary)", marginTop: 8 }}>{notice}</div>}
-      </div>
+          )}
+          {notice && <div style={{ fontSize: 12, color: "var(--color-text-secondary)", marginTop: 8 }}>{notice}</div>}
+        </div>
+      )}
 
       {data.redemptions.length > 0 && (
         <div style={{ marginBottom: 20 }}>

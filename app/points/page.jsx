@@ -10,23 +10,26 @@ export const metadata = {
 };
 
 export default function PointsPage() {
-  const sp = LOYALTY.SEARCH_POINTS;
+  const p = LOYALTY.POINTS;
   return (
     <main style={{ maxWidth: 680, margin: "0 auto", padding: "40px 20px", lineHeight: 1.8, fontSize: 14, color: "var(--color-text-primary)" }}>
       <h1 style={{ fontSize: 24, fontWeight: 600, marginBottom: 6 }}>How points work</h1>
       <p style={{ color: "var(--color-text-secondary)", marginBottom: 28 }}>
-        Simple version: research earns a little, buying earns more, and 1 point is always worth ₹1 of gift voucher value.
+        Simple version: research earns a little, buying earns more, everyone earns the same rate, and 1 point is always worth ₹1 of gift voucher value.
       </p>
 
       <h2 style={{ fontSize: 17, fontWeight: 600, margin: "26px 0 8px" }}>Earning</h2>
-      <p><strong>Every pick you research</strong> earns points. As a guest you collect {sp.GUEST_PER_PICK} points per pick — but guest points expire at midnight. Sign up (free) and the day&apos;s points are yours to keep; signed-in members earn {sp.USER_PER_PICK} points on every pick. <strong>Clicking a recommended product link earns {sp.CLICK_POINTS} points</strong> — once per product per day, because the click is the step closest to a real purchase.</p>
-      <p><strong>Every purchase counts more.</strong> When you buy through one of our recommendation links and the store confirms the sale, you earn points based on the commission the store pays us — with no daily cap. Plus members earn {LOYALTY.PLUS_MULTIPLIER}× on purchases.</p>
+      <p><strong>Every pick you research</strong> earns points. As a guest you collect {p.GUEST_PER_PICK} points per pick — but guest points expire at midnight. Sign up (free) and the day&apos;s points are yours to keep; signed-in members earn {p.SEARCH} points on every pick, with no limit. <strong>Clicking a recommended product link earns {p.CLICK} points</strong> — once per product per day, because the click is the step closest to a real purchase.</p>
+      <p><strong>Every confirmed purchase earns {p.PURCHASE} points</strong> — the same amount whatever the order size, and the same for every member, free or Plus.</p>
       <p style={{ color: "var(--color-text-secondary)", fontSize: 13 }}>
         Purchase points appear as <em>pending</em> first and <em>confirm</em> once the store approves the sale — typically 30–90 days after purchase, because stores wait out the return window. Returned or cancelled orders don&apos;t earn. This is the honest mechanics of how affiliate commissions work, and we&apos;d rather tell you than surprise you.
       </p>
 
       <h2 style={{ fontSize: 17, fontWeight: 600, margin: "26px 0 8px" }}>Redeeming</h2>
-      <p>Points accumulate free, forever, for every signed-in member. <strong>Redeeming them is a Plus benefit</strong> ({planPriceLabel()}, which also raises your usage allowance to {LOYALTY.GATE_LIMITS.plus.searches} picks and {LOYALTY.GATE_LIMITS.plus.clicks} product links per purchase cycle, with the {LOYALTY.PLUS_MULTIPLIER}× purchase multiplier). Vouchers come in fixed denominations — {LOYALTY.DENOMINATIONS.map((d) => `₹${d}`).join(" / ")} — across {LOYALTY.VOUCHER_CATALOG.map((v) => v.brand).join(", ")}. Request a redemption from your Rewards tab and the voucher code appears there, usually within 2 working days.</p>
+      <p>Points accumulate free, forever, for every signed-in member, with no cap. Once your total reaches {LOYALTY.VOUCHER_UNLOCK_POINTS} points, you&apos;re eligible to pay for Plus ({planPriceLabel()}) and redeem your first voucher — <strong>redeeming is a Plus benefit</strong>, earning points isn&apos;t. Vouchers come in fixed denominations — {LOYALTY.DENOMINATIONS.map((d) => `₹${d}`).join(" / ")} — across {LOYALTY.VOUCHER_CATALOG.map((v) => v.brand).join(", ")}. Because gift vouchers are regulated in India, redeeming one asks for your name, mobile number, email and address every time, even if it&apos;s the same as last time — required by the RBI, not something we chose. Request a redemption from your Rewards tab and the voucher code appears there, usually within 2 working days.</p>
+      <p style={{ color: "var(--color-text-secondary)", fontSize: 13 }}>
+        Once you&apos;re Plus, keep researching freely — the only thing to know is that {LOYALTY.PLUS_QUERY_CYCLE_LIMIT} picks with no purchase in between triggers an Increase Usage payment (₹{LOYALTY.RECHARGE_PRICE_INR}) to keep going; a single purchase resets that count for free, and this can happen more than once across the year.
+      </p>
 
       <h2 style={{ fontSize: 17, fontWeight: 600, margin: "26px 0 8px" }}>The voucher wall</h2>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 10, margin: "12px 0" }}>

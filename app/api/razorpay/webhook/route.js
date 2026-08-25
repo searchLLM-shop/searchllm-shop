@@ -47,8 +47,9 @@ export async function POST(req) {
     const userId = sub?.notes?.clerkUserId;
 
     // Recharge: one-time payment link paid → mark the user's CURRENT search
-    // block as paid-resolved, unlocking the next 50 picks. Idempotent by
-    // the (user, kind, block) unique key, so webhook retries no-op.
+    // block as paid-resolved, resetting their Plus-only query cycle
+    // (LOYALTY.PLUS_QUERY_CYCLE_LIMIT). Idempotent by the (user, kind,
+    // block) unique key, so webhook retries no-op.
     if (type === "payment_link.paid") {
       const pl = event.payload?.payment_link?.entity;
       const rechargeUser = pl?.notes?.clerkUserId;

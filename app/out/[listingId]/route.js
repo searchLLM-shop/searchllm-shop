@@ -63,31 +63,23 @@ export async function GET(req, { params }) {
     // Identity is attribution metadata, never a reason to block a shopper.
   }
 
-  // BLOCKING click gate (decision 2026-07-23): a user who has clicked
-  // their plan's allowance of affiliate links since their last purchase or
-  // recharge is redirected to the gate instead of the store — no click row,
-  // no points, no network hit — until Increase Usage or a purchase resets
-  // the cycle. IP-level limits apply to everyone without a payment/purchase
-  // history, which also covers guests hopping accounts.
+  // IP-level fair-use gate only (redesigned 2026-08-25): the old per-user
+  // click-count gate is gone — the lifecycle engine's one remaining trigger
+  // is Plus-only and query-based (see getLifecycleStatus), not clicks, so
+  // clicking through is never blocked by plan/cycle any more. IP limits
+  // still apply to everyone without a payment/purchase history (hasCredit),
+  // which also covers guests hopping accounts.
   try {
     const ipHash = hashIp(req.headers.get("x-vercel-forwarded-for") || req.headers.get("x-forwarded-for")?.split(",")[0]?.trim());
-    let gated = false;
     let hasCredit = false;
     if (clerkUserId) {
-      const lc = await getLifecycleStatus(clerkUserId);
-      // Plus is never blocked from clicking through (their consequence is
-      // alternative withholding); free users hard-gate at stage 2 only —
-      // stage 1 (the upgrade interstitial) lives on the search path, and
-      // blocking a revenue click before even asking would be self-harm.
-      gated = !lc.isPlus && lc.stage === "recharge" && lc.trigger === "clicks";
-      hasCredit = lc.hasCredit;
+      hasCredit = (await getLifecycleStatus(clerkUserId)).hasCredit;
     }
     // Records the attempt and returns the rolling window in one statement.
     // A blocked attempt still counts toward the network window — it came
     // from that network either way.
     const ipState = await recordAndCheckIp(ipHash, "click");
-    if (!gated && !hasCredit && ipState.clickGated) gated = true;
-    if (gated) {
+    if (!hasCredit && ipState.clickGated) {
       return Response.redirect(new URL("/?gate=click", req.url), 302);
     }
   } catch (err) {

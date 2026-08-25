@@ -59,7 +59,7 @@ export async function POST(req) {
         body: JSON.stringify({
           amount: RECHARGE_PRICE_INR * 100, // paise
           currency: "INR",
-          description: "SearchLLM recharge — 50 more picks",
+          description: "SearchLLM Increase Usage — continue researching",
           customer: email ? { email } : undefined,
           notes: { clerkUserId: userId, type: "recharge" },
           callback_url: `${process.env.NEXT_PUBLIC_SITE_URL || "https://searchllm.shop"}/?recharged=1`,

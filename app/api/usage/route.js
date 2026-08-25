@@ -28,13 +28,12 @@ export async function GET() {
   const limit = dailyPickLimit({
     signedIn: Boolean(userId),
     plan,
-    engagementPoints: snapshot.engagementPoints,
     isAdmin: admin,
   });
 
   const points = userId
     ? { kind: "user", balance: snapshot.balance, pending: snapshot.pending }
-    : { kind: "guest", today: snapshot.used * LOYALTY.SEARCH_POINTS.GUEST_PER_PICK };
+    : { kind: "guest", today: snapshot.used * LOYALTY.POINTS.GUEST_PER_PICK };
 
   return Response.json({ plan, limit, used: limit === -1 ? 0 : snapshot.used, points });
 }
