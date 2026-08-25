@@ -7,7 +7,7 @@ import ResearchTab from "@/components/ResearchTab";
 import BrandForm from "@/components/BrandForm";
 import AdminQueue from "@/components/AdminQueue";
 import ReportsPanel from "@/components/ReportsPanel";
-import { PLANS, SHOW_UPGRADE, SHOW_ADVERTISERS, SHOW_BRANDS_FORM, ENABLE_GERMAN } from "@/lib/constants";
+import { PLANS, LOYALTY, planPriceLabel, SHOW_UPGRADE, SHOW_ADVERTISERS, SHOW_BRANDS_FORM, ENABLE_GERMAN } from "@/lib/constants";
 import { LOCALES, DEFAULT_LOCALE, resolveLocale, t } from "@/lib/i18n";
 import AdvertiserPanel from "@/components/AdvertiserPanel";
 import AdvertiserAdmin from "@/components/AdvertiserAdmin";
@@ -417,6 +417,38 @@ export default function Home() {
         </>
       ) : (
         <div className="sllm-main" style={{ flex: 1, padding: "20px 20px 40px", maxWidth: 780, width: "100%", margin: "0 auto", boxSizing: "border-box" }}>
+          {/* Rewards, shown prominently on the homepage itself (2026-08-25)
+              rather than only inside the account drawer/points chip — the
+              capped-out upgrade nudge in particular is meant to be seen
+              every time a maxed-out member opens the app, not discovered by
+              clicking into a profile section. */}
+          {usage?.points?.kind === "user" && usage.points.capped && (
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center", justifyContent: "space-between", background: "#FDF8EF", border: "1px solid #EADFC8", borderRadius: 12, padding: "12px 16px", marginBottom: 14 }}>
+              <div style={{ fontSize: 13, color: "#854F0B", lineHeight: 1.6 }}>
+                ⭐ <strong>You&apos;ve reached {Number(usage.points.totalPoints).toLocaleString()} of {Number(usage.points.unlockAt).toLocaleString()} points</strong> — that&apos;s the maximum for a free account. Upgrade to Plus to keep earning and redeem your first gift voucher.
+              </div>
+              <button
+                onClick={handleUpgrade}
+                disabled={upgrading}
+                style={{ background: "#0F6E56", border: "none", borderRadius: 6, padding: "7px 16px", cursor: upgrading ? "default" : "pointer", fontSize: 12, color: "#fff", fontWeight: 500, opacity: upgrading ? 0.6 : 1, whiteSpace: "nowrap" }}
+              >
+                {upgrading ? "Redirecting…" : `Upgrade to Plus — ${planPriceLabel()}`}
+              </button>
+            </div>
+          )}
+          {usage?.points?.kind === "user" && !usage.points.capped && usage.points.totalPoints > 0 && (
+            <button
+              onClick={() => { setDrawerTab("rewards"); setShowAccountDrawer(true); }}
+              style={{ display: "flex", width: "100%", boxSizing: "border-box", flexWrap: "wrap", gap: 10, alignItems: "center", justifyContent: "space-between", background: "var(--color-background-secondary)", border: "0.5px solid var(--color-border-tertiary)", borderRadius: 12, padding: "10px 16px", marginBottom: 14, cursor: "pointer", textAlign: "left" }}
+            >
+              <span style={{ fontSize: 13, color: "var(--color-text-secondary)" }}>
+                ⭐ <strong style={{ color: "var(--color-text-primary)" }}>{Number(usage.points.totalPoints).toLocaleString()} / {Number(usage.points.unlockAt).toLocaleString()} points</strong> toward your first gift voucher
+              </span>
+              <span style={{ height: 6, width: 120, borderRadius: 3, background: "var(--color-background-tertiary)", overflow: "hidden", flexShrink: 0 }}>
+                <span style={{ display: "block", height: "100%", width: `${Math.min(100, (usage.points.totalPoints / usage.points.unlockAt) * 100)}%`, background: "#0F6E56", borderRadius: 3 }} />
+              </span>
+            </button>
+          )}
           <ResearchTab
             key={homeKey}
             isAdmin={isAdminHint}

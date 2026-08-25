@@ -405,6 +405,21 @@ export default function ReportsPanel() {
 
       {data.rewards && (
         <Section title="Rewards programme" note={`${n(data.rewards.members)} members · outstanding liability: ${n(data.rewards.outstandingPoints)} points (₹${n(data.rewards.outstandingPoints)})`}>
+          {/* Plan breakdown + the capped-out-free headline metric — the
+              direct readout of whether the 250-point ceiling is actually
+              converting free members to Plus (2026-08-25). */}
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
+            {(data.rewards.byPlan || []).map((p, i) => (
+              <div key={i} style={{ background: "var(--color-background-secondary)", border: "0.5px solid var(--color-border-tertiary)", borderRadius: 8, padding: "7px 12px", fontSize: 11 }}>
+                <span style={{ color: "var(--color-text-tertiary)", textTransform: "capitalize" }}>{p.plan} members</span>
+                <span style={{ fontWeight: 600, marginLeft: 8 }}>{n(p.members)}</span>
+              </div>
+            ))}
+            <div style={{ background: "#FDF8EF", border: "0.5px solid #EADFC8", borderRadius: 8, padding: "7px 12px", fontSize: 11 }}>
+              <span style={{ color: "#854F0B" }}>Free members capped at 250, not yet Plus</span>
+              <span style={{ fontWeight: 700, marginLeft: 8, color: "#854F0B" }}>{n(data.rewards.cappedFreeMembers || 0)}</span>
+            </div>
+          </div>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
             {data.rewards.issuance.map((x, i) => (
               <div key={i} style={{ background: "var(--color-background-secondary)", border: "0.5px solid var(--color-border-tertiary)", borderRadius: 8, padding: "7px 12px", fontSize: 11 }}>
@@ -413,6 +428,28 @@ export default function ReportsPanel() {
               </div>
             ))}
           </div>
+          {(data.rewards.dailyIssuance || []).length > 0 && (() => {
+            // Collapse the raw (day, source) rows into a per-day total for a
+            // compact trend readout — the per-source breakdown above already
+            // covers the split, this is purely "is issuance growing".
+            const byDay = {};
+            for (const r of data.rewards.dailyIssuance) {
+              const d = new Date(r.day).toLocaleDateString();
+              byDay[d] = (byDay[d] || 0) + Number(r.points);
+            }
+            const days = Object.entries(byDay).slice(-14);
+            const max = Math.max(1, ...days.map(([, v]) => v));
+            return (
+              <div style={{ margin: "10px 0" }}>
+                <div style={{ fontSize: 11, color: "var(--color-text-tertiary)", marginBottom: 6 }}>Points issued per day (last 14 days):</div>
+                <div style={{ display: "flex", gap: 4, alignItems: "flex-end", height: 60 }}>
+                  {days.map(([d, v]) => (
+                    <div key={d} title={`${d}: ${n(Math.floor(v))} pts`} style={{ flex: 1, background: "#0F6E56", borderRadius: "3px 3px 0 0", height: `${Math.max(3, (v / max) * 100)}%`, minWidth: 6 }} />
+                  ))}
+                </div>
+              </div>
+            );
+          })()}
           {(data.rewards.feedback || []).length > 0 && (
             <div style={{ margin: "10px 0" }}>
               <div style={{ fontSize: 11, color: "var(--color-text-tertiary)", marginBottom: 6 }}>Why engaged users say they don&apos;t buy (checkpoint feedback):</div>

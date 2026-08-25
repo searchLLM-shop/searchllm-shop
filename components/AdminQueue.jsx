@@ -286,7 +286,7 @@ export default function AdminQueue() {
               Voucher redemptions awaiting fulfilment
             </div>
             {redemptions.filter((r) => r.status === "requested").map((r) => (
-              <div key={r.id} style={{ padding: "4px 0" }}>
+              <div key={r.id} style={{ padding: "6px 0", borderBottom: "0.5px solid var(--color-border-tertiary)" }}>
                 <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "space-between", alignItems: "center", gap: 10, rowGap: 6, fontSize: 12, color: "var(--color-text-secondary)" }}>
                   <span>{Number(r.points).toLocaleString()} pts → {r.voucher_type} · {r.user_id.slice(0, 14)}… · {new Date(r.created_at).toLocaleDateString()}</span>
                   <span style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
@@ -339,6 +339,17 @@ export default function AdminQueue() {
                       Reject
                     </button>
                   </span>
+                </div>
+                {/* RBI KYC snapshot — what the member confirmed at redemption
+                    time, required to actually address/issue the voucher.
+                    Missing fields mean this redemption predates the KYC
+                    requirement (2026-08-25) — flagged rather than hidden. */}
+                <div style={{ fontSize: 11, color: "var(--color-text-tertiary)", marginTop: 4, lineHeight: 1.6 }}>
+                  {r.kyc_name ? (
+                    <>KYC: <strong style={{ color: "var(--color-text-secondary)" }}>{r.kyc_name}</strong> · {r.kyc_mobile} · {r.kyc_email} · {r.kyc_address}</>
+                  ) : (
+                    <span style={{ color: "#D85A30" }}>No KYC on file for this redemption (predates the RBI KYC requirement) — contact the member before issuing.</span>
+                  )}
                 </div>
                 {autoErrors[r.id] && (
                   <div style={{ fontSize: 11, color: "#D85A30", marginTop: 2 }}>{autoErrors[r.id]}</div>

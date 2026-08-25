@@ -927,7 +927,11 @@ export default function ResearchTab({ maxSearches, searchCount, onSearchComplete
           {result.rewards && (
             <div style={{ fontSize: 12, color: "#854F0B", background: "#FDF8EF", border: "0.5px solid #EADFC8", borderRadius: 8, padding: "8px 12px", margin: "10px 0" }}>
               {result.rewards.kind === "user" ? (
-                <>✨ You earned <strong>{result.rewards.earned} points</strong> for this pick — {result.rewards.todayTotal} today. Clicking a recommended product link earns {LOYALTY.POINTS.CLICK} more. <a href="/points" style={{ color: "#854F0B", textDecoration: "underline" }}>How points work</a></>
+                result.rewards.earned > 0 ? (
+                  <>✨ You earned <strong>{result.rewards.earned} points</strong> for this pick — {result.rewards.todayTotal} today. Clicking a recommended product link earns {LOYALTY.POINTS.CLICK} more. <a href="/points" style={{ color: "#854F0B", textDecoration: "underline" }}>How points work</a></>
+                ) : (
+                  <>You&apos;ve reached the {LOYALTY.VOUCHER_UNLOCK_POINTS}-point maximum for a free account. Upgrade to Plus to keep earning and unlock redeeming a voucher. <a href="/points" style={{ color: "#854F0B", textDecoration: "underline" }}>How points work</a></>
+                )
               ) : (
                 <>✨ You&apos;ve earned <strong>{result.rewards.guestToday} points</strong> today as a guest — they expire at midnight. <strong>Sign up free to keep them</strong>, and they&apos;ll keep adding up.</>
               )}

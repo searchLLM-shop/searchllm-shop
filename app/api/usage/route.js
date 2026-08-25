@@ -8,7 +8,7 @@
 import { auth, currentUser } from "@clerk/nextjs/server";
 import { getHeaderSnapshot, getGuestDayPoints } from "@/lib/db";
 import { getOrCreateGuestId } from "@/lib/guestId";
-import { PLANS, dailyPickLimit } from "@/lib/constants";
+import { PLANS, LOYALTY, dailyPickLimit } from "@/lib/constants";
 import { isAdminEmail } from "@/lib/isAdmin";
 
 export async function GET() {
@@ -33,7 +33,19 @@ export async function GET() {
 
   let points;
   if (userId) {
-    points = { kind: "user", balance: snapshot.balance, pending: snapshot.pending };
+    // capped: a non-Plus member has hit the earning ceiling — this is what
+    // drives the homepage "upgrade to keep earning" banner, shown every
+    // time they open the app until they do (or a plan check flips it off).
+    const capped = plan !== "plus" && snapshot.totalPoints >= LOYALTY.VOUCHER_UNLOCK_POINTS;
+    points = {
+      kind: "user",
+      balance: snapshot.balance,
+      pending: snapshot.pending,
+      totalPoints: snapshot.totalPoints,
+      unlockAt: LOYALTY.VOUCHER_UNLOCK_POINTS,
+      capped,
+      canClaimVoucher: snapshot.totalPoints >= LOYALTY.VOUCHER_UNLOCK_POINTS,
+    };
   } else {
     let guestToday = 0;
     try { guestToday = await getGuestDayPoints(identity); } catch (err) { console.error("Guest points failed:", err.message); }

@@ -121,7 +121,7 @@ export default function RewardsTab() {
       <div style={{ maxWidth: 560 }}>
         <h2 style={{ fontSize: 18, fontWeight: 500, marginBottom: 8 }}>Join the rewards programme</h2>
         <p style={{ fontSize: 13, color: "var(--color-text-secondary)", lineHeight: 1.8, marginBottom: 8 }}>
-          Earn points three ways, the same rate for everyone: <strong>every pick you research</strong> ({cfg.POINTS?.SEARCH} points each), <strong>every recommended product link you click</strong> ({cfg.POINTS?.CLICK} points, once per product per day), and <strong>every purchase a partner store confirms</strong> ({cfg.POINTS?.PURCHASE} points, whatever the order size). 1 point = ₹1 of voucher value. Points accumulate free forever, with no limit; once your total reaches {cfg.VOUCHER_UNLOCK_POINTS}, you can pay for Plus to redeem your first voucher.
+          Earn points three ways, the same rate for everyone: <strong>every pick you research</strong> ({cfg.POINTS?.SEARCH} points each), <strong>every recommended product link you click</strong> ({cfg.POINTS?.CLICK} points, once per product per day), and <strong>every purchase a partner store confirms</strong> ({cfg.POINTS?.PURCHASE} points, whatever the order size). 1 point = ₹1 of voucher value. On a free account, points stop at {cfg.VOUCHER_UNLOCK_POINTS} — upgrading to Plus lifts that ceiling for good, and is also what lets you redeem a voucher.
         </p>
         <p style={{ fontSize: 12, color: "var(--color-text-tertiary)", lineHeight: 1.7, marginBottom: 14 }}>
           Points show as pending first, and confirm once the store approves the sale — typically 30–90 days after purchase, because stores wait out the return window. Returned or cancelled orders don&apos;t earn. Redeeming a voucher (Plus only) asks for your name, mobile, email and address each time — a gift-voucher rule set by the RBI in India, not something we chose.
@@ -172,17 +172,17 @@ export default function RewardsTab() {
       </div>
 
       {data.plan !== "plus" && (
-        <div style={{ border: "0.5px solid var(--color-border-tertiary)", borderRadius: 10, padding: "14px 16px", marginBottom: 20 }}>
-          <div style={{ fontSize: 13, fontWeight: 500, marginBottom: 8 }}>
-            {data.canClaimVoucher ? "You can now claim a voucher" : "Progress toward your first voucher"}
+        <div style={{ border: data.canClaimVoucher ? "1px solid #EADFC8" : "0.5px solid var(--color-border-tertiary)", background: data.canClaimVoucher ? "#FDF8EF" : "none", borderRadius: 10, padding: "14px 16px", marginBottom: 20 }}>
+          <div style={{ fontSize: 13, fontWeight: 500, marginBottom: 8, color: data.canClaimVoucher ? "#854F0B" : "var(--color-text-primary)" }}>
+            {data.canClaimVoucher ? "You've reached the maximum for a free account" : "Progress toward your first voucher"}
           </div>
           <div style={{ height: 8, borderRadius: 4, background: "var(--color-background-tertiary)", overflow: "hidden", marginBottom: 8 }}>
             <div style={{ height: "100%", width: `${Math.min(100, (data.totalPoints / (cfg.VOUCHER_UNLOCK_POINTS || 250)) * 100)}%`, background: "#0F6E56", borderRadius: 4 }} />
           </div>
           <div style={{ fontSize: 12, color: "var(--color-text-secondary)", lineHeight: 1.7 }}>
             {data.canClaimVoucher
-              ? <>You&apos;ve earned {n(data.totalPoints)} of {n(cfg.VOUCHER_UNLOCK_POINTS)} points — 🔒 <strong>redeeming a voucher is a Plus benefit</strong>. Your points are safe and keep accumulating either way.</>
-              : <>{n(data.totalPoints)} of {n(cfg.VOUCHER_UNLOCK_POINTS)} points — once you reach {n(cfg.VOUCHER_UNLOCK_POINTS)}, you can pay for Plus and claim your first voucher.</>}
+              ? <>You&apos;ve earned {n(data.totalPoints)} of {n(cfg.VOUCHER_UNLOCK_POINTS)} points — that&apos;s the cap for a free account, so <strong>no further points until you upgrade</strong>. Pay for Plus to lift the cap (points keep adding up with no limit) and unlock redeeming a voucher.</>
+              : <>{n(data.totalPoints)} of {n(cfg.VOUCHER_UNLOCK_POINTS)} points — once you reach {n(cfg.VOUCHER_UNLOCK_POINTS)}, earning pauses until you pay for Plus, which also unlocks redeeming your first voucher.</>}
             <div style={{ marginTop: 8 }}>
               <a href="/?upgrade=1" style={{ display: "inline-block", background: "#0F6E56", color: "#fff", borderRadius: 6, padding: "7px 14px", fontSize: 12, fontWeight: 500, textDecoration: "none" }}>Upgrade to Plus — {planPriceLabel()}</a>
             </div>
