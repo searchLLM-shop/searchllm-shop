@@ -1,14 +1,14 @@
 // app/api/usage/route.js
 //
-// Powers the header: picks left and the points chip. ONE database query
-// (consolidated 2026-07-27, was three) — plan, today's usage and the
-// points balance resolve together, and guest day-points need no query at
-// all since they're today's pick count times the per-pick rate.
+// Powers the header: picks left and the points chip. Plan/usage/balance
+// resolve from one query (consolidated 2026-07-27) for signed-in users;
+// guest day-points (redesigned 2026-08-25 to also cover click/purchase
+// points, not just search) need their own query — see getGuestDayPoints.
 
 import { auth, currentUser } from "@clerk/nextjs/server";
-import { getHeaderSnapshot } from "@/lib/db";
+import { getHeaderSnapshot, getGuestDayPoints } from "@/lib/db";
 import { getOrCreateGuestId } from "@/lib/guestId";
-import { PLANS, LOYALTY, dailyPickLimit } from "@/lib/constants";
+import { PLANS, dailyPickLimit } from "@/lib/constants";
 import { isAdminEmail } from "@/lib/isAdmin";
 
 export async function GET() {
@@ -31,9 +31,14 @@ export async function GET() {
     isAdmin: admin,
   });
 
-  const points = userId
-    ? { kind: "user", balance: snapshot.balance, pending: snapshot.pending }
-    : { kind: "guest", today: snapshot.used * LOYALTY.POINTS.GUEST_PER_PICK };
+  let points;
+  if (userId) {
+    points = { kind: "user", balance: snapshot.balance, pending: snapshot.pending };
+  } else {
+    let guestToday = 0;
+    try { guestToday = await getGuestDayPoints(identity); } catch (err) { console.error("Guest points failed:", err.message); }
+    points = { kind: "guest", today: guestToday };
+  }
 
   return Response.json({ plan, limit, used: limit === -1 ? 0 : snapshot.used, points });
 }

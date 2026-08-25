@@ -173,16 +173,13 @@ export async function POST(req) {
       isAdmin: admin,
     });
 
-    // Today's pick count, returned by the quota statement — guests' day
-    // points are derived from it instead of costing another query.
-    let picksUsedToday = null;
+    // Atomic quota check-and-consume.
     if (limit !== -1) {
       // ONE atomic statement (2026-07-27): the insert only increments while
       // under the limit, so a blocked request consumes nothing and two
       // simultaneous requests at the boundary can't both slip through —
       // the race the previous read-then-increment version documented.
       const quota = await checkAndConsumeQuota(identity, limit);
-      picksUsedToday = quota.used;
       if (!quota.allowed) {
         // Track how often people run out of picks — the signal that tells us
         // whether the daily limit is doing anything, or just adding friction.
@@ -812,9 +809,9 @@ export async function POST(req) {
                   const sp = await creditSearchPoints(userId);
                   return { kind: "user", ...sp };
                 }
-                const guestToday = picksUsedToday !== null
-                  ? picksUsedToday * LOYALTY.POINTS.GUEST_PER_PICK
-                  : await getGuestDayPoints(identity);
+                // Guest totals now include click/purchase points too, not
+                // just search, so this always reads the live combined total.
+                const guestToday = await getGuestDayPoints(identity);
                 return { kind: "guest", guestToday, perPick: LOYALTY.POINTS.GUEST_PER_PICK };
               } catch (e) {
                 console.error("Search points failed:", e.message);
