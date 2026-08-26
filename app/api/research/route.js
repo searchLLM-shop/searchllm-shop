@@ -104,6 +104,16 @@ export async function POST(req) {
     if (!query || typeof query !== "string" || !query.trim()) {
       return Response.json({ error: "Missing query" }, { status: 400 });
     }
+    // Length cap (2026-08-25 security review): every other free-text input
+    // that reaches the model (clarification answers, KYC fields) is capped
+    // — this one wasn't. Without it, a single request inside the normal
+    // daily quota could carry an arbitrarily large string (bounded only by
+    // Vercel's request-body limit) into two paid model calls, a real
+    // uncontrolled cost-abuse vector, not just a UX concern. No genuine
+    // shopping question needs more than this.
+    if (query.length > 500) {
+      return Response.json({ error: "That question is too long — try summarising it in a sentence or two." }, { status: 400 });
+    }
 
     // Answers to the pre-research clarifying question(s) from app/api/clarify
     // — optional, and the search must work identically to today when this is

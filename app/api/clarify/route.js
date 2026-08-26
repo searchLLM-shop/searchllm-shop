@@ -29,6 +29,14 @@ export async function POST(req) {
     if (!query || typeof query !== "string" || !query.trim()) {
       return Response.json({ error: "Missing query" }, { status: 400 });
     }
+    // Length cap (2026-08-25 security review) — this route has NO quota
+    // gate at all by design (see file header), which makes an unbounded
+    // query string here a bigger cost-abuse exposure than the same gap in
+    // /api/research, not a smaller one: nothing stops repeated calls, each
+    // one able to carry an arbitrarily large string into a paid model call.
+    if (query.length > 500) {
+      return Response.json({ error: "That question is too long — try summarising it in a sentence or two." }, { status: 400 });
+    }
 
     // Re-validated here rather than trusted from the client: only strings,
     // capped in count and length — same posture as safeClarifications in

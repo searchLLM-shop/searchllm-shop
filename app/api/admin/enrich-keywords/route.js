@@ -100,7 +100,11 @@ export async function POST(req) {
 // cleanly and picks up on the next scheduled run.
 export async function GET(req) {
   const authHeader = req.headers.get("authorization");
-  const isCron = authHeader === `Bearer ${process.env.CRON_SECRET}`;
+  // Guard on CRON_SECRET being set FIRST — without it, an unset env var
+  // would make this `authHeader === "Bearer undefined"`, letting anyone
+  // who sends that literal header in as "cron" (matches the safer pattern
+  // already used in admin/sync and admin/pricecheck).
+  const isCron = Boolean(process.env.CRON_SECRET) && authHeader === `Bearer ${process.env.CRON_SECRET}`;
 
   // AI enrichment is paused (see ENABLE_AI_KEYWORDS in constants.js) —
   // matching runs on mechanical keywords + full-text search instead. The

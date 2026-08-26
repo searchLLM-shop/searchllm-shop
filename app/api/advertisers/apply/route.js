@@ -19,7 +19,21 @@ export async function POST(req) {
     if (!Number.isFinite(rate) || rate <= 0) {
       return Response.json({ error: "Please propose a commission rate" }, { status: 400 });
     }
-    const adv = await createAdvertiser({ ...b, commissionRate: rate });
+    // Length caps (matching the pattern already used in /api/brands) — this
+    // form has no admin gate in front of it, so an unbounded string field
+    // is an open row-bloat/storage-cost vector, not just a UI nicety.
+    const adv = await createAdvertiser({
+      companyName: String(b.companyName).slice(0, 200),
+      website: String(b.website).slice(0, 500),
+      contactName: b.contactName ? String(b.contactName).slice(0, 200) : null,
+      contactEmail: String(b.contactEmail).slice(0, 200),
+      phone: b.phone ? String(b.phone).slice(0, 30) : null,
+      gstNumber: b.gstNumber ? String(b.gstNumber).slice(0, 20) : null,
+      billingAddress: b.billingAddress ? String(b.billingAddress).slice(0, 500) : null,
+      commissionModel: b.commissionModel,
+      commissionRate: rate,
+      currency: b.currency,
+    });
     return Response.json({ id: adv.id, status: adv.status });
   } catch (err) {
     console.error("Advertiser application failed:", err);
