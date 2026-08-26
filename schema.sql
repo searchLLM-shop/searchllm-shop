@@ -654,3 +654,13 @@ ALTER TABLE redemptions ADD COLUMN IF NOT EXISTS kyc_mobile TEXT;
 ALTER TABLE redemptions ADD COLUMN IF NOT EXISTS kyc_email TEXT;
 ALTER TABLE redemptions ADD COLUMN IF NOT EXISTS kyc_address TEXT;
 ALTER TABLE redemptions ADD COLUMN IF NOT EXISTS kyc_confirmed_at TIMESTAMPTZ;
+
+-- KYC name split into first/last (2026-08-25) — the RBI KYC step now
+-- collects these as two fields rather than one free-text name. kyc_name
+-- above is superseded going forward but kept in place (nullable, unused by
+-- new code) rather than dropped, since it's harmless and avoids any risk
+-- to whatever the handful of pre-existing rows already hold.
+ALTER TABLE loyalty_members ADD COLUMN IF NOT EXISTS kyc_first_name TEXT;
+ALTER TABLE loyalty_members ADD COLUMN IF NOT EXISTS kyc_last_name TEXT;
+ALTER TABLE redemptions ADD COLUMN IF NOT EXISTS kyc_first_name TEXT;
+ALTER TABLE redemptions ADD COLUMN IF NOT EXISTS kyc_last_name TEXT;

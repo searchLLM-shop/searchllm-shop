@@ -52,18 +52,19 @@ export async function POST(req) {
         return Response.json({ error: "Pick a voucher from the list." }, { status: 400 });
       }
 
-      // RBI mandate for gift vouchers issued in India: name, mobile, email
-      // and address are required and must be explicitly (re-)confirmed on
-      // EVERY redemption, even when prefilled from what's on file — see
-      // requestRedemption in lib/db.js for how this is stored.
+      // RBI mandate for gift vouchers issued in India: first name, last
+      // name, mobile, email and address are required and must be explicitly
+      // (re-)confirmed on EVERY redemption, even when prefilled from what's
+      // on file — see requestRedemption in lib/db.js for how this is stored.
       const kyc = {
-        name: String(body.kyc?.name || "").trim().slice(0, 120),
+        firstName: String(body.kyc?.firstName || "").trim().slice(0, 80),
+        lastName: String(body.kyc?.lastName || "").trim().slice(0, 80),
         mobile: String(body.kyc?.mobile || "").trim().slice(0, 15),
         email: String(body.kyc?.email || "").trim().slice(0, 200),
         address: String(body.kyc?.address || "").trim().slice(0, 400),
       };
-      if (!kyc.name || !kyc.address) {
-        return Response.json({ error: "Name and address are required for gift voucher issuance." }, { status: 400 });
+      if (!kyc.firstName || !kyc.lastName || !kyc.address) {
+        return Response.json({ error: "First name, last name and address are required for gift voucher issuance." }, { status: 400 });
       }
       if (!/^\d{10}$/.test(kyc.mobile)) {
         return Response.json({ error: "Enter a valid 10-digit mobile number." }, { status: 400 });

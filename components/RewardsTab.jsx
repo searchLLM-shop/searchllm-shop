@@ -54,7 +54,7 @@ export default function RewardsTab() {
   // longer redeems immediately — it opens this inline form, prefilled from
   // whatever's on file, and every redemption re-confirms it explicitly.
   const [pendingDenom, setPendingDenom] = useState(null);
-  const [kyc, setKyc] = useState({ name: "", mobile: "", email: "", address: "" });
+  const [kyc, setKyc] = useState({ firstName: "", lastName: "", mobile: "", email: "", address: "" });
 
   const load = useCallback(async () => {
     if (!isSignedIn) { setLoading(false); return; }
@@ -124,7 +124,7 @@ export default function RewardsTab() {
           Earn points three ways, the same rate for everyone: <strong>every pick you research</strong> ({cfg.POINTS?.SEARCH} points each), <strong>every recommended product link you click</strong> ({cfg.POINTS?.CLICK} points, once per product per day), and <strong>every purchase a partner store confirms</strong> ({cfg.POINTS?.PURCHASE} points, whatever the order size). 1 point = ₹1 of voucher value. On a free account, points stop at {cfg.VOUCHER_UNLOCK_POINTS} — upgrading to Plus lifts that ceiling for good, and is also what lets you redeem a voucher.
         </p>
         <p style={{ fontSize: 12, color: "var(--color-text-tertiary)", lineHeight: 1.7, marginBottom: 14 }}>
-          Points show as pending first, and confirm once the store approves the sale — typically 30–90 days after purchase, because stores wait out the return window. Returned or cancelled orders don&apos;t earn. Redeeming a voucher (Plus only) asks for your name, mobile, email and address each time — a gift-voucher rule set by the RBI in India, not something we chose.
+          Points show as pending first, and confirm once the store approves the sale — typically 30–90 days after purchase, because stores wait out the return window. Returned or cancelled orders don&apos;t earn. Redeeming a voucher (Plus only) asks for your first name, last name, mobile, email and address each time — a gift-voucher rule set by the RBI in India, not something we chose.
         </p>
         <label style={{ display: "flex", gap: 8, alignItems: "flex-start", fontSize: 12, color: "var(--color-text-secondary)", lineHeight: 1.6, marginBottom: 14, cursor: "pointer" }}>
           <input type="checkbox" checked={consentChecked} onChange={(e) => setConsentChecked(e.target.checked)} style={{ marginTop: 2 }} />
@@ -204,7 +204,7 @@ export default function RewardsTab() {
                   <button
                     key={d}
                     disabled={busy || d > available}
-                    onClick={() => { setKyc({ name: data.storedKyc?.name || "", mobile: data.storedKyc?.mobile || "", email: data.storedKyc?.email || "", address: data.storedKyc?.address || "" }); setPendingDenom(d); setNotice(null); }}
+                    onClick={() => { setKyc({ firstName: data.storedKyc?.firstName || "", lastName: data.storedKyc?.lastName || "", mobile: data.storedKyc?.mobile || "", email: data.storedKyc?.email || "", address: data.storedKyc?.address || "" }); setPendingDenom(d); setNotice(null); }}
                     style={{ background: d <= available ? "#854F0B" : "none", color: d <= available ? "#fff" : "var(--color-text-tertiary)", border: "0.5px solid var(--color-border-secondary)", borderRadius: 6, padding: "7px 14px", fontSize: 12, fontWeight: 500, cursor: d <= available ? "pointer" : "default", opacity: busy ? 0.5 : 1 }}
                   >
                     ₹{n(d)}
@@ -221,14 +221,15 @@ export default function RewardsTab() {
                 Confirm the details this ₹{n(pendingDenom)} {voucherType} voucher will be issued against — required every time by the RBI&apos;s rules for gift vouchers in India, even when it&apos;s the same as last time.
               </div>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 8, marginBottom: 10 }}>
-                <input placeholder="Full name" value={kyc.name} onChange={(e) => setKyc((k) => ({ ...k, name: e.target.value }))} style={{ border: "0.5px solid var(--color-border-secondary)", borderRadius: 6, padding: "7px 9px", fontSize: 12, background: "none", color: "var(--color-text-primary)" }} />
+                <input placeholder="First name" value={kyc.firstName} onChange={(e) => setKyc((k) => ({ ...k, firstName: e.target.value }))} style={{ border: "0.5px solid var(--color-border-secondary)", borderRadius: 6, padding: "7px 9px", fontSize: 12, background: "none", color: "var(--color-text-primary)" }} />
+                <input placeholder="Last name" value={kyc.lastName} onChange={(e) => setKyc((k) => ({ ...k, lastName: e.target.value }))} style={{ border: "0.5px solid var(--color-border-secondary)", borderRadius: 6, padding: "7px 9px", fontSize: 12, background: "none", color: "var(--color-text-primary)" }} />
                 <input placeholder="Mobile (10 digits)" value={kyc.mobile} onChange={(e) => setKyc((k) => ({ ...k, mobile: e.target.value.replace(/\D/g, "").slice(0, 10) }))} style={{ border: "0.5px solid var(--color-border-secondary)", borderRadius: 6, padding: "7px 9px", fontSize: 12, background: "none", color: "var(--color-text-primary)" }} />
                 <input placeholder="Email" value={kyc.email} onChange={(e) => setKyc((k) => ({ ...k, email: e.target.value }))} style={{ border: "0.5px solid var(--color-border-secondary)", borderRadius: 6, padding: "7px 9px", fontSize: 12, background: "none", color: "var(--color-text-primary)" }} />
                 <input placeholder="Address" value={kyc.address} onChange={(e) => setKyc((k) => ({ ...k, address: e.target.value }))} style={{ border: "0.5px solid var(--color-border-secondary)", borderRadius: 6, padding: "7px 9px", fontSize: 12, background: "none", color: "var(--color-text-primary)", gridColumn: "1 / -1" }} />
               </div>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
                 <button
-                  disabled={busy || !kyc.name.trim() || !kyc.address.trim() || !/^\d{10}$/.test(kyc.mobile) || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(kyc.email)}
+                  disabled={busy || !kyc.firstName.trim() || !kyc.lastName.trim() || !kyc.address.trim() || !/^\d{10}$/.test(kyc.mobile) || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(kyc.email)}
                   onClick={async () => {
                     await act(
                       { action: "redeem", voucherType, points: pendingDenom, kyc, kycConfirmed: true },

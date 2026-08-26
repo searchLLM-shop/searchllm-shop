@@ -345,8 +345,8 @@ export default function AdminQueue() {
                     Missing fields mean this redemption predates the KYC
                     requirement (2026-08-25) — flagged rather than hidden. */}
                 <div style={{ fontSize: 11, color: "var(--color-text-tertiary)", marginTop: 4, lineHeight: 1.6 }}>
-                  {r.kyc_name ? (
-                    <>KYC: <strong style={{ color: "var(--color-text-secondary)" }}>{r.kyc_name}</strong> · {r.kyc_mobile} · {r.kyc_email} · {r.kyc_address}</>
+                  {r.kyc_first_name ? (
+                    <>KYC: <strong style={{ color: "var(--color-text-secondary)" }}>{r.kyc_first_name} {r.kyc_last_name}</strong> · {r.kyc_mobile} · {r.kyc_email} · {r.kyc_address}</>
                   ) : (
                     <span style={{ color: "#D85A30" }}>No KYC on file for this redemption (predates the RBI KYC requirement) — contact the member before issuing.</span>
                   )}
