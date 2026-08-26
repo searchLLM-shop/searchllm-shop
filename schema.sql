@@ -603,6 +603,49 @@ ALTER TABLE loyalty_members ADD COLUMN IF NOT EXISTS kyc_email TEXT;
 ALTER TABLE loyalty_members ADD COLUMN IF NOT EXISTS kyc_address TEXT;
 ALTER TABLE loyalty_members ADD COLUMN IF NOT EXISTS kyc_updated_at TIMESTAMPTZ;
 
+-- =========================================================================
+-- ROW LEVEL SECURITY (2026-08-25) — closes a real hole flagged by Supabase's
+-- security advisor: Supabase runs PostgREST (an auto-generated REST API)
+-- against every table in the `public` schema by default, REGARDLESS of
+-- whether the app uses it. This app never uses PostgREST or the Supabase
+-- client — every query in lib/db.js goes over `pg` straight to Postgres —
+-- but the anon/authenticated PostgREST roles could still read or write
+-- every one of these tables directly over HTTP with the project's anon
+-- key, completely bypassing every gate/cap/admin-check this app enforces
+-- in application code, until RLS is turned on.
+--
+-- Enabling RLS with ZERO policies is the fix, not a half-measure: Postgres
+-- then denies ALL access to anon/authenticated by default (no policy = no
+-- rows), while this app is completely unaffected — DATABASE_URL connects
+-- as the `postgres` role (see the pooler connection string in Vercel),
+-- which has BYPASSRLS and always did, RLS or not. If a table genuinely
+-- needs PostgREST/anon access later (none currently do), add an explicit
+-- policy for it then — don't disable RLS to work around this.
+-- =========================================================================
+ALTER TABLE listings ENABLE ROW LEVEL SECURITY;
+ALTER TABLE feed_sync_runs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE microsites ENABLE ROW LEVEL SECURITY;
+ALTER TABLE usage_daily ENABLE ROW LEVEL SECURITY;
+ALTER TABLE user_plans ENABLE ROW LEVEL SECURITY;
+ALTER TABLE sync_state ENABLE ROW LEVEL SECURITY;
+ALTER TABLE events ENABLE ROW LEVEL SECURITY;
+ALTER TABLE advertisers ENABLE ROW LEVEL SECURITY;
+ALTER TABLE advertiser_products ENABLE ROW LEVEL SECURITY;
+ALTER TABLE advertiser_clicks ENABLE ROW LEVEL SECURITY;
+ALTER TABLE advertiser_conversions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE network_clicks ENABLE ROW LEVEL SECURITY;
+ALTER TABLE search_queries ENABLE ROW LEVEL SECURITY;
+ALTER TABLE loyalty_members ENABLE ROW LEVEL SECURITY;
+ALTER TABLE points_ledger ENABLE ROW LEVEL SECURITY;
+ALTER TABLE redemptions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE wa_processed ENABLE ROW LEVEL SECURITY;
+ALTER TABLE user_checkpoints ENABLE ROW LEVEL SECURITY;
+ALTER TABLE ip_activity ENABLE ROW LEVEL SECURITY;
+ALTER TABLE alt_clicks ENABLE ROW LEVEL SECURITY;
+ALTER TABLE price_watches ENABLE ROW LEVEL SECURITY;
+ALTER TABLE price_history ENABLE ROW LEVEL SECURITY;
+ALTER TABLE price_alerts ENABLE ROW LEVEL SECURITY;
+
 -- redemptions.kyc_* is an immutable per-redemption SNAPSHOT of what was
 -- shown and confirmed at that moment — the RBI-relevant audit record, kept
 -- even if the member's on-file profile changes later.
