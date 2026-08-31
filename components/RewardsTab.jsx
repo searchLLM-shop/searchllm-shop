@@ -99,7 +99,7 @@ export default function RewardsTab() {
           Members earn points on purchases made through our recommendations — redeemable for Amazon Pay, Flipkart, and Swiggy vouchers. Sign in to join, free.
         </p>
         <p style={{ fontSize: 12, color: "var(--color-text-tertiary)", maxWidth: 460, margin: "0 auto 16px", lineHeight: 1.7 }}>
-          You&apos;re the one being rewarded here, not the seller — brands don&apos;t pay us to feature them, and we only ever earn anything when you actually buy.
+          You&apos;re the one being rewarded here, not the seller — brands don&apos;t pay to be featured or clicked, and we only earn anything when you actually buy.
         </p>
         <SignInButton mode="modal">
           <button style={{ background: "#0F6E56", color: "#fff", border: "none", borderRadius: 8, padding: "9px 20px", fontSize: 13, fontWeight: 500, cursor: "pointer" }}>
@@ -127,7 +127,7 @@ export default function RewardsTab() {
           Earn points three ways, the same rate for everyone: <strong>every pick you research</strong> ({cfg.POINTS?.SEARCH} points each), <strong>every recommended product link you click</strong> ({cfg.POINTS?.CLICK} points, once per product per day), and <strong>every purchase a partner store confirms</strong> ({cfg.POINTS?.PURCHASE} points, whatever the order size). 1 point = ₹1 of voucher value. On a free account, points stop at {cfg.VOUCHER_UNLOCK_POINTS} — upgrading to Plus lifts that ceiling for good, and is also what lets you redeem a voucher.
         </p>
         <p style={{ fontSize: 12, color: "var(--color-text-tertiary)", lineHeight: 1.7, marginBottom: 8 }}>
-          These points reward <em>you</em>, not the seller — no brand pays to be featured or to earn you points, and we don&apos;t make a rupee unless you actually go through with a purchase. That&apos;s also why the pick you&apos;re shown is never influenced by which one pays us more.
+          These points reward <em>you</em>, not the seller — brands don&apos;t pay to be featured or clicked, and we only earn anything when you actually buy. That&apos;s also why the pick you&apos;re shown is never influenced by which one pays us more.
         </p>
         <p style={{ fontSize: 12, color: "var(--color-text-tertiary)", lineHeight: 1.7, marginBottom: 14 }}>
           Points show as pending first, and confirm once the store approves the sale — typically 30–90 days after purchase, because stores wait out the return window. Returned or cancelled orders don&apos;t earn. Redeeming a voucher (Plus only) asks for your first name, last name, mobile, email and address each time — a gift-voucher rule set by the RBI in India, not something we chose.
