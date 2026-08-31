@@ -25,6 +25,9 @@ export default function PointsPage() {
         Purchase points appear as <em>pending</em> first and <em>confirm</em> once the store approves the sale — typically 30–90 days after purchase, because stores wait out the return window. Returned or cancelled orders don&apos;t earn. This is the honest mechanics of how affiliate commissions work, and we&apos;d rather tell you than surprise you.
       </p>
       <p style={{ color: "var(--color-text-secondary)", fontSize: 13 }}>
+        Worth being direct about: it&apos;s <em>you</em> being rewarded, not the seller. No brand pays us to feature them or to earn you points — the pick you&apos;re shown is decided before commission ever enters the picture. We only earn anything at all once you actually complete a purchase, and points are simply our sharing that with you.
+      </p>
+      <p style={{ color: "var(--color-text-secondary)", fontSize: 13 }}>
         On a free account, points stop at {LOYALTY.VOUCHER_UNLOCK_POINTS} — you won&apos;t lose anything you&apos;ve earned, but nothing further is credited (search, click, or purchase) until you upgrade to Plus. Plus removes that ceiling entirely.
       </p>
 
