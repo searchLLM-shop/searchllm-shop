@@ -2,10 +2,11 @@
 
 // The Rewards tab. Three states: signed out (sign-in prompt), signed in but
 // not a member (explainer + explicit consent + join), member (balances,
-// redemption, history). The lifecycle is explained honestly and repeatedly:
-// points confirm only when the network approves the commission, 30–90 days
-// after purchase — the same way every Indian cashback programme works, and
-// the only way a points programme can be truthful about returns.
+// redemption, history). Points come from search and click activity ONLY
+// (2026-08-25: purchase points removed entirely — only Awin's conversion
+// feed was ever actually verified, vCommission's and Amazon's were not, so
+// paying points on an unverifiable purchase claim was the problem) —
+// points are credited immediately, there is no pending/confirm cycle.
 
 import { useState, useEffect, useCallback } from "react";
 import { useUser, SignInButton } from "@clerk/nextjs";
@@ -94,12 +95,12 @@ export default function RewardsTab() {
   if (!isSignedIn) {
     return (
       <div style={{ textAlign: "center", padding: "40px 16px" }}>
-        <h2 style={{ fontSize: 18, fontWeight: 500, marginBottom: 8 }}>Earn points on what you buy</h2>
+        <h2 style={{ fontSize: 18, fontWeight: 500, marginBottom: 8 }}>Earn points just by researching</h2>
         <p style={{ fontSize: 13, color: "var(--color-text-secondary)", maxWidth: 460, margin: "0 auto 16px", lineHeight: 1.7 }}>
-          Members earn points on purchases made through our recommendations — redeemable for Amazon Pay, Flipkart, and Swiggy vouchers. Sign in to join, free.
+          Members earn points on every pick and every recommended-product link they click — redeemable for Amazon Pay, Flipkart, and Swiggy vouchers. Sign in to join, free.
         </p>
         <p style={{ fontSize: 12, color: "var(--color-text-tertiary)", maxWidth: 460, margin: "0 auto 16px", lineHeight: 1.7 }}>
-          You&apos;re the one being rewarded here, not the seller — brands don&apos;t pay to be featured or clicked, and we only earn anything when you actually buy.
+          Separately, worth knowing: brands don&apos;t pay to be featured or clicked, and we only earn anything ourselves when you actually buy — that revenue never influences which product we recommend.
         </p>
         <SignInButton mode="modal">
           <button style={{ background: "#0F6E56", color: "#fff", border: "none", borderRadius: 8, padding: "9px 20px", fontSize: 13, fontWeight: 500, cursor: "pointer" }}>
@@ -124,23 +125,23 @@ export default function RewardsTab() {
       <div style={{ maxWidth: 560 }}>
         <h2 style={{ fontSize: 18, fontWeight: 500, marginBottom: 8 }}>Join the rewards programme</h2>
         <p style={{ fontSize: 13, color: "var(--color-text-secondary)", lineHeight: 1.8, marginBottom: 8 }}>
-          Earn points three ways, the same rate for everyone: <strong>every pick you research</strong> ({cfg.POINTS?.SEARCH} points each), <strong>every recommended product link you click</strong> ({cfg.POINTS?.CLICK} points, once per product per day), and <strong>every purchase a partner store confirms</strong> ({cfg.POINTS?.PURCHASE} points, whatever the order size). 1 point = ₹1 of voucher value. On a free account, points stop at {cfg.VOUCHER_UNLOCK_POINTS} — upgrading to Plus lifts that ceiling for good, and is also what lets you redeem a voucher.
+          Earn points two ways, the same rate for everyone: <strong>every pick you research</strong> ({cfg.POINTS?.SEARCH} points each) and <strong>every recommended product link you click</strong> ({cfg.POINTS?.CLICK} points, once per product per day). Purchases earn no points — nothing about what you buy is linked to your rewards balance. 1 point = ₹1 of voucher value. On a free account, points stop at {cfg.VOUCHER_UNLOCK_POINTS} — upgrading to Plus lifts that ceiling for good, and is also what lets you redeem a voucher.
         </p>
         <p style={{ fontSize: 12, color: "var(--color-text-tertiary)", lineHeight: 1.7, marginBottom: 8 }}>
-          These points reward <em>you</em>, not the seller — brands don&apos;t pay to be featured or clicked, and we only earn anything when you actually buy. That&apos;s also why the pick you&apos;re shown is never influenced by which one pays us more.
+          Separately, worth knowing: brands don&apos;t pay to be featured or clicked, and we only earn anything ourselves when you actually buy — that&apos;s also why the pick you&apos;re shown is never influenced by which one pays us more.
         </p>
         <p style={{ fontSize: 12, color: "var(--color-text-tertiary)", lineHeight: 1.7, marginBottom: 14 }}>
-          Points show as pending first, and confirm once the store approves the sale — typically 30–90 days after purchase, because stores wait out the return window. Returned or cancelled orders don&apos;t earn. Redeeming a voucher (Plus only) asks for your first name, last name, mobile, email and address each time — a gift-voucher rule set by the RBI in India, not something we chose.
+          Redeeming a voucher (Plus only) asks for your first name, last name, mobile, email and address each time — a gift-voucher rule set by the RBI in India, not something we chose.
         </p>
         <label style={{ display: "flex", gap: 8, alignItems: "flex-start", fontSize: 12, color: "var(--color-text-secondary)", lineHeight: 1.6, marginBottom: 14, cursor: "pointer" }}>
           <input type="checkbox" checked={consentChecked} onChange={(e) => setConsentChecked(e.target.checked)} style={{ marginTop: 2 }} />
           <span>
-            I understand that joining links purchases I make through SearchLLM&apos;s links to my account, so my points can be calculated — as described in the <a href="/privacy" target="_blank" style={{ color: "#0F6E56" }}>Privacy Policy</a>. Outside this programme, SearchLLM keeps no purchase history about me.
+            I understand points come from my own picks and clicks only, as described in the <a href="/privacy" target="_blank" style={{ color: "#0F6E56" }}>Privacy Policy</a>. My purchases are never linked to this programme or my points balance.
           </span>
         </label>
         <button
           disabled={!consentChecked || busy}
-          onClick={() => act({ action: "join" }, "Welcome to the programme — points accrue from your next purchase onward.")}
+          onClick={() => act({ action: "join" }, "Welcome to the programme — points accrue from your next pick onward.")}
           style={{ background: "#0F6E56", color: "#fff", border: "none", borderRadius: 8, padding: "9px 20px", fontSize: 13, fontWeight: 500, cursor: consentChecked ? "pointer" : "default", opacity: consentChecked ? 1 : 0.5 }}
         >
           Join — it&apos;s free
@@ -164,17 +165,12 @@ export default function RewardsTab() {
           <div style={{ fontSize: 11, color: "var(--color-text-tertiary)", marginTop: 4 }}>= ₹{n(available * (cfg.POINT_VALUE_INR || 1))}</div>
         </div>
         <div style={{ background: "var(--color-background-secondary)", border: "0.5px solid var(--color-border-tertiary)", borderRadius: 10, padding: "14px 16px" }}>
-          <div style={{ fontSize: 11, color: "var(--color-text-tertiary)", marginBottom: 6 }}>Pending</div>
-          <div style={{ fontSize: 24, fontWeight: 600, lineHeight: 1.1 }}>{n(Math.floor(data.pending))}</div>
-          <div style={{ fontSize: 11, color: "var(--color-text-tertiary)", marginTop: 4 }}>confirms in 30–90 days</div>
-        </div>
-        <div style={{ background: "var(--color-background-secondary)", border: "0.5px solid var(--color-border-tertiary)", borderRadius: 10, padding: "14px 16px" }}>
           <div style={{ fontSize: 11, color: "var(--color-text-tertiary)", marginBottom: 6 }}>Lifetime confirmed</div>
           <div style={{ fontSize: 24, fontWeight: 600, lineHeight: 1.1 }}>{n(Math.floor(data.confirmed))}</div>
         </div>
       </div>
       <div style={{ fontSize: 11, color: "var(--color-text-tertiary)", marginBottom: 18 }}>
-        {data.searchPointsToday || 0} points earned today — every pick earns {cfg.POINTS?.SEARCH}, every product-link click earns {cfg.POINTS?.CLICK}, and confirmed purchases earn {cfg.POINTS?.PURCHASE} each. <a href="/points" style={{ color: "#0F6E56" }}>How points work</a>
+        {data.searchPointsToday || 0} points earned today — every pick earns {cfg.POINTS?.SEARCH}, every product-link click earns {cfg.POINTS?.CLICK}. <a href="/points" style={{ color: "#0F6E56" }}>How points work</a>
       </div>
 
       {data.plan !== "plus" && (
@@ -284,7 +280,7 @@ export default function RewardsTab() {
         <div style={{ fontSize: 13, fontWeight: 500, marginBottom: 8 }}>Points history</div>
         {data.ledger.length === 0 ? (
           <div style={{ fontSize: 12, color: "var(--color-text-tertiary)" }}>
-            No points yet — they appear here after a store confirms a purchase you made through our links.
+            No points yet — run a search or click a recommended product link to start earning.
           </div>
         ) : (
           <div style={{ border: "0.5px solid var(--color-border-tertiary)", borderRadius: 10, overflow: "hidden" }}>

@@ -2,9 +2,10 @@
 //
 // The member-facing rewards API. Accounts only — points need a durable
 // identity, and guest cookies rotate — and strictly opt-in: joining is an
-// explicit consent action (see the join screen and Privacy Policy section),
-// because membership links purchases made through our links to the account,
-// which the rest of the site deliberately never does.
+// explicit consent action (see the join screen and Privacy Policy section).
+// Points come from search and click activity only (purchase points were
+// removed 2026-08-25 — see the LOYALTY.POINTS comment in lib/constants.js)
+// — nothing about a member's purchases is ever linked to this programme.
 
 import { auth } from "@clerk/nextjs/server";
 import { joinLoyalty, getRewardsSummary, requestRedemption, claimGuestDayPoints } from "@/lib/db";

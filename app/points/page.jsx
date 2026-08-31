@@ -6,7 +6,7 @@ import { LOYALTY, planPriceLabel } from "@/lib/constants";
 
 export const metadata = {
   title: "How points work — SearchLLM",
-  description: "Earn points on every pick and every confirmed purchase. 1 point = ₹1 of gift voucher value.",
+  description: "Earn points on every pick and every recommended-product click. 1 point = ₹1 of gift voucher value.",
 };
 
 export default function PointsPage() {
@@ -15,20 +15,19 @@ export default function PointsPage() {
     <main style={{ maxWidth: 680, margin: "0 auto", padding: "40px 20px", lineHeight: 1.8, fontSize: 14, color: "var(--color-text-primary)" }}>
       <h1 style={{ fontSize: 24, fontWeight: 600, marginBottom: 6 }}>How points work</h1>
       <p style={{ color: "var(--color-text-secondary)", marginBottom: 28 }}>
-        Simple version: research earns a little, buying earns more, everyone earns the same rate, and 1 point is always worth ₹1 of gift voucher value.
+        Simple version: research and clicking recommended products both earn points, everyone earns the same rate, and 1 point is always worth ₹1 of gift voucher value.
       </p>
 
       <h2 style={{ fontSize: 17, fontWeight: 600, margin: "26px 0 8px" }}>Earning</h2>
-      <p><strong>Every pick you research</strong> earns points. As a guest you collect {p.GUEST_PER_PICK} points per pick, plus points for any click and same-day-confirmed purchase — but all of it expires at midnight unless you register that day. Sign up (free) and the day&apos;s points are yours to keep; signed-in members earn {p.SEARCH} points on every pick. <strong>Clicking a recommended product link earns {p.CLICK} points</strong> — once per product per day, because the click is the step closest to a real purchase.</p>
-      <p><strong>Every confirmed purchase earns {p.PURCHASE} points</strong> — the same amount whatever the order size, and the same for every member, free or Plus.</p>
+      <p><strong>Every pick you research</strong> earns points. As a guest you collect {p.GUEST_PER_PICK} points per pick, plus points for any click — but all of it expires at midnight unless you register that day. Sign up (free) and the day&apos;s points are yours to keep; signed-in members earn {p.SEARCH} points on every pick. <strong>Clicking a recommended product link earns {p.CLICK} points</strong> — once per product per day.</p>
       <p style={{ color: "var(--color-text-secondary)", fontSize: 13 }}>
-        Purchase points appear as <em>pending</em> first and <em>confirm</em> once the store approves the sale — typically 30–90 days after purchase, because stores wait out the return window. Returned or cancelled orders don&apos;t earn. This is the honest mechanics of how affiliate commissions work, and we&apos;d rather tell you than surprise you.
+        Purchases earn no points, and this is deliberate, not an oversight: we only credit a point when we can genuinely verify the action ourselves, and a purchase confirmation depends on the affiliate network reporting it back to us — something we currently cannot verify reliably enough across every store to promise it honestly. Points are credited immediately for search and click activity; there is no pending or waiting period.
       </p>
       <p style={{ color: "var(--color-text-secondary)", fontSize: 13 }}>
-        Worth being direct about: it&apos;s <em>you</em> being rewarded, not the seller. Brands don&apos;t pay to be featured or clicked, and we only earn anything when you actually buy — the pick you&apos;re shown is decided before commission ever enters the picture, and points are simply our sharing what we earn with you.
+        Worth being direct about, separately: brands don&apos;t pay to be featured or clicked, and we only earn anything ourselves when you actually buy — the pick you&apos;re shown is decided before commission ever enters the picture. That has nothing to do with your points balance; it&apos;s simply how the business behind this stays honest.
       </p>
       <p style={{ color: "var(--color-text-secondary)", fontSize: 13 }}>
-        On a free account, points stop at {LOYALTY.VOUCHER_UNLOCK_POINTS} — you won&apos;t lose anything you&apos;ve earned, but nothing further is credited (search, click, or purchase) until you upgrade to Plus. Plus removes that ceiling entirely.
+        On a free account, points stop at {LOYALTY.VOUCHER_UNLOCK_POINTS} — you won&apos;t lose anything you&apos;ve earned, but nothing further is credited until you upgrade to Plus. Plus removes that ceiling entirely.
       </p>
 
       <h2 style={{ fontSize: 17, fontWeight: 600, margin: "26px 0 8px" }}>Redeeming</h2>
@@ -52,7 +51,7 @@ export default function PointsPage() {
 
       <h2 style={{ fontSize: 17, fontWeight: 600, margin: "26px 0 8px" }}>The fine print, plainly</h2>
       <p style={{ color: "var(--color-text-secondary)", fontSize: 13 }}>
-        Points have no cash value and aren&apos;t transferable. Purchase points reverse if the order is returned or the commission is declined. We may tune earning rates and voucher options going forward (never retroactively taking confirmed points), and points obtained through fraud or self-dealing are void. Vouchers themselves are the issuing brand&apos;s product — once your code is delivered (we replace codes invalid on arrival, reported within 7 days), its use and validity follow that brand&apos;s own terms. Full terms in our <a href="/terms" style={{ color: "#0F6E56" }}>Terms of Use</a>; what joining means for your data is in the <a href="/privacy" style={{ color: "#0F6E56" }}>Privacy Policy</a> — short version: purchases are only linked to your account if you explicitly join the programme.
+        Points have no cash value and aren&apos;t transferable. We may tune earning rates and voucher options going forward (never retroactively taking confirmed points), and points obtained through fraud or self-dealing are void. Vouchers themselves are the issuing brand&apos;s product — once your code is delivered (we replace codes invalid on arrival, reported within 7 days), its use and validity follow that brand&apos;s own terms. Full terms in our <a href="/terms" style={{ color: "#0F6E56" }}>Terms of Use</a>; what joining means for your data is in the <a href="/privacy" style={{ color: "#0F6E56" }}>Privacy Policy</a> — short version: your purchases are never linked to your points balance at all.
       </p>
 
       <p style={{ marginTop: 30 }}>
