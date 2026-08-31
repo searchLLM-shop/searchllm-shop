@@ -17,6 +17,7 @@ export default function AdminQueue() {
   const [syncRuns, setSyncRuns] = useState([]);
   const [inventory, setInventory] = useState([]);
   const [redemptions, setRedemptions] = useState([]);
+  const [redemptionSearch, setRedemptionSearch] = useState("");
   const [autoIssuanceConfigured, setAutoIssuanceConfigured] = useState(false);
   const [autoBusy, setAutoBusy] = useState(null); // redemption id currently attempting auto-issuance
   const [autoErrors, setAutoErrors] = useState({}); // { [redemptionId]: reason }
@@ -280,15 +281,52 @@ export default function AdminQueue() {
             ))}
           </div>
         )}
-        {redemptions.filter((r) => r.status === "requested").length > 0 && (
+        {redemptions.length > 0 && (() => {
+          // Search runs entirely client-side, over data already decrypted
+          // server-side for THIS admin (see getRedemptionQueue in lib/db.js)
+          // — nothing about how the KYC columns are encrypted at rest
+          // changes. An empty box preserves the original "what needs
+          // action" view (requested only); typing anything switches to
+          // matching across every fetched redemption regardless of status,
+          // so "has this person redeemed before, and what happened" is
+          // answerable without touching the database. Bounded by the same
+          // 100-row window getRedemptionQueue already fetches — a genuinely
+          // larger historical search would need a different approach
+          // (deterministic lookup hashes), not needed at today's volume.
+          const term = redemptionSearch.trim().toLowerCase();
+          const visible = term
+            ? redemptions.filter((r) =>
+                [r.kyc_first_name, r.kyc_last_name, r.kyc_mobile, r.kyc_email, r.kyc_address, r.voucher_type, r.status, r.voucher_code, r.user_id]
+                  .some((f) => f && String(f).toLowerCase().includes(term))
+              )
+            : redemptions.filter((r) => r.status === "requested");
+
+          return (
           <div style={{ marginTop: 10, paddingTop: 8, borderTop: "0.5px solid var(--color-border-tertiary)" }}>
-            <div style={{ fontSize: 10, letterSpacing: "0.05em", textTransform: "uppercase", color: "#854F0B", marginBottom: 4 }}>
-              Voucher redemptions awaiting fulfilment
+            <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "space-between", alignItems: "center", gap: 8, marginBottom: 6 }}>
+              <div style={{ fontSize: 10, letterSpacing: "0.05em", textTransform: "uppercase", color: "#854F0B" }}>
+                {term ? `Search results (${visible.length})` : "Voucher redemptions awaiting fulfilment"}
+              </div>
+              <input
+                type="text"
+                value={redemptionSearch}
+                onChange={(e) => setRedemptionSearch(e.target.value)}
+                placeholder="Search name, mobile, email, address, voucher…"
+                style={{ border: "0.5px solid var(--color-border-secondary)", borderRadius: 6, padding: "4px 8px", fontSize: 11, background: "none", color: "var(--color-text-primary)", width: 240, maxWidth: "100%" }}
+              />
             </div>
-            {redemptions.filter((r) => r.status === "requested").map((r) => (
+            {term && visible.length === 0 && (
+              <div style={{ fontSize: 12, color: "var(--color-text-tertiary)", padding: "6px 0" }}>No match in the most recent 100 redemptions.</div>
+            )}
+            {visible.map((r) => (
               <div key={r.id} style={{ padding: "6px 0", borderBottom: "0.5px solid var(--color-border-tertiary)" }}>
                 <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "space-between", alignItems: "center", gap: 10, rowGap: 6, fontSize: 12, color: "var(--color-text-secondary)" }}>
                   <span>{Number(r.points).toLocaleString()} pts → {r.voucher_type} · {r.user_id.slice(0, 14)}… · {new Date(r.created_at).toLocaleDateString()}</span>
+                  {r.status !== "requested" ? (
+                    <span style={{ fontSize: 11, color: r.status === "fulfilled" ? "#0F6E56" : "#A03530", fontWeight: 600 }}>
+                      {r.status === "fulfilled" ? `Fulfilled — ${r.voucher_code || "no code on file"}` : "Rejected"}
+                    </span>
+                  ) : (
                   <span style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
                     {autoIssuanceConfigured && (
                       <button
@@ -339,6 +377,7 @@ export default function AdminQueue() {
                       Reject
                     </button>
                   </span>
+                  )}
                 </div>
                 {/* RBI KYC snapshot — what the member confirmed at redemption
                     time, required to actually address/issue the voucher.
@@ -357,7 +396,8 @@ export default function AdminQueue() {
               </div>
             ))}
           </div>
-        )}
+          );
+        })()}
         {syncResult && (
           <div style={{ fontSize: 11, color: "#0F6E56", marginTop: 8 }}>Sync complete — queue refreshed below.</div>
         )}
