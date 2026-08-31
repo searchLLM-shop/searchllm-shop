@@ -18,6 +18,8 @@ export default function AdminQueue() {
   const [inventory, setInventory] = useState([]);
   const [redemptions, setRedemptions] = useState([]);
   const [redemptionSearch, setRedemptionSearch] = useState("");
+  const [exportFrom, setExportFrom] = useState("");
+  const [exportTo, setExportTo] = useState("");
   const [autoIssuanceConfigured, setAutoIssuanceConfigured] = useState(false);
   const [autoBusy, setAutoBusy] = useState(null); // redemption id currently attempting auto-issuance
   const [autoErrors, setAutoErrors] = useState({}); // { [redemptionId]: reason }
@@ -281,6 +283,46 @@ export default function AdminQueue() {
             ))}
           </div>
         )}
+        {/* Complete download, not bounded to the 100-row queue below — see
+            app/api/admin/redemptions/export/route.js. A plain link rather
+            than a fetch+blob dance: the browser handles the download
+            itself via Content-Disposition, no client-side file handling
+            needed. Dates are optional; leaving both blank downloads every
+            redemption ever made. */}
+        <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8, marginTop: 10, paddingTop: 8, borderTop: "0.5px solid var(--color-border-tertiary)" }}>
+          <span style={{ fontSize: 10, letterSpacing: "0.05em", textTransform: "uppercase", color: "var(--color-text-tertiary)" }}>
+            Download redemptions
+          </span>
+          <input
+            type="date"
+            value={exportFrom}
+            onChange={(e) => setExportFrom(e.target.value)}
+            aria-label="From date"
+            style={{ border: "0.5px solid var(--color-border-secondary)", borderRadius: 6, padding: "3px 6px", fontSize: 11, background: "none", color: "var(--color-text-primary)" }}
+          />
+          <span style={{ fontSize: 11, color: "var(--color-text-tertiary)" }}>to</span>
+          <input
+            type="date"
+            value={exportTo}
+            onChange={(e) => setExportTo(e.target.value)}
+            aria-label="To date"
+            style={{ border: "0.5px solid var(--color-border-secondary)", borderRadius: 6, padding: "3px 6px", fontSize: 11, background: "none", color: "var(--color-text-primary)" }}
+          />
+          <a
+            href={`/api/admin/redemptions/export${exportFrom || exportTo ? `?${[exportFrom && `from=${exportFrom}`, exportTo && `to=${exportTo}`].filter(Boolean).join("&")}` : ""}`}
+            style={{ background: "#0F6E56", color: "#fff", borderRadius: 6, padding: "4px 12px", fontSize: 11, fontWeight: 500, textDecoration: "none" }}
+          >
+            {exportFrom || exportTo ? "Download range (.xlsx)" : "Download all (.xlsx)"}
+          </a>
+          {(exportFrom || exportTo) && (
+            <button
+              onClick={() => { setExportFrom(""); setExportTo(""); }}
+              style={{ background: "none", border: "none", color: "var(--color-text-tertiary)", fontSize: 11, cursor: "pointer", textDecoration: "underline" }}
+            >
+              Clear dates
+            </button>
+          )}
+        </div>
         {redemptions.length > 0 && (() => {
           // Search runs entirely client-side, over data already decrypted
           // server-side for THIS admin (see getRedemptionQueue in lib/db.js)
