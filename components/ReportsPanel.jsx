@@ -405,19 +405,21 @@ export default function ReportsPanel() {
 
       {data.rewards && (
         <Section title="Rewards programme" note={`${n(data.rewards.members)} members · outstanding liability: ${n(data.rewards.outstandingPoints)} points (₹${n(data.rewards.outstandingPoints)})`}>
-          {/* Plan breakdown + the capped-out-free headline metric — the
-              direct readout of whether the 250-point ceiling is actually
-              converting free members to Plus (2026-08-25). */}
+          {/* Platform-fee readout (2026-08-25: flat model, no plan tier) —
+              blocks paid, the revenue that represents, and how many members
+              are currently sitting at an unpaid ceiling right now. */}
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
-            {(data.rewards.byPlan || []).map((p, i) => (
-              <div key={i} style={{ background: "var(--color-background-secondary)", border: "0.5px solid var(--color-border-tertiary)", borderRadius: 8, padding: "7px 12px", fontSize: 11 }}>
-                <span style={{ color: "var(--color-text-tertiary)", textTransform: "capitalize" }}>{p.plan} members</span>
-                <span style={{ fontWeight: 600, marginLeft: 8 }}>{n(p.members)}</span>
-              </div>
-            ))}
+            <div style={{ background: "var(--color-background-secondary)", border: "0.5px solid var(--color-border-tertiary)", borderRadius: 8, padding: "7px 12px", fontSize: 11 }}>
+              <span style={{ color: "var(--color-text-tertiary)" }}>Platform-fee blocks paid</span>
+              <span style={{ fontWeight: 600, marginLeft: 8 }}>{n(data.rewards.platformFeeBlocksPaid || 0)}</span>
+            </div>
+            <div style={{ background: "var(--color-background-secondary)", border: "0.5px solid var(--color-border-tertiary)", borderRadius: 8, padding: "7px 12px", fontSize: 11 }}>
+              <span style={{ color: "var(--color-text-tertiary)" }}>Platform-fee revenue</span>
+              <span style={{ fontWeight: 600, marginLeft: 8 }}>₹{n(data.rewards.platformFeeRevenue || 0)}</span>
+            </div>
             <div style={{ background: "#FDF8EF", border: "0.5px solid #EADFC8", borderRadius: 8, padding: "7px 12px", fontSize: 11 }}>
-              <span style={{ color: "#854F0B" }}>Free members capped at 250, not yet Plus</span>
-              <span style={{ fontWeight: 700, marginLeft: 8, color: "#854F0B" }}>{n(data.rewards.cappedFreeMembers || 0)}</span>
+              <span style={{ color: "#854F0B" }}>Members at their ceiling, unpaid</span>
+              <span style={{ fontWeight: 700, marginLeft: 8, color: "#854F0B" }}>{n(data.rewards.membersAtCeiling || 0)}</span>
             </div>
           </div>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>

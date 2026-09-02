@@ -1,19 +1,20 @@
 // app/api/checkout/route.js
 //
-// Creates a Razorpay Subscription for the Plus plan and returns its
-// hosted payment page URL (short_url) — same redirect contract the UI
-// already expects ({ url }), so page.jsx needed no changes.
+// Creates a Razorpay Payment Link for the platform fee — the ONLY payment
+// this app takes now (2026-08-25: the Plus subscription and Increase Usage
+// were both removed; one flat fee per 250-point block replaced them, see
+// LOYALTY.PLATFORM_FEE_INR in lib/constants.js). A payment link, not a
+// subscription — this was never recurring in spirit and now isn't even in
+// mechanism.
 //
-// Razorpay replaced Stripe here because Stripe is invite-only for new
-// Indian businesses; Razorpay is INR-native and supports UPI/netbanking.
-//
-// The actual plan upgrade happens ONLY in the webhook
+// The actual block unlock happens ONLY in the webhook
 // (app/api/razorpay/webhook/route.js) once Razorpay confirms payment —
 // never trust the redirect back to the site as proof of payment.
 
 import { auth, currentUser } from "@clerk/nextjs/server";
+import { LOYALTY } from "@/lib/constants";
 
-export async function POST(req) {
+export async function POST() {
   const { userId } = await auth();
   if (!userId) {
     return Response.json({ error: "Sign in required" }, { status: 401 });
@@ -21,14 +22,12 @@ export async function POST(req) {
 
   const keyId = process.env.RAZORPAY_KEY_ID;
   const keySecret = process.env.RAZORPAY_KEY_SECRET;
-  const planId = process.env.RAZORPAY_PLAN_ID;
 
   // Name the missing piece rather than failing opaquely — "Payments not
-  // configured" gave no way to tell which of the three values was absent.
+  // configured" gave no way to tell which of the two values was absent.
   const missing = [
     !keyId && "RAZORPAY_KEY_ID",
     !keySecret && "RAZORPAY_KEY_SECRET",
-    !planId && "RAZORPAY_PLAN_ID",
   ].filter(Boolean);
   if (missing.length) {
     console.error("Razorpay not configured — missing:", missing.join(", "));
@@ -41,86 +40,33 @@ export async function POST(req) {
   const user = await currentUser();
   const email = user?.primaryEmailAddress?.emailAddress;
 
-  // Recharge: a ONE-TIME payment (₹249 → unlock the current search block),
-  // via a Razorpay Payment Link — distinct from the Plus subscription flow
-  // below. The unlock itself happens only in the webhook on
-  // payment_link.paid, same never-trust-the-redirect rule as Plus.
-  let rechargeBody = null;
-  try { rechargeBody = await req.json(); } catch {}
-  if (rechargeBody?.type === "recharge") {
-    try {
-      const { RECHARGE_PRICE_INR } = (await import("@/lib/constants")).LOYALTY;
-      const resp = await fetch("https://api.razorpay.com/v1/payment_links", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: "Basic " + Buffer.from(`${keyId}:${keySecret}`).toString("base64"),
-        },
-        body: JSON.stringify({
-          amount: RECHARGE_PRICE_INR * 100, // paise
-          currency: "INR",
-          description: "SearchLLM Increase Usage — continue researching",
-          customer: email ? { email } : undefined,
-          notes: { clerkUserId: userId, type: "recharge" },
-          callback_url: `${process.env.NEXT_PUBLIC_SITE_URL || "https://searchllm.shop"}/?recharged=1`,
-          callback_method: "get",
-        }),
-      });
-      const link = await resp.json();
-      if (!resp.ok || !link.short_url) {
-        console.error("Recharge link failed:", JSON.stringify(link).slice(0, 300));
-        return Response.json({ error: "Could not start the recharge" }, { status: 502 });
-      }
-      return Response.json({ url: link.short_url });
-    } catch (err) {
-      console.error("Recharge checkout failed:", err);
-      return Response.json({ error: "Could not start the recharge" }, { status: 502 });
-    }
-  }
-
   try {
-    const resp = await fetch("https://api.razorpay.com/v1/subscriptions", {
+    const resp = await fetch("https://api.razorpay.com/v1/payment_links", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         Authorization: "Basic " + Buffer.from(`${keyId}:${keySecret}`).toString("base64"),
       },
       body: JSON.stringify({
-        plan_id: planId,
-        // Number of billing cycles to authorize (2026-08-20, deliberate):
-        // exactly 1. Razorpay charges once, then the subscription reaches
-        // total_count and fires subscription.completed — which
-        // app/api/razorpay/webhook/route.js's DOWNGRADE_EVENTS already
-        // treats as a downgrade to Free. So a year in, access lapses on
-        // its own with no silent auto-renewal charge; continuing Plus
-        // means the shopper deliberately hits Upgrade again and goes
-        // through a fresh ₹499 checkout, not an automatic yearly debit
-        // under the original mandate. (Previously 60, i.e. ~60 years of
-        // auto-renewal under one mandate — the opposite of this.)
-        total_count: 1,
-        customer_notify: 1,
-        // clerkUserId in notes is how the webhook knows which user to
-        // upgrade — Razorpay echoes notes back in every subscription event.
-        notes: { clerkUserId: userId, email: email || "" },
+        amount: LOYALTY.PLATFORM_FEE_INR * 100, // paise
+        currency: "INR",
+        description: `SearchLLM platform fee — unlock your next ${LOYALTY.POINTS_BLOCK_SIZE} points`,
+        customer: email ? { email } : undefined,
+        // clerkUserId + type are how the webhook knows which user paid for
+        // what — Razorpay echoes notes back on payment_link.paid.
+        notes: { clerkUserId: userId, type: "platform_fee" },
+        callback_url: `${process.env.NEXT_PUBLIC_SITE_URL || "https://searchllm.shop"}/?feePaid=1`,
+        callback_method: "get",
       }),
     });
-
-    if (!resp.ok) {
-      const body = await resp.text();
-      console.error("Razorpay subscription create failed:", resp.status, body);
-      let detail = `Razorpay returned ${resp.status}`;
-      try {
-        const parsed = JSON.parse(body);
-        if (parsed?.error?.description) detail = parsed.error.description;
-      } catch { /* keep the status-code fallback */ }
-      return Response.json({ error: "Unable to start checkout", detail }, { status: 502 });
+    const link = await resp.json();
+    if (!resp.ok || !link.short_url) {
+      console.error("Platform fee link failed:", JSON.stringify(link).slice(0, 300));
+      return Response.json({ error: "Could not start the payment" }, { status: 502 });
     }
-
-    const sub = await resp.json();
-    // short_url is Razorpay's hosted payment page for this subscription.
-    return Response.json({ url: sub.short_url });
+    return Response.json({ url: link.short_url });
   } catch (err) {
-    console.error("Razorpay checkout error:", err);
-    return Response.json({ error: "Unable to start checkout" }, { status: 500 });
+    console.error("Platform fee checkout failed:", err);
+    return Response.json({ error: "Could not start the payment" }, { status: 502 });
   }
 }

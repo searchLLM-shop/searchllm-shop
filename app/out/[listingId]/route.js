@@ -19,7 +19,7 @@
 
 import { auth } from "@clerk/nextjs/server";
 import { getOrCreateGuestId } from "@/lib/guestId";
-import { getApprovedListingById, recordNetworkClick, recordEvent, newToken, creditClickPoints, getLifecycleStatus, hashIp, recordAndCheckIp } from "@/lib/db";
+import { getApprovedListingById, recordNetworkClick, recordEvent, newToken, creditClickPoints, hasPaymentCredit, hashIp, recordAndCheckIp } from "@/lib/db";
 import { buildOutboundUrl } from "@/lib/outbound";
 
 const CONTEXTS = new Set(["research", "answer"]);
@@ -63,22 +63,17 @@ export async function GET(req, { params }) {
     // Identity is attribution metadata, never a reason to block a shopper.
   }
 
-  // IP-level fair-use gate only (redesigned 2026-08-25): the old per-user
-  // click-count gate is gone — the lifecycle engine's one remaining trigger
-  // is Plus-only and query-based (see getLifecycleStatus), not clicks, so
-  // clicking through is never blocked by plan/cycle any more. IP limits
-  // still apply to everyone without a payment/purchase history (hasCredit),
-  // which also covers guests hopping accounts.
+  // IP-level fair-use gate only (simplified 2026-08-25: no plan tier, no
+  // query-cycle gate — clicking through is never blocked by anything
+  // except this network-level anti-automation backstop, independent of
+  // the rewards mechanism entirely). Anyone with a real payment or
+  // purchase history is exempt, which also covers guests hopping accounts.
   try {
     const ipHash = hashIp(req.headers.get("x-vercel-forwarded-for") || req.headers.get("x-forwarded-for")?.split(",")[0]?.trim());
-    let hasCredit = false;
-    if (clerkUserId) {
-      hasCredit = (await getLifecycleStatus(clerkUserId)).hasCredit;
-    }
-    // Records the attempt and returns the rolling window in one statement.
-    // A blocked attempt still counts toward the network window — it came
-    // from that network either way.
-    const ipState = await recordAndCheckIp(ipHash, "click");
+    const [ipState, hasCredit] = await Promise.all([
+      recordAndCheckIp(ipHash, "click"),
+      clerkUserId ? hasPaymentCredit(clerkUserId) : Promise.resolve(false),
+    ]);
     if (!hasCredit && ipState.clickGated) {
       return Response.redirect(new URL("/?gate=click", req.url), 302);
     }

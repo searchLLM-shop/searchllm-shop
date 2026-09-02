@@ -6,7 +6,7 @@
 // the real approved-listings table instead of in-memory React state.
 
 import { auth, currentUser } from "@clerk/nextjs/server";
-import { findCandidateListings, insertMicrosite, getAndIncrementUsage, getUsageToday, getUserPlan, reserveSlug } from "@/lib/db";
+import { findCandidateListings, insertMicrosite, getAndIncrementUsage, getUsageToday, reserveSlug } from "@/lib/db";
 import { isAdminEmail } from "@/lib/isAdmin";
 import { checkQuery } from "@/lib/contentFilter";
 import { slugify } from "@/lib/slug";
@@ -14,7 +14,7 @@ import { languageForModel, resolveLocale } from "@/lib/i18n";
 import { recordEvent, recordSearchQuery } from "@/lib/db";
 import { identifyProductFromImage } from "@/lib/visionSearch";
 import { findTopMatchingListings, buildClientListingPayload, extractQueryTerms } from "@/lib/listingMatcher";
-import { creditSearchPoints, getGuestDayPoints, getLifecycleStatus, hashIp, recordAndCheckIp, checkAndConsumeQuota } from "@/lib/db";
+import { creditSearchPoints, getGuestDayPoints, hasPaymentCredit, hashIp, recordAndCheckIp, checkAndConsumeQuota } from "@/lib/db";
 import { getOrCreateGuestId } from "@/lib/guestId";
 import { PLANS, LOYALTY, dailyPickLimit } from "@/lib/constants";
 import { shouldSearch, searchDepth, isFactSensitive, webSearch, contextSearchProvider, priceSearchProvider, reviewSearchProvider, formatSearchContext, THIN_RATING_COUNT } from "@/lib/search";
@@ -138,50 +138,35 @@ export async function POST(req) {
     // --- Real quota check, backed by the database, scoped per identity ---
     const identity = userId || (await getOrCreateGuestId());
 
-    // Lifecycle gate (redesigned 2026-08-25): free users and guests are
-    // NEVER blocked here any more — the old query/click checkpoint ladder
-    // is gone. The only remaining gate is Plus-only: LOYALTY.PLUS_QUERY_CYCLE_LIMIT
-    // queries with zero purchases since the last reset → hard Increase
-    // Usage gate. IP limits still backstop identity-hopping for anyone
-    // without a payment/purchase history, for everyone.
-    //
-    // OPERATION BUDGET (consolidated 2026-07-27): this whole block is now
-    // 2 queries for a normal search — one lifecycle statement (which also
-    // returns the plan, so no separate plan lookup) and one combined
-    // IP record-and-check. Admins skip both entirely.
+    // Research access gate (simplified 2026-08-25): no plan tier, no
+    // query-cycle gate — research is never blocked for a registered
+    // account, ever. The only remaining gate here is the IP-level
+    // fair-use backstop, which exists purely for identity-hopping abuse,
+    // independent of the rewards mechanism entirely.
     const ipHash = hashIp(req.headers.get("x-vercel-forwarded-for") || req.headers.get("x-forwarded-for")?.split(",")[0]?.trim());
     const admin = isAdminEmail((await currentUser())?.emailAddresses?.[0]?.emailAddress);
-    let storedPlan = "free";
     try {
       if (!admin) {
-        const lifecycle = await getLifecycleStatus(identity);
-        storedPlan = lifecycle.plan;
-        if (lifecycle.stage === "recharge") {
-          return Response.json({
-            gate: "search",
-            searches: lifecycle.searches,
-            message: `You've made ${lifecycle.searches} picks since your last purchase or Increase Usage payment. Every pick runs paid AI research — to continue, please use Increase Usage (₹${LOYALTY.RECHARGE_PRICE_INR}). Completing a purchase through any recommendation also resets the cycle for free.`,
-          }, { status: 403 });
-        }
         // Records this hit and returns the rolling window in one statement.
-        // Users with a purchase/payment history are exempt from IP limits
-        // (shared carrier IPs must never punish paying customers), but we
-        // still record so the counters stay complete.
-        const ipState = await recordAndCheckIp(ipHash, "search");
-        if (!lifecycle.hasCredit && ipState.searchGated) {
-          return Response.json({ gate: "search", searches: LOYALTY.IP_GATE.searches, message: "This network has reached its free research limit. To continue, sign in and use Increase Usage — or complete a purchase through any recommendation." }, { status: 403 });
+        // Anyone with a real payment or purchase history is exempt from IP
+        // limits (shared carrier IPs must never punish a paying customer),
+        // but we still record so the counters stay complete.
+        const [ipState, credit] = await Promise.all([
+          recordAndCheckIp(ipHash, "search"),
+          userId ? hasPaymentCredit(userId) : Promise.resolve(false),
+        ]);
+        if (!credit && ipState.searchGated) {
+          return Response.json({ gate: "search", searches: LOYALTY.IP_GATE.searches, message: "This network has reached its free research limit. Sign in to continue — or pay the platform fee once you've earned it, which lifts this for good." }, { status: 403 });
         }
       }
     } catch (err) {
-      console.error("Lifecycle check failed:", err.message);
+      console.error("IP fair-use check failed:", err.message);
     }
 
     // Admins get unlimited picks. Testing the product shouldn't require
-    // burning a paid subscription or waiting for the daily reset.
-    const plan = admin ? "plus" : storedPlan;
+    // waiting for the daily reset.
     const limit = dailyPickLimit({
       signedIn: Boolean(userId),
-      plan,
       isAdmin: admin,
     });
 
@@ -852,7 +837,6 @@ export async function POST(req) {
                   },
                 }
               : {}),
-            plan,
             limit,
             searchUsed,
           });

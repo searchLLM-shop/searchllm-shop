@@ -79,9 +79,9 @@ export async function POST(req) {
 
       const summary = await getRewardsSummary(userId);
       if (!summary.isMember) return Response.json({ error: "Join the programme first." }, { status: 400 });
-      if (summary.plan !== "plus") {
-        return Response.json({ error: "Redemption is a Plus feature — upgrade to redeem your points. They keep accumulating meanwhile." }, { status: 403 });
-      }
+      // No plan check (2026-08-25: no plans exist) — requestRedemption's
+      // own balance check is sufficient, since earning can never cross an
+      // unpaid block boundary in the first place.
       const ok = await requestRedemption(userId, points, voucherType, kyc);
       if (!ok) return Response.json({ error: "Not enough available points for that voucher." }, { status: 400 });
       return Response.json({ ok: true });

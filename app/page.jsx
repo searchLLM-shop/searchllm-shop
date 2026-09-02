@@ -7,7 +7,7 @@ import ResearchTab from "@/components/ResearchTab";
 import BrandForm from "@/components/BrandForm";
 import AdminQueue from "@/components/AdminQueue";
 import ReportsPanel from "@/components/ReportsPanel";
-import { PLANS, LOYALTY, planPriceLabel, SHOW_UPGRADE, SHOW_ADVERTISERS, SHOW_BRANDS_FORM, ENABLE_GERMAN } from "@/lib/constants";
+import { PLANS, LOYALTY, SHOW_ADVERTISERS, SHOW_BRANDS_FORM, ENABLE_GERMAN } from "@/lib/constants";
 import { LOCALES, DEFAULT_LOCALE, resolveLocale, t } from "@/lib/i18n";
 import AdvertiserPanel from "@/components/AdvertiserPanel";
 import AdvertiserAdmin from "@/components/AdvertiserAdmin";
@@ -112,7 +112,7 @@ export default function Home() {
       return;
     }
     if (savedLimit !== -1 && savedPicks.length >= savedLimit) {
-      setSaveNotice(`You've saved ${savedLimit} picks, the limit on the ${PLANS[plan]?.name || "Free"} plan. Remove one to save another.`);
+      setSaveNotice(`You've saved ${savedLimit} picks — remove one to save another.`);
       setTimeout(() => setSaveNotice(null), 5000);
       return;
     }
@@ -125,7 +125,7 @@ export default function Home() {
     setSavedPicks((p) => p.filter((x) => x.id !== id));
     setExpandedPick((cur) => (cur === id ? null : cur));
   }
-  const [usage, setUsage] = useState(null); // { plan, limit, used }
+  const [usage, setUsage] = useState(null); // { limit, used, points }
   const [watchlistUnseen, setWatchlistUnseen] = useState(0);
   // Redesign: shopper-facing tabs (Saved/Watchlist/Rewards) now live behind
   // an account drawer opened from the avatar, and admin tooling lives
@@ -236,7 +236,9 @@ export default function Home() {
       .catch(() => {});
   }, [consented, isSignedIn]);
 
-  async function handleUpgrade() {
+  // Pays the flat platform fee to unlock the current 250-point block —
+  // the only payment this app takes (2026-08-25: no more Plus plan).
+  async function handlePayPlatformFee() {
     setUpgrading(true);
     try {
       const resp = await fetch("/api/checkout", { method: "POST" });
@@ -250,7 +252,7 @@ export default function Home() {
       throw new Error(data.detail || data.error || "Checkout did not return a payment link");
     } catch (e) {
       console.error("Checkout failed", e);
-      setCheckoutError(e.message || "Couldn't start checkout. Please try again.");
+      setCheckoutError(e.message || "Couldn't start the payment. Please try again.");
       setUpgrading(false);
     }
   }
@@ -271,18 +273,15 @@ export default function Home() {
 
   const limit = usage?.limit ?? 8;
   const used = usage?.used ?? 0;
-  const plan = usage?.plan ?? "free";
-  // Must come after `plan` — computing it earlier referenced `plan` before its
-  // declaration, which threw "Cannot access 'H' before initialization" during
-  // prerendering and failed the build.
-  const savedLimit = PLANS[plan]?.savedPicks ?? PLANS.free.savedPicks;
+  // No plan tier (2026-08-25) — one saved-picks limit for everyone.
+  const savedLimit = PLANS.free.savedPicks;
   const picksLeftLabel = limit === -1 ? "∞" : Math.max(0, limit - used);
 
   return (
     <div className="sllm-canvas" style={{ minHeight: "100vh", display: "flex", flexDirection: "column" }}>
       {checkoutError && (
         <div style={{ padding: "8px 20px", background: "#FDF3F2", borderBottom: "0.5px solid #E8C9C6", fontSize: 12, color: "#A03530", display: "flex", justifyContent: "space-between", gap: 10 }}>
-          <span>Upgrade unavailable: {checkoutError}</span>
+          <span>Payment unavailable: {checkoutError}</span>
           <button onClick={() => setCheckoutError(null)} style={{ background: "none", border: "none", cursor: "pointer", color: "#A03530", fontSize: 12 }}>Dismiss</button>
         </div>
       )}
@@ -338,9 +337,11 @@ export default function Home() {
           )}
 
           {/* Usage pill — mirrors the "10/10 searches today" chip on
-              searchllm.ai: monospace, always visible, no hunting for it. */}
+              searchllm.ai: monospace, always visible, no hunting for it.
+              No plan tier (2026-08-25) — research is never limited for a
+              signed-in account, so this only ever shows for guests. */}
           <span
-            title={`${plan === "plus" ? tr("plus") : tr("free")} plan`}
+            title={isSignedIn ? "Signed in — research is never limited" : "Guest daily limit"}
             style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", fontSize: 11, color: "#4B5563", background: "#fff", border: "0.5px solid var(--color-border-tertiary)", borderRadius: 999, padding: "5px 12px", whiteSpace: "nowrap" }}
           >
             {used}/{limit === -1 ? "∞" : limit} picks today
@@ -357,12 +358,6 @@ export default function Home() {
               <option key={l.code} value={l.code}>{l.name}</option>
             ))}
           </select>
-          )}
-
-          {SHOW_UPGRADE && plan === "free" && isSignedIn && (
-            <button onClick={handleUpgrade} disabled={upgrading} style={{ background: "#0F6E56", border: "none", borderRadius: 6, padding: "6px 13px", cursor: upgrading ? "default" : "pointer", fontSize: 12, color: "#fff", fontWeight: 500, opacity: upgrading ? 0.6 : 1, whiteSpace: "nowrap" }}>
-              {upgrading ? "Redirecting…" : "Upgrade"}
-            </button>
           )}
 
           {isSignedIn ? (
@@ -417,35 +412,36 @@ export default function Home() {
         </>
       ) : (
         <div className="sllm-main" style={{ flex: 1, padding: "20px 20px 40px", maxWidth: 780, width: "100%", margin: "0 auto", boxSizing: "border-box" }}>
-          {/* Rewards, shown prominently on the homepage itself (2026-08-25)
-              rather than only inside the account drawer/points chip — the
-              capped-out upgrade nudge in particular is meant to be seen
-              every time a maxed-out member opens the app, not discovered by
-              clicking into a profile section. */}
-          {usage?.points?.kind === "user" && usage.points.capped && (
+          {/* Rewards, shown prominently on the homepage itself — the
+              platform-fee nudge in particular is meant to be seen every
+              time a member reaches a 250-point milestone, not discovered
+              by clicking into a profile section. No plan tier (2026-08-25):
+              every account follows the same flat rule, so this is the same
+              banner for everyone, always. */}
+          {usage?.points?.kind === "user" && usage.points.atCeiling && (
             <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center", justifyContent: "space-between", background: "#FDF8EF", border: "1px solid #EADFC8", borderRadius: 12, padding: "12px 16px", marginBottom: 14 }}>
               <div style={{ fontSize: 13, color: "#854F0B", lineHeight: 1.6 }}>
-                ⭐ <strong>You&apos;ve reached {Number(usage.points.totalPoints).toLocaleString()} of {Number(usage.points.unlockAt).toLocaleString()} points</strong> — that&apos;s the maximum for a free account. Upgrade to Plus to keep earning and redeem your first gift voucher.
+                ⭐ <strong>You&apos;ve earned {Number(usage.points.totalPoints).toLocaleString()} points!</strong> Pay the ₹{usage.points.platformFeeInr} platform fee to claim your ₹{LOYALTY.POINTS_BLOCK_SIZE} voucher and keep earning — or keep researching for free any time, no rush.
               </div>
               <button
-                onClick={handleUpgrade}
+                onClick={handlePayPlatformFee}
                 disabled={upgrading}
                 style={{ background: "#0F6E56", border: "none", borderRadius: 6, padding: "7px 16px", cursor: upgrading ? "default" : "pointer", fontSize: 12, color: "#fff", fontWeight: 500, opacity: upgrading ? 0.6 : 1, whiteSpace: "nowrap" }}
               >
-                {upgrading ? "Redirecting…" : `Upgrade to Plus — ${planPriceLabel()}`}
+                {upgrading ? "Redirecting…" : `Pay ₹${usage.points.platformFeeInr} platform fee`}
               </button>
             </div>
           )}
-          {usage?.points?.kind === "user" && !usage.points.capped && usage.points.totalPoints > 0 && (
+          {usage?.points?.kind === "user" && !usage.points.atCeiling && usage.points.totalPoints > 0 && (
             <button
               onClick={() => { setDrawerTab("rewards"); setShowAccountDrawer(true); }}
               style={{ display: "flex", width: "100%", boxSizing: "border-box", flexWrap: "wrap", gap: 10, alignItems: "center", justifyContent: "space-between", background: "var(--color-background-secondary)", border: "0.5px solid var(--color-border-tertiary)", borderRadius: 12, padding: "10px 16px", marginBottom: 14, cursor: "pointer", textAlign: "left" }}
             >
               <span style={{ fontSize: 13, color: "var(--color-text-secondary)" }}>
-                ⭐ <strong style={{ color: "var(--color-text-primary)" }}>{Number(usage.points.totalPoints).toLocaleString()} / {Number(usage.points.unlockAt).toLocaleString()} points</strong> toward your first gift voucher
+                ⭐ <strong style={{ color: "var(--color-text-primary)" }}>{Number(usage.points.totalPoints).toLocaleString()} / {Number(usage.points.ceiling).toLocaleString()} points</strong> toward your next gift voucher
               </span>
               <span style={{ height: 6, width: 120, borderRadius: 3, background: "var(--color-background-tertiary)", overflow: "hidden", flexShrink: 0 }}>
-                <span style={{ display: "block", height: "100%", width: `${Math.min(100, (usage.points.totalPoints / usage.points.unlockAt) * 100)}%`, background: "#0F6E56", borderRadius: 3 }} />
+                <span style={{ display: "block", height: "100%", width: `${Math.min(100, (usage.points.totalPoints / usage.points.ceiling) * 100)}%`, background: "#0F6E56", borderRadius: 3 }} />
               </span>
             </button>
           )}

@@ -1,9 +1,10 @@
 // app/api/usage/route.js
 //
-// Powers the header: picks left and the points chip. Plan/usage/balance
-// resolve from one query (consolidated 2026-07-27) for signed-in users;
-// guest day-points (redesigned 2026-08-25 to also cover click/purchase
-// points, not just search) need their own query — see getGuestDayPoints.
+// Powers the header: picks left and the points chip. Usage/balance resolve
+// from one query (consolidated 2026-07-27) for signed-in users; guest
+// day-points need their own query — see getGuestDayPoints. No plan tier
+// (2026-08-25): the header's "capped" state now reflects the flat
+// platform-fee block ceiling, the same for every account.
 
 import { auth, currentUser } from "@clerk/nextjs/server";
 import { getHeaderSnapshot, getGuestDayPoints } from "@/lib/db";
@@ -21,30 +22,27 @@ export async function GET() {
     snapshot = await getHeaderSnapshot(identity, userId);
   } catch (err) {
     console.error("Header snapshot failed:", err.message);
-    return Response.json({ plan: "free", limit: PLANS.free.searches, used: 0, points: null });
+    return Response.json({ limit: PLANS.free.searches, used: 0, points: null });
   }
 
-  const plan = admin ? "plus" : snapshot.plan;
   const limit = dailyPickLimit({
     signedIn: Boolean(userId),
-    plan,
     isAdmin: admin,
   });
 
   let points;
   if (userId) {
-    // capped: a non-Plus member has hit the earning ceiling — this is what
-    // drives the homepage "upgrade to keep earning" banner, shown every
-    // time they open the app until they do (or a plan check flips it off).
-    const capped = plan !== "plus" && snapshot.totalPoints >= LOYALTY.VOUCHER_UNLOCK_POINTS;
+    // atCeiling: earning has paused at this account's current block
+    // boundary — this is what drives the homepage "pay the platform fee"
+    // banner, shown every time they open the app until they pay.
     points = {
       kind: "user",
       balance: snapshot.balance,
       pending: snapshot.pending,
       totalPoints: snapshot.totalPoints,
-      unlockAt: LOYALTY.VOUCHER_UNLOCK_POINTS,
-      capped,
-      canClaimVoucher: snapshot.totalPoints >= LOYALTY.VOUCHER_UNLOCK_POINTS,
+      ceiling: snapshot.ceiling,
+      atCeiling: snapshot.atCeiling,
+      platformFeeInr: LOYALTY.PLATFORM_FEE_INR,
     };
   } else {
     let guestToday = 0;
@@ -52,5 +50,5 @@ export async function GET() {
     points = { kind: "guest", today: guestToday };
   }
 
-  return Response.json({ plan, limit, used: limit === -1 ? 0 : snapshot.used, points });
+  return Response.json({ limit, used: limit === -1 ? 0 : snapshot.used, points });
 }

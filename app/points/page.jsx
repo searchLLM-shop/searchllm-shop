@@ -1,8 +1,13 @@
 // app/points/page.jsx — "How points work": the public, plain-language
 // explanation of the rewards programme. Every number renders from the same
 // LOYALTY config the engine uses, so this page can never drift from reality.
+//
+// Flat platform-fee model (2026-08-25): no Plus plan, no Increase Usage.
+// Points build up free from zero but pause at every POINTS_BLOCK_SIZE
+// boundary until that block's PLATFORM_FEE_INR is paid — a one-way ratchet
+// that unlocks that block's voucher and lets earning carry on.
 
-import { LOYALTY, planPriceLabel } from "@/lib/constants";
+import { LOYALTY } from "@/lib/constants";
 
 export const metadata = {
   title: "How points work — SearchLLM",
@@ -11,11 +16,13 @@ export const metadata = {
 
 export default function PointsPage() {
   const p = LOYALTY.POINTS;
+  const block = LOYALTY.POINTS_BLOCK_SIZE;
+  const fee = LOYALTY.PLATFORM_FEE_INR;
   return (
     <main style={{ maxWidth: 680, margin: "0 auto", padding: "40px 20px", lineHeight: 1.8, fontSize: 14, color: "var(--color-text-primary)" }}>
       <h1 style={{ fontSize: 24, fontWeight: 600, marginBottom: 6 }}>How points work</h1>
       <p style={{ color: "var(--color-text-secondary)", marginBottom: 28 }}>
-        Simple version: research and clicking recommended products both earn points, everyone earns the same rate, and 1 point is always worth ₹1 of gift voucher value.
+        Simple version: research and clicking recommended products both earn points, everyone earns the same rate, and 1 point is always worth ₹1 of gift voucher value. Every {block} points is one flat ₹{fee} platform fee away from a voucher.
       </p>
 
       <h2 style={{ fontSize: 17, fontWeight: 600, margin: "26px 0 8px" }}>Earning</h2>
@@ -27,13 +34,13 @@ export default function PointsPage() {
         Worth being direct about, separately: brands don&apos;t pay to be featured or clicked, and we only earn anything ourselves when you actually buy — the pick you&apos;re shown is decided before commission ever enters the picture. That has nothing to do with your points balance; it&apos;s simply how the business behind this stays honest.
       </p>
       <p style={{ color: "var(--color-text-secondary)", fontSize: 13 }}>
-        On a free account, points stop at {LOYALTY.VOUCHER_UNLOCK_POINTS} — you won&apos;t lose anything you&apos;ve earned, but nothing further is credited until you upgrade to Plus. Plus removes that ceiling entirely.
+        Points build up free from zero, but pause at every {block}-point mark — {block}, {block * 2}, {block * 3}, and so on — until you pay a flat ₹{fee} platform fee for that specific block. There&apos;s no subscription and no upgrade tier: it&apos;s the same ₹{fee} every {block}-point cycle, for every account. Paying unlocks that block&apos;s voucher for redemption and lets earning carry on into the next block — once paid, a block never re-locks. Researching itself is never blocked by this; only new points pause at an unpaid ceiling.
       </p>
 
       <h2 style={{ fontSize: 17, fontWeight: 600, margin: "26px 0 8px" }}>Redeeming</h2>
-      <p>Once your total reaches {LOYALTY.VOUCHER_UNLOCK_POINTS} points, you&apos;re eligible to pay for Plus ({planPriceLabel()}) — which both lifts the earning ceiling and lets you redeem your first voucher. <strong>Redeeming, and earning past {LOYALTY.VOUCHER_UNLOCK_POINTS}, are both Plus benefits.</strong> Vouchers come in fixed denominations — {LOYALTY.DENOMINATIONS.map((d) => `₹${d}`).join(" / ")} — across {LOYALTY.VOUCHER_CATALOG.map((v) => v.brand).join(", ")}. Because gift vouchers are regulated in India, redeeming one asks for your first name, last name, mobile number, email and address every time, even if it&apos;s the same as last time — required by the RBI, not something we chose. Request a redemption from your Rewards tab and the voucher code appears there, usually within 2 working days.</p>
+      <p>Once a block is paid for, whatever balance is available in it is yours to redeem, whenever you like. Vouchers come in fixed denominations — {LOYALTY.DENOMINATIONS.map((d) => `₹${d}`).join(" / ")} — across {LOYALTY.VOUCHER_CATALOG.map((v) => v.brand).join(", ")}. Because gift vouchers are regulated in India, redeeming one asks for your first name, last name, mobile number, email and address every time, even if it&apos;s the same as last time — required by the RBI, not something we chose. Request a redemption from your Rewards tab and the voucher code appears there, usually within 2 working days.</p>
       <p style={{ color: "var(--color-text-secondary)", fontSize: 13 }}>
-        Once you&apos;re Plus, keep researching freely — the only thing to know is that {LOYALTY.PLUS_QUERY_CYCLE_LIMIT} picks with no purchase in between triggers an Increase Usage payment (₹{LOYALTY.RECHARGE_PRICE_INR}) to keep going; a single purchase resets that count for free, and this can happen more than once across the year.
+        Worked example: 30 searches and 10 clicks in a cycle earns {30 * p.SEARCH + 10 * p.CLICK} points — right around the {block}-point mark. Pay the ₹{fee} platform fee once that block is full, and that voucher is yours; keep going and the next {block} points build the same way.
       </p>
 
       <h2 style={{ fontSize: 17, fontWeight: 600, margin: "26px 0 8px" }}>The voucher wall</h2>
@@ -51,7 +58,7 @@ export default function PointsPage() {
 
       <h2 style={{ fontSize: 17, fontWeight: 600, margin: "26px 0 8px" }}>The fine print, plainly</h2>
       <p style={{ color: "var(--color-text-secondary)", fontSize: 13 }}>
-        Points have no cash value and aren&apos;t transferable. We may tune earning rates and voucher options going forward (never retroactively taking confirmed points), and points obtained through fraud or self-dealing are void. Vouchers themselves are the issuing brand&apos;s product — once your code is delivered (we replace codes invalid on arrival, reported within 7 days), its use and validity follow that brand&apos;s own terms. Full terms in our <a href="/terms" style={{ color: "#0F6E56" }}>Terms of Use</a>; what joining means for your data is in the <a href="/privacy" style={{ color: "#0F6E56" }}>Privacy Policy</a> — short version: your purchases are never linked to your points balance at all.
+        Points have no cash value and aren&apos;t transferable. We may tune earning rates, the block size, or the platform fee going forward (never retroactively taking confirmed points), and points obtained through fraud or self-dealing are void. Vouchers themselves are the issuing brand&apos;s product — once your code is delivered (we replace codes invalid on arrival, reported within 7 days), its use and validity follow that brand&apos;s own terms. Full terms in our <a href="/terms" style={{ color: "#0F6E56" }}>Terms of Use</a>; what joining means for your data is in the <a href="/privacy" style={{ color: "#0F6E56" }}>Privacy Policy</a> — short version: your purchases are never linked to your points balance at all.
       </p>
 
       <p style={{ marginTop: 30 }}>

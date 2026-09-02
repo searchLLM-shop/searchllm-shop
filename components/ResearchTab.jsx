@@ -162,10 +162,7 @@ export default function ResearchTab({ maxSearches, searchCount, onSearchComplete
   // through a setState that might not have landed yet.
   const clarifySubmittingRef = useRef(false);
   const [clarifyBusy, setClarifyBusy] = useState(false);
-  const [gate, setGate] = useState(null);           // blocking search gate
-  const [gateFeedback, setGateFeedback] = useState("");
-  const [gateBusy, setGateBusy] = useState(false);
-  const [gateFeedbackSent, setGateFeedbackSent] = useState(false);
+  const [gate, setGate] = useState(null);           // blocking search gate (IP-level fair use only)
   useEffect(() => {
     // A blocked affiliate click lands back here with ?gate=click — show the
     // same gate card in its click variant.
@@ -725,60 +722,21 @@ export default function ResearchTab({ maxSearches, searchCount, onSearchComplete
 
       {gate && (
         <div style={{ border: "0.5px solid #EADFC8", background: "#FDF8EF", borderRadius: 12, padding: "16px 18px", margin: "14px 0" }}>
-          {!gateFeedbackSent ? (
-            <>
-              <div style={{ fontSize: 14, fontWeight: 600, color: "#854F0B", marginBottom: 6 }}>
-                {gate.gate === "click" ? "Product links paused — a word before we continue" : `${gate.searches} picks since your last purchase or Increase Usage payment — a word before we continue`}
-              </div>
-              <div style={{ fontSize: 13, color: "var(--color-text-secondary)", lineHeight: 1.7, marginBottom: 10 }}>
-                {gate.gate === "click"
-                  ? <>This network has reached its free research limit. To keep browsing stores through us, use <strong>Increase Usage</strong> — and if you have a moment, tell us what stopped you at the store pages. We read every word.</>
-                  : <>Every pick runs real AI research and costs us real server money. To keep going, use <strong>Increase Usage</strong> below — and if you have a moment, tell us what&apos;s kept you from shopping through a recommendation. We read every word.</>}
-              </div>
-              <textarea
-                value={gateFeedback}
-                onChange={(e) => setGateFeedback(e.target.value)}
-                placeholder="optional, but genuinely valued — e.g. prices were higher on the store page…"
-                rows={2}
-                style={{ width: "100%", border: "0.5px solid var(--color-border-secondary)", borderRadius: 8, padding: "8px 10px", fontSize: 13, background: "none", color: "var(--color-text-primary)", resize: "vertical", boxSizing: "border-box" }}
-              />
-            </>
-          ) : (
-            <div style={{ fontSize: 13, color: "var(--color-text-secondary)", lineHeight: 1.7, marginBottom: 10 }}>
-              🙏 Your feedback is gratefully acknowledged — it genuinely shapes what we build. We do incur server costs for every pick, so to continue, please use Increase Usage. You&apos;ve used the platform a lot, and we deeply appreciate your continued support.
-            </div>
-          )}
+          <div style={{ fontSize: 14, fontWeight: 600, color: "#854F0B", marginBottom: 6 }}>
+            {gate.gate === "click" ? "Product links paused on this network" : "This network has reached its free research limit"}
+          </div>
+          <div style={{ fontSize: 13, color: "var(--color-text-secondary)", lineHeight: 1.7, marginBottom: 10 }}>
+            {gate.gate === "click"
+              ? <>This is a shared, network-level fair-use limit — not something tied to your account. It resets on a rolling basis, and signing in (or paying off an earned platform-fee block, once you have one) lifts it for good.</>
+              : (gate.message || "This is a shared, network-level fair-use limit — not something tied to your account. It resets on a rolling basis, and signing in (or paying off an earned platform-fee block, once you have one) lifts it for good.")}
+          </div>
           <div className="sllm-gate-actions" style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap", alignItems: "center" }}>
             <button
-              disabled={gateBusy}
-              onClick={async () => {
-                setGateBusy(true);
-                try {
-                  const resp = await fetch("/api/checkout", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ type: "recharge" }) });
-                  const j = await resp.json();
-                  if (j.url) window.location.href = j.url;
-                } finally { setGateBusy(false); }
-              }}
-              style={{ background: "#0F6E56", color: "#fff", border: "none", borderRadius: 8, padding: "8px 16px", fontSize: 13, fontWeight: 500, cursor: "pointer", opacity: gateBusy ? 0.5 : 1 }}
+              onClick={() => setGate(null)}
+              style={{ background: "none", color: "var(--color-text-secondary)", border: "0.5px solid var(--color-border-secondary)", borderRadius: 8, padding: "8px 16px", fontSize: 13, cursor: "pointer" }}
             >
-              Increase Usage — ₹{LOYALTY.RECHARGE_PRICE_INR}
+              Got it
             </button>
-            {!gateFeedbackSent && (
-              <button
-                disabled={gateBusy || gateFeedback.trim().length < 3}
-                onClick={async () => {
-                  setGateBusy(true);
-                  try {
-                    const resp = await fetch("/api/lifecycle", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ kind: gate.gate === "click" ? "click" : "search", feedback: gateFeedback }) });
-                    if (resp.ok) setGateFeedbackSent(true);
-                  } finally { setGateBusy(false); }
-                }}
-                style={{ background: "none", color: "var(--color-text-secondary)", border: "0.5px solid var(--color-border-secondary)", borderRadius: 8, padding: "8px 16px", fontSize: 13, cursor: "pointer", opacity: gateBusy || gateFeedback.trim().length < 3 ? 0.5 : 1 }}
-              >
-                Send feedback
-              </button>
-            )}
-            <span style={{ fontSize: 11, color: "var(--color-text-tertiary)" }}>Shopping through any recommendation also resets your free picks.</span>
           </div>
         </div>
       )}
@@ -930,7 +888,7 @@ export default function ResearchTab({ maxSearches, searchCount, onSearchComplete
                 result.rewards.earned > 0 ? (
                   <>✨ You earned <strong>{result.rewards.earned} points</strong> for this pick — {result.rewards.todayTotal} today. Clicking a recommended product link earns {LOYALTY.POINTS.CLICK} more. <a href="/points" style={{ color: "#854F0B", textDecoration: "underline" }}>How points work</a></>
                 ) : (
-                  <>You&apos;ve reached the {LOYALTY.VOUCHER_UNLOCK_POINTS}-point maximum for a free account. Upgrade to Plus to keep earning and unlock redeeming a voucher. <a href="/points" style={{ color: "#854F0B", textDecoration: "underline" }}>How points work</a></>
+                  <>You&apos;ve reached {LOYALTY.POINTS_BLOCK_SIZE} points — pay the ₹{LOYALTY.PLATFORM_FEE_INR} platform fee to claim your voucher and keep earning. <a href="/points" style={{ color: "#854F0B", textDecoration: "underline" }}>How points work</a></>
                 )
               ) : (
                 <>✨ You&apos;ve earned <strong>{result.rewards.guestToday} points</strong> today as a guest — they expire at midnight. <strong>Sign up free to keep them</strong>, and they&apos;ll keep adding up.</>
