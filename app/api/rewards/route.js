@@ -7,7 +7,7 @@
 // removed 2026-08-25 — see the LOYALTY.POINTS comment in lib/constants.js)
 // — nothing about a member's purchases is ever linked to this programme.
 
-import { auth } from "@clerk/nextjs/server";
+import { auth, currentUser } from "@clerk/nextjs/server";
 import { joinLoyalty, getRewardsSummary, requestRedemption, claimGuestDayPoints } from "@/lib/db";
 import { getOrCreateGuestId } from "@/lib/guestId";
 import { LOYALTY } from "@/lib/constants";
@@ -54,24 +54,28 @@ export async function POST(req) {
       }
 
       // RBI mandate for gift vouchers issued in India: first name, last
-      // name, mobile, email and address are required and must be explicitly
-      // (re-)confirmed on EVERY redemption, even when prefilled from what's
-      // on file — see requestRedemption in lib/db.js for how this is stored.
+      // name, mobile, email and postal address are required for every
+      // redemption. Name/mobile/email are NOT taken from the request body
+      // any more (2026-09-02) — they're read straight from the signed-in
+      // Clerk account, which is now the single source of truth for those
+      // fields (collected as mandatory at sign-up; editable only via the
+      // account's own Clerk profile, never on this form). This also closes
+      // a trust gap: a client could previously claim any name it liked
+      // here, whether or not it matched the signed-in account.
+      const account = await currentUser();
+      const rawMobile = account?.primaryPhoneNumber?.phoneNumber || "";
       const kyc = {
-        firstName: String(body.kyc?.firstName || "").trim().slice(0, 80),
-        lastName: String(body.kyc?.lastName || "").trim().slice(0, 80),
-        mobile: String(body.kyc?.mobile || "").trim().slice(0, 15),
-        email: String(body.kyc?.email || "").trim().slice(0, 200),
-        address: String(body.kyc?.address || "").trim().slice(0, 400),
+        firstName: String(account?.firstName || "").trim().slice(0, 80),
+        lastName: String(account?.lastName || "").trim().slice(0, 80),
+        mobile: rawMobile.replace(/\D/g, "").slice(-10),
+        email: String(account?.primaryEmailAddress?.emailAddress || "").trim().slice(0, 200),
+        address: String(body.address || "").trim().slice(0, 400),
       };
-      if (!kyc.firstName || !kyc.lastName || !kyc.address) {
-        return Response.json({ error: "First name, last name and address are required for gift voucher issuance." }, { status: 400 });
+      if (!kyc.firstName || !kyc.lastName || !/^\d{10}$/.test(kyc.mobile) || !kyc.email) {
+        return Response.json({ error: "Your account is missing a first name, last name, mobile number or email — complete your profile before redeeming. This is required for gift voucher issuance in India." }, { status: 400 });
       }
-      if (!/^\d{10}$/.test(kyc.mobile)) {
-        return Response.json({ error: "Enter a valid 10-digit mobile number." }, { status: 400 });
-      }
-      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(kyc.email)) {
-        return Response.json({ error: "Enter a valid email address." }, { status: 400 });
+      if (!kyc.address) {
+        return Response.json({ error: "Enter the address this voucher should be issued against." }, { status: 400 });
       }
       if (body.kycConfirmed !== true) {
         return Response.json({ error: "Please confirm your details before redeeming — required for gift voucher issuance in India." }, { status: 400 });

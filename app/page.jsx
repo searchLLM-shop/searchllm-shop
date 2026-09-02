@@ -24,7 +24,7 @@ import { trackEvent } from "@/lib/track";
 // — it invalidates stored consent and forces the gate to show again, which
 // is what the Privacy Policy promises ("30 days' notice before any
 // material change") in spirit, applied to first-party UX.
-const CONSENT_VERSION = "2026-06-shop-v1";
+const CONSENT_VERSION = "2026-09-shop-v2";
 
 // Tells the client whether to show the admin tab. This is a soft check for
 // UI purposes only — the real enforcement happens server-side in
@@ -303,6 +303,18 @@ export default function Home() {
 
         <div className="sllm-header-right" style={{ display: "flex", alignItems: "center", gap: 16 }}>
           <nav style={{ display: "flex", alignItems: "center", gap: 16 }}>
+            {/* Rewards as a first-class main-menu item (2026-09-02, explicit
+                direction) — previously only reachable via the avatar's
+                account drawer, which reads as a profile/settings area, not
+                a feature every shopper should notice. This opens the same
+                drawer (no duplicate implementation), just makes it
+                discoverable from the nav bar itself, signed in or not. */}
+            <button
+              onClick={() => { setShowAdminConsole(false); setDrawerTab("rewards"); setShowAccountDrawer(true); }}
+              style={{ background: "none", border: "none", cursor: "pointer", fontSize: 13, color: "#854F0B", fontWeight: 600, padding: 0, display: "flex", alignItems: "center", gap: 4 }}
+            >
+              ⭐ Rewards
+            </button>
             {SHOW_BRANDS_FORM && (
               <button onClick={() => { setShowAdminConsole(true); setActiveTab("brands"); }} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 13, color: "#4B5563", padding: 0 }}>For brands</button>
             )}

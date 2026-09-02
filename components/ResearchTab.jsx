@@ -104,6 +104,24 @@ function extractStreamingFields(rawText) {
 export default function ResearchTab({ maxSearches, searchCount, onSearchComplete, onSavePick, isAdmin, savedQueries = [], saveNotice, locale = "en" }) {
   const tr = t(locale);
   const [query, setQuery] = useState("");
+  const [payingFee, setPayingFee] = useState(false);
+  // Same one-off platform-fee checkout every other "pay" button in the app
+  // uses (RewardsTab, the homepage banner) — kept local here rather than
+  // threaded through as a prop, since this is the moment the shopper is
+  // most likely to act on it: right after seeing "you've reached the
+  // ceiling" on the pick they just ran.
+  async function handlePayPlatformFee() {
+    setPayingFee(true);
+    try {
+      const resp = await fetch("/api/checkout", { method: "POST" });
+      const json = await resp.json();
+      if (json.url) { window.location.href = json.url; return; }
+    } catch (e) {
+      console.error("Checkout failed", e);
+    } finally {
+      setPayingFee(false);
+    }
+  }
   // Rotating placeholder examples. Each models the ideal query shape —
   // product + attribute + budget — so users learn what a good question
   // looks like by osmosis instead of a form. Rotation pauses the moment
@@ -888,7 +906,18 @@ export default function ResearchTab({ maxSearches, searchCount, onSearchComplete
                 result.rewards.earned > 0 ? (
                   <>✨ You earned <strong>{result.rewards.earned} points</strong> for this pick — {result.rewards.todayTotal} today. Clicking a recommended product link earns {LOYALTY.POINTS.CLICK} more. <a href="/points" style={{ color: "#854F0B", textDecoration: "underline" }}>How points work</a></>
                 ) : (
-                  <>You&apos;ve reached {LOYALTY.POINTS_BLOCK_SIZE} points — pay the ₹{LOYALTY.PLATFORM_FEE_INR} platform fee to claim your voucher and keep earning. <a href="/points" style={{ color: "#854F0B", textDecoration: "underline" }}>How points work</a></>
+                  <div>
+                    <div style={{ marginBottom: 8, lineHeight: 1.6 }}>
+                      🎉 <strong>You&apos;ve reached {LOYALTY.POINTS_BLOCK_SIZE} points!</strong> That&apos;s a ₹{LOYALTY.POINTS_BLOCK_SIZE} voucher waiting — pay the ₹{LOYALTY.PLATFORM_FEE_INR} platform fee to claim it and start earning your next {LOYALTY.POINTS_BLOCK_SIZE}. Researching stays free either way — this only pauses new points. <a href="/points" style={{ color: "#854F0B", textDecoration: "underline" }}>How points work</a>
+                    </div>
+                    <button
+                      onClick={handlePayPlatformFee}
+                      disabled={payingFee}
+                      style={{ background: "#0F6E56", color: "#fff", border: "none", borderRadius: 6, padding: "7px 14px", fontSize: 12, fontWeight: 500, cursor: payingFee ? "default" : "pointer", opacity: payingFee ? 0.6 : 1 }}
+                    >
+                      {payingFee ? "Redirecting…" : `Pay ₹${LOYALTY.PLATFORM_FEE_INR} platform fee`}
+                    </button>
+                  </div>
                 )
               ) : (
                 <>✨ You&apos;ve earned <strong>{result.rewards.guestToday} points</strong> today as a guest — they expire at midnight. <strong>Sign up free to keep them</strong>, and they&apos;ll keep adding up.</>
