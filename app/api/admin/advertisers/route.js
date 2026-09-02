@@ -1,13 +1,13 @@
 // Admin: review advertisers, see what each one owes.
 import { auth, currentUser } from "@clerk/nextjs/server";
 import { getAdvertisers, setAdvertiserStatus, getAllAdvertiserBilling } from "@/lib/db";
-import { isAdminEmail } from "@/lib/isAdmin";
+import { isAdminUser } from "@/lib/isAdmin";
 
 async function guard() {
   const { userId } = await auth();
   if (!userId) return "Not signed in";
   const user = await currentUser();
-  if (!isAdminEmail(user?.emailAddresses?.[0]?.emailAddress)) return "Forbidden";
+  if (!isAdminUser(user)) return "Forbidden";
   return null;
 }
 

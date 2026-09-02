@@ -14,13 +14,13 @@
 import { auth, currentUser } from "@clerk/nextjs/server";
 import { pollConversions, diagConversions, fetchVcommissionPerformanceReport } from "@/lib/conversions";
 import { getLatestSyncRuns } from "@/lib/db";
-import { isAdminEmail } from "@/lib/isAdmin";
+import { isAdminUser } from "@/lib/isAdmin";
 
 export const maxDuration = 300;
 
 async function isAdmin() {
   const user = await currentUser();
-  return isAdminEmail(user?.emailAddresses?.[0]?.emailAddress);
+  return isAdminUser(user);
 }
 
 function isCronAuthorized(req) {

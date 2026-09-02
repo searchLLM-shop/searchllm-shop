@@ -11,7 +11,7 @@
 // GET  ?sku=<sku>        -> full product details (denominations, price type)
 
 import { auth, currentUser } from "@clerk/nextjs/server";
-import { isAdminEmail } from "@/lib/isAdmin";
+import { isAdminUser } from "@/lib/isAdmin";
 import { getCategories, listCategoryProducts, getProduct } from "@/lib/vouchers/qwikcilver";
 
 export const maxDuration = 30;
@@ -20,7 +20,7 @@ export async function GET(req) {
   const { userId } = await auth();
   if (!userId) return Response.json({ error: "Not signed in" }, { status: 401 });
   const user = await currentUser();
-  if (!isAdminEmail(user?.emailAddresses?.[0]?.emailAddress)) {
+  if (!isAdminUser(user)) {
     return Response.json({ error: "Forbidden" }, { status: 403 });
   }
 

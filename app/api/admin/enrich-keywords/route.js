@@ -14,6 +14,7 @@ import {
 } from "@/lib/db";
 import { generateKeywords } from "@/lib/keywordEnricher";
 import { ENABLE_AI_KEYWORDS } from "@/lib/constants";
+import { isAdminUser } from "@/lib/isAdmin";
 
 export const maxDuration = 300;
 
@@ -23,13 +24,7 @@ const BATCH_LIMIT = 120;
 
 async function isAdmin() {
   const user = await currentUser();
-  if (!user) return false;
-  const admins = (process.env.ADMIN_EMAILS || "")
-    .split(",")
-    .map((e) => e.trim().toLowerCase())
-    .filter(Boolean);
-  const email = user.emailAddresses?.[0]?.emailAddress?.toLowerCase();
-  return !!email && admins.includes(email);
+  return isAdminUser(user);
 }
 
 export async function POST(req) {

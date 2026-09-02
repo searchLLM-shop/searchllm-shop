@@ -10,12 +10,12 @@ import { auth, currentUser } from "@clerk/nextjs/server";
 import { getHeaderSnapshot, getGuestDayPoints } from "@/lib/db";
 import { getOrCreateGuestId } from "@/lib/guestId";
 import { PLANS, LOYALTY, dailyPickLimit } from "@/lib/constants";
-import { isAdminEmail } from "@/lib/isAdmin";
+import { isAdminUser } from "@/lib/isAdmin";
 
 export async function GET() {
   const { userId } = await auth();
   const identity = userId || (await getOrCreateGuestId());
-  const admin = isAdminEmail((userId ? await currentUser() : null)?.emailAddresses?.[0]?.emailAddress);
+  const admin = isAdminUser(userId ? await currentUser() : null);
 
   let snapshot;
   try {

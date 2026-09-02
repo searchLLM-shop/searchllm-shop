@@ -10,14 +10,14 @@
 
 import { auth, currentUser } from "@clerk/nextjs/server";
 import { getRedemptionQueue, resolveRedemption } from "@/lib/db";
-import { isAdminEmail } from "@/lib/isAdmin";
+import { isAdminUser } from "@/lib/isAdmin";
 import { issueVoucher, isConfigured as isVoucherApiConfigured } from "@/lib/vouchers/qwikcilver";
 
 export const maxDuration = 15;
 
 async function isAdmin() {
   const user = await currentUser();
-  return isAdminEmail(user?.emailAddresses?.[0]?.emailAddress);
+  return isAdminUser(user);
 }
 
 export async function GET() {

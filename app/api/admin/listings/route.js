@@ -1,22 +1,18 @@
 // app/api/admin/listings/route.js
 //
 // Admin-only route for reviewing brand submissions. Access is gated by
-// checking the signed-in user's email against ADMIN_EMAILS. Replace this
-// with Clerk's organization roles or a proper roles table as the team
-// grows — an env-var allowlist is fine for a single founder running review.
+// checking the signed-in user's email or phone against ADMIN_EMAILS/
+// ADMIN_PHONES (see lib/isAdmin.js). Replace this with Clerk's
+// organization roles or a proper roles table as the team grows — an
+// env-var allowlist is fine for a single founder running review.
 
 import { auth, currentUser } from "@clerk/nextjs/server";
 import { getPendingListings, countPendingListings, setListingStatus, bulkSetPendingStatus } from "@/lib/db";
+import { isAdminUser } from "@/lib/isAdmin";
 
 async function isAdmin() {
   const user = await currentUser();
-  if (!user) return false;
-  const adminEmails = (process.env.ADMIN_EMAILS || "")
-    .split(",")
-    .map((e) => e.trim().toLowerCase())
-    .filter(Boolean);
-  const userEmail = user.emailAddresses?.[0]?.emailAddress?.toLowerCase();
-  return adminEmails.includes(userEmail);
+  return isAdminUser(user);
 }
 
 export async function GET(req) {

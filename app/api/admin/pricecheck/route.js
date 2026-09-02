@@ -11,18 +11,13 @@
 
 import { auth, currentUser } from "@clerk/nextjs/server";
 import { processPriceDrops } from "@/lib/priceAlerts";
+import { isAdminUser } from "@/lib/isAdmin";
 
 export const maxDuration = 60;
 
 async function isAdmin() {
   const user = await currentUser();
-  if (!user) return false;
-  const adminEmails = (process.env.ADMIN_EMAILS || "")
-    .split(",")
-    .map((e) => e.trim().toLowerCase())
-    .filter(Boolean);
-  const userEmail = user.emailAddresses?.[0]?.emailAddress?.toLowerCase();
-  return adminEmails.includes(userEmail);
+  return isAdminUser(user);
 }
 
 function isCronAuthorized(req) {

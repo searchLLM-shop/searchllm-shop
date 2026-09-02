@@ -27,16 +27,28 @@ import { trackEvent } from "@/lib/track";
 const CONSENT_VERSION = "2026-09-shop-v2";
 
 // Tells the client whether to show the admin tab. This is a soft check for
-// UI purposes only — the real enforcement happens server-side in
-// /api/admin/listings, which re-checks ADMIN_EMAILS independently. Never
-// trust this flag alone to gate sensitive actions.
+// UI purposes only — the real enforcement happens server-side in every
+// /api/admin/* route via isAdminUser (lib/isAdmin.js), which re-checks
+// independently. Never trust this flag alone to gate sensitive actions.
+// Checks phone as well as email (2026-09-02: sign-up is moving to
+// phone-only, so an admin account may have no email at all) — mirrors
+// isAdminUser's logic client-side against the NEXT_PUBLIC_ variants of the
+// same allowlists, since server-only env vars aren't visible here.
 function useIsAdminClientHint() {
   const { user } = useUser();
   const email = user?.primaryEmailAddress?.emailAddress;
+  const phone = user?.primaryPhoneNumber?.phoneNumber;
   const adminEmails = (process.env.NEXT_PUBLIC_ADMIN_EMAILS || "")
     .split(",")
     .map((e) => e.trim().toLowerCase());
-  return email && adminEmails.includes(email.toLowerCase());
+  const last10 = (p) => String(p || "").replace(/\D/g, "").slice(-10);
+  const adminPhones = (process.env.NEXT_PUBLIC_ADMIN_PHONES || "")
+    .split(",")
+    .map((p) => last10(p));
+  return Boolean(
+    (email && adminEmails.includes(email.toLowerCase())) ||
+    (phone && adminPhones.includes(last10(phone)))
+  );
 }
 
 export default function Home() {

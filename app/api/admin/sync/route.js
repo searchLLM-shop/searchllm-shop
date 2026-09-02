@@ -7,11 +7,12 @@
 //      <CRON_SECRET>" — verified against Vercel's own docs, not a custom
 //      header scheme). See vercel.json for the schedule.
 //   2. An admin clicking "Sync now" in the dashboard (POST, session-
-//      authenticated via the same ADMIN_EMAILS check as other admin routes).
+//      authenticated via the same isAdminUser check as other admin routes).
 
 import { auth, currentUser } from "@clerk/nextjs/server";
 import { runFullSync } from "@/lib/feeds/sync";
 import { getLatestSyncRuns, getInventoryByNetwork } from "@/lib/db";
+import { isAdminUser } from "@/lib/isAdmin";
 
 // Pulling hundreds of products across multiple feed downloads can exceed
 // the default serverless timeout (often 10s), which makes Vercel return
@@ -21,13 +22,7 @@ export const maxDuration = 300;
 
 async function isAdmin() {
   const user = await currentUser();
-  if (!user) return false;
-  const adminEmails = (process.env.ADMIN_EMAILS || "")
-    .split(",")
-    .map((e) => e.trim().toLowerCase())
-    .filter(Boolean);
-  const userEmail = user.emailAddresses?.[0]?.emailAddress?.toLowerCase();
-  return adminEmails.includes(userEmail);
+  return isAdminUser(user);
 }
 
 function isCronAuthorized(req) {

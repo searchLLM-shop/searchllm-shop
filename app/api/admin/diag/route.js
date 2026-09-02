@@ -8,14 +8,13 @@
 import { auth, currentUser } from "@clerk/nextjs/server";
 import { query, getExistingExternalIds, getFeedCursor } from "@/lib/db";
 import { parseCsv } from "@/lib/feeds/awin";
+import { isAdminUser } from "@/lib/isAdmin";
 
 export const maxDuration = 60;
 
 async function isAdmin() {
   const user = await currentUser();
-  if (!user) return false;
-  const admins = (process.env.ADMIN_EMAILS || "").split(",").map((e) => e.trim().toLowerCase());
-  return admins.includes(user.emailAddresses?.[0]?.emailAddress?.toLowerCase());
+  return isAdminUser(user);
 }
 
 function mem() {

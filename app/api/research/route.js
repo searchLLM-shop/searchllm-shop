@@ -7,7 +7,7 @@
 
 import { auth, currentUser } from "@clerk/nextjs/server";
 import { findCandidateListings, insertMicrosite, getAndIncrementUsage, getUsageToday, reserveSlug } from "@/lib/db";
-import { isAdminEmail } from "@/lib/isAdmin";
+import { isAdminUser } from "@/lib/isAdmin";
 import { checkQuery } from "@/lib/contentFilter";
 import { slugify } from "@/lib/slug";
 import { languageForModel, resolveLocale } from "@/lib/i18n";
@@ -144,7 +144,7 @@ export async function POST(req) {
     // fair-use backstop, which exists purely for identity-hopping abuse,
     // independent of the rewards mechanism entirely.
     const ipHash = hashIp(req.headers.get("x-vercel-forwarded-for") || req.headers.get("x-forwarded-for")?.split(",")[0]?.trim());
-    const admin = isAdminEmail((await currentUser())?.emailAddresses?.[0]?.emailAddress);
+    const admin = isAdminUser(await currentUser());
     try {
       if (!admin) {
         // Records this hit and returns the rolling window in one statement.
