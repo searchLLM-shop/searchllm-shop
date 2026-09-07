@@ -17,7 +17,7 @@
 
 import { auth, currentUser } from "@clerk/nextjs/server";
 import { isAdminUser } from "@/lib/isAdmin";
-import { getCategories, listCategoryProducts, getProduct, testOrder, TEST_SKUS } from "@/lib/vouchers/qwikcilver";
+import { getCategories, listCategoryProducts, getProduct, testOrder, TEST_SKUS, echoTest } from "@/lib/vouchers/qwikcilver";
 
 export const maxDuration = 30;
 
@@ -39,6 +39,14 @@ export async function GET(req) {
   const products = params.get("products");
 
   try {
+    // TEMPORARY: proves/disproves whether the QuotaGuard proxy path
+    // itself alters a POST body in transit — see echoTest() in
+    // lib/vouchers/qwikcilver.js. Remove once signature_invalid is
+    // resolved.
+    if (params.get("echoTest")) {
+      const result = await echoTest();
+      return Response.json(result);
+    }
     if (sku) {
       const result = await getProduct(sku);
       return Response.json({ mode: "product", sku, ...result });
