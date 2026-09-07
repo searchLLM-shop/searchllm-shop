@@ -9,20 +9,29 @@
 // GET  ?category=<id>   -> that category's subcategories/products
 // GET  (no params)       -> root category list
 // GET  ?sku=<sku>        -> full product details (denominations, price type)
+// POST {testSku, denomination?} -> places one real order against a
+//   Qwikcilver TEST_SKUS product (not a real brand) — end-to-end proof
+//   the OAuth flow, request signing, and Order API are wired correctly,
+//   without needing a real BRAND_SKU_MAP entry yet. See testOrder() in
+//   lib/vouchers/qwikcilver.js for the full list of testSku keys.
 
 import { auth, currentUser } from "@clerk/nextjs/server";
 import { isAdminUser } from "@/lib/isAdmin";
-import { getCategories, listCategoryProducts, getProduct } from "@/lib/vouchers/qwikcilver";
+import { getCategories, listCategoryProducts, getProduct, testOrder, TEST_SKUS } from "@/lib/vouchers/qwikcilver";
 
 export const maxDuration = 30;
 
-export async function GET(req) {
+async function requireAdmin() {
   const { userId } = await auth();
-  if (!userId) return Response.json({ error: "Not signed in" }, { status: 401 });
+  if (!userId) return "Not signed in";
   const user = await currentUser();
-  if (!isAdminUser(user)) {
-    return Response.json({ error: "Forbidden" }, { status: 403 });
-  }
+  if (!isAdminUser(user)) return "Forbidden";
+  return null;
+}
+
+export async function GET(req) {
+  const err = await requireAdmin();
+  if (err) return Response.json({ error: err }, { status: err === "Forbidden" ? 403 : 401 });
 
   const params = new URL(req.url).searchParams;
   const sku = params.get("sku");
@@ -39,8 +48,26 @@ export async function GET(req) {
       return Response.json({ mode: "categoryProducts", category, ...result });
     }
     const result = await getCategories(category || undefined);
-    return Response.json({ mode: "categories", category: category || "(root)", ...result });
-  } catch (err) {
-    return Response.json({ error: String(err?.message || err) }, { status: 500 });
+    return Response.json({ mode: "categories", category: category || "(root)", testSkuKeys: Object.keys(TEST_SKUS), ...result });
+  } catch (err2) {
+    return Response.json({ error: String(err2?.message || err2) }, { status: 500 });
+  }
+}
+
+export async function POST(req) {
+  const err = await requireAdmin();
+  if (err) return Response.json({ error: err }, { status: err === "Forbidden" ? 403 : 401 });
+
+  let body;
+  try { body = await req.json(); } catch { return Response.json({ error: "Bad request" }, { status: 400 }); }
+
+  const testSku = String(body.testSku || "");
+  if (!testSku) return Response.json({ error: `Pass {"testSku": "..."} — one of: ${Object.keys(TEST_SKUS).join(", ")}` }, { status: 400 });
+
+  try {
+    const result = await testOrder(testSku, Number(body.denomination) || 100);
+    return Response.json(result);
+  } catch (err2) {
+    return Response.json({ error: String(err2?.message || err2) }, { status: 500 });
   }
 }
