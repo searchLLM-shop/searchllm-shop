@@ -286,12 +286,20 @@ export async function POST(req) {
     // in the try/catch further down. Arm 3 (thin-rating review) still has
     // to wait for topMatches and is added to this same array once known.
     const wantSearch = shouldSearch() || isFactSensitive(query);
+    // Kept as its own promise (not just piped straight into the formatted
+    // prompt string like the context arm) because its raw {title,snippet,url}
+    // results are reused below to build shopLinks — real retailer URLs
+    // this same search already found, rather than generic search-URL
+    // templates. Awaiting the same promise twice never re-fetches; both
+    // awaits just read its one resolved value.
+    const priceSearchJob = wantSearch
+      ? webSearch(intent?.priceQuery || query, 4, userCountry, priceSearchProvider())
+      : Promise.resolve([]);
     const earlySearchJobs = wantSearch
       ? [
           webSearch(intent?.contextQuery || query, searchDepth(query), userCountry, contextSearchProvider())
             .then((res) => formatSearchContext(res, "What the web says about this need (perspective, comparisons, owner reports)")),
-          webSearch(intent?.priceQuery || query, 4, userCountry, priceSearchProvider())
-            .then((res) => formatSearchContext(res, "Current prices found for this product in India (use these figures, not your recollection)")),
+          priceSearchJob.then((res) => formatSearchContext(res, "Current prices found for this product in India (use these figures, not your recollection)")),
         ]
       : [];
 
@@ -543,30 +551,36 @@ export async function POST(req) {
                       const pickChosenMatch = pickChosenId ? candidates.find((l) => l.id === pickChosenId) || null : null;
 
                       // Non-affiliate fallback (2026-09-09, replacing the
-                      // Amazon Associates single-link version): the ONLY
-                      // actionable product links when nothing in our own
-                      // inventory was offered or fit — this was a
-                      // "final"-only field before, so on a no-match answer
-                      // the shopper saw the verdict text and refinement
-                      // chips early but no product links at all until
-                      // candidateFitment and the rest finished streaming,
-                      // several seconds later. Same logic as the final
-                      // event's version, computed here instead so it
-                      // arrives at the same moment as everything else.
-                      // Deliberately untracked/untagged (see
-                      // nonAffiliateLinks) — showing an earning link for a
-                      // DIFFERENT product than the one actually recommended
-                      // is worse than showing no monetized link at all.
+                      // Amazon Associates single-link version, then
+                      // 2026-09-09 again to source real matched result
+                      // URLs instead of generic search templates — see
+                      // pickShopLinks): the ONLY actionable product links
+                      // when nothing in our own inventory was offered or
+                      // fit — this was a "final"-only field before, so on
+                      // a no-match answer the shopper saw the verdict text
+                      // and refinement chips early but no product links at
+                      // all until candidateFitment and the rest finished
+                      // streaming, several seconds later. Same logic as
+                      // the final event's version, computed here instead
+                      // so it arrives at the same moment as everything
+                      // else. priceSearchJob is already resolved by now
+                      // (the model call itself only started after it —
+                      // see where searchContext is built), so this await
+                      // adds no real latency.
                       const earlyAlternatives = Array.isArray(altsParsed) ? altsParsed.slice(0, 3) : [];
-                      const shopLinksEarly = (() => {
-                        if (pickChosenMatch) return undefined;
+                      let shopLinksEarly;
+                      if (!pickChosenMatch) {
                         const term = [
                           extractStringField(raw, "shoppingTerm") || "",
                           earlyAlternatives[0]?.name || "",
                           typeof query === "string" ? query.trim() : "",
                         ].find((t) => t && t.length > 2);
-                        return term ? nonAffiliateLinks(term.slice(0, 80)) : undefined;
-                      })();
+                        if (term) {
+                          const priceResults = await priceSearchJob;
+                          const links = pickShopLinks(term.slice(0, 80), priceResults);
+                          if (links.length) shopLinksEarly = links;
+                        }
+                      }
 
                       pickSent = true;
                       send({
@@ -756,6 +770,23 @@ export async function POST(req) {
             popularityLevel,
           }).catch((err) => console.error("insertMicrosite failed:", err.message));
 
+          // See pickShopLinks/priceSearchJob above — already resolved by
+          // now (needed well before this point, to build the model's own
+          // prompt), so this await adds no real latency.
+          let finalShopLinks;
+          if (!chosenMatch) {
+            const term = [
+              typeof parsed.shoppingTerm === "string" ? parsed.shoppingTerm.trim() : "",
+              parsed.alternatives?.[0]?.name || "",
+              typeof query === "string" ? query.trim() : "",
+            ].find((t) => t && t.length > 2);
+            if (term) {
+              const priceResults = await priceSearchJob;
+              const links = pickShopLinks(term.slice(0, 80), priceResults);
+              if (links.length) finalShopLinks = links;
+            }
+          }
+
           send({
             type: "final",
             headline: parsed.headline,
@@ -774,24 +805,13 @@ export async function POST(req) {
             // we can't defend is worth less than an empty one.
             matchedListing: buildClientListingPayload(chosenMatch),
             // Non-affiliate shop-search links — ONLY when no partner
-            // product matched (2026-09-09, replacing the old single Amazon
-            // Associates link): when the genuine pick isn't in anything we
+            // product matched: when the genuine pick isn't in anything we
             // monetize, the honest fallback is to point at where it's
             // actually sold, not to substitute a DIFFERENT product just
-            // because that one earns us a commission. Deliberately
-            // untagged/untracked — see nonAffiliateLinks. Needs a PRODUCT
-            // term, not the question: prefer the model's shoppingTerm,
-            // fall back to the leading alternative's name, and only then
-            // the raw query.
-            shopLinks: (() => {
-              if (chosenMatch) return undefined;
-              const term = [
-                typeof parsed.shoppingTerm === "string" ? parsed.shoppingTerm.trim() : "",
-                parsed.alternatives?.[0]?.name || "",
-                typeof query === "string" ? query.trim() : "",
-              ].find((t) => t && t.length > 2);
-              return term ? nonAffiliateLinks(term.slice(0, 80)) : undefined;
-            })(),
+            // because that one earns us a commission. Real, matched result
+            // URLs (see pickShopLinks above), not generic search-URL
+            // templates, and not restricted to any fixed set of retailers.
+            shopLinks: finalShopLinks,
             // Search points: registered users earn per pick under a daily
             // cap; guests see a day-expiring figure computed from today's
             // picks (never stored — vanishes at midnight unless they sign
@@ -924,21 +944,70 @@ function extractStringField(text, key) {
   try { return JSON.parse(m[1]); } catch { return null; }
 }
 
-// Shown ONLY when nothing in our own or Amazon's affiliate inventory
-// matched — see the two call sites below. Deliberately untracked, untagged
-// search links (no Associates tag, no network sub-id, nothing to click
-// through for us to earn on) across three retailers big enough to plausibly
-// stock anything: the honest fallback when the actual pick is outside
-// every inventory we monetize is to just point at where it's genuinely
-// sold, not to substitute a different product we do earn on.
-function nonAffiliateLinks(term) {
-  if (!term) return [];
-  const q = encodeURIComponent(term.slice(0, 120));
-  return [
-    { label: "Amazon.in", url: `https://www.amazon.in/s?k=${q}` },
-    { label: "Flipkart", url: `https://www.flipkart.com/search?q=${q}` },
-    { label: "Google Shopping", url: `https://www.google.com/search?tbm=shop&q=${q}` },
-  ];
+// Shown ONLY when nothing in our own affiliate inventory matched — see the
+// two call sites below. Deliberately untracked, untagged real result URLs
+// (no Associates tag, no network sub-id, nothing to click through for us
+// to earn on): the honest fallback when the actual pick is outside every
+// inventory we monetize is to point at somewhere it's genuinely, verifiably
+// sold — not a generic "search Amazon for this" template link that might
+// not even carry it, and not restricted to any fixed set of retailers.
+//
+// Sourced from the SAME price-search results already fetched to let the
+// model price the pick and its alternatives (see priceSearchJob above) —
+// zero extra latency, since those results are already resolved by the
+// time either call site below runs. A result only qualifies if its own
+// TITLE genuinely names the pick (word-overlap against shoppingTerm,
+// same mechanical-recall-gate philosophy as lib/listingMatcher.js) — a
+// page that merely mentions the brand once, or a review/comparison
+// article rather than a retailer page, doesn't count. Returns fewer than
+// 3 links, or none at all, when that's honestly all the evidence supports.
+const SHOP_LINK_BLOCKED_HOSTS = [
+  "youtube.com", "youtu.be", "reddit.com", "quora.com", "wikipedia.org",
+  "facebook.com", "instagram.com", "twitter.com", "x.com", "pinterest.com",
+  "searchllm.shop",
+];
+const SHOP_LINK_HOST_LABELS = {
+  "amazon.in": "Amazon.in", "flipkart.com": "Flipkart", "myntra.com": "Myntra",
+  "nykaa.com": "Nykaa", "croma.com": "Croma", "reliancedigital.in": "Reliance Digital",
+  "tatacliq.com": "Tata Cliq", "ajio.com": "Ajio", "meesho.com": "Meesho",
+  "vijaysales.com": "Vijay Sales", "snapdeal.com": "Snapdeal",
+};
+function shopLinkLabel(hostname) {
+  const bare = hostname.replace(/^www\./, "");
+  if (SHOP_LINK_HOST_LABELS[bare]) return SHOP_LINK_HOST_LABELS[bare];
+  const name = bare.split(".")[0];
+  return name.charAt(0).toUpperCase() + name.slice(1);
+}
+function pickShopLinks(term, priceResults) {
+  if (!term || !Array.isArray(priceResults) || !priceResults.length) return [];
+  const tokens = extractQueryTerms(term).filter((t) => t.length >= 3);
+  if (!tokens.length) return [];
+
+  const seen = new Set();
+  const scored = [];
+  for (const r of priceResults) {
+    let hostname;
+    try { hostname = new URL(r.url).hostname.toLowerCase(); } catch { continue; }
+    if (SHOP_LINK_BLOCKED_HOSTS.some((h) => hostname === h || hostname.endsWith(`.${h}`))) continue;
+    const bareHost = hostname.replace(/^www\./, "");
+    if (seen.has(bareHost)) continue; // one link per retailer
+
+    const title = (r.title || "").toLowerCase();
+    let matched = 0;
+    for (const t of tokens) {
+      const re = new RegExp(`(^|\\W)${t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(\\W|$)`, "i");
+      if (re.test(title)) matched++;
+    }
+    // At least 2 distinct terms, or every term when the pick only yields
+    // one or two — a single incidental word match ("the" brand appearing
+    // in an unrelated listing) is not enough to call a page a real match.
+    const need = Math.min(2, tokens.length);
+    if (matched < need) continue;
+
+    seen.add(bareHost);
+    scored.push({ label: shopLinkLabel(hostname), url: r.url, matched });
+  }
+  return scored.sort((a, b) => b.matched - a.matched).slice(0, 3);
 }
 
 async function hashQuery(text) {
