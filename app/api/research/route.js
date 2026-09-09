@@ -542,29 +542,30 @@ export async function POST(req) {
                       if (pickChosenId !== null && !offeredIdsEarly.has(pickChosenId)) pickChosenId = null;
                       const pickChosenMatch = pickChosenId ? candidates.find((l) => l.id === pickChosenId) || null : null;
 
-                      // Amazon Associates fallback (2026-08-22): the ONLY
-                      // actionable product card when nothing was offered or
-                      // nothing offered fit — this was a "final"-only field
-                      // before, so on a no-match answer the shopper saw the
-                      // verdict text and refinement chips early but no
-                      // product card at all until candidateFitment and the
-                      // rest finished streaming, several seconds later. Same
-                      // logic as the final event's amazonBrowse, computed
-                      // here instead so it arrives at the same moment as
-                      // everything else.
+                      // Non-affiliate fallback (2026-09-09, replacing the
+                      // Amazon Associates single-link version): the ONLY
+                      // actionable product links when nothing in our own
+                      // inventory was offered or fit — this was a
+                      // "final"-only field before, so on a no-match answer
+                      // the shopper saw the verdict text and refinement
+                      // chips early but no product links at all until
+                      // candidateFitment and the rest finished streaming,
+                      // several seconds later. Same logic as the final
+                      // event's version, computed here instead so it
+                      // arrives at the same moment as everything else.
+                      // Deliberately untracked/untagged (see
+                      // nonAffiliateLinks) — showing an earning link for a
+                      // DIFFERENT product than the one actually recommended
+                      // is worse than showing no monetized link at all.
                       const earlyAlternatives = Array.isArray(altsParsed) ? altsParsed.slice(0, 3) : [];
-                      const amazonBrowseEarly = (() => {
-                        if (pickChosenMatch || !process.env.AMAZON_ASSOCIATES_TAG) return undefined;
+                      const shopLinksEarly = (() => {
+                        if (pickChosenMatch) return undefined;
                         const term = [
                           extractStringField(raw, "shoppingTerm") || "",
                           earlyAlternatives[0]?.name || "",
                           typeof query === "string" ? query.trim() : "",
                         ].find((t) => t && t.length > 2);
-                        if (!term) return undefined;
-                        return {
-                          term: term.slice(0, 80),
-                          url: `https://www.amazon.in/s?k=${encodeURIComponent(term.slice(0, 120))}&tag=${process.env.AMAZON_ASSOCIATES_TAG}`,
-                        };
+                        return term ? nonAffiliateLinks(term.slice(0, 80)) : undefined;
                       })();
 
                       pickSent = true;
@@ -572,7 +573,7 @@ export async function POST(req) {
                         type: "pick",
                         matchedListing: buildClientListingPayload(pickChosenMatch),
                         alternatives: earlyAlternatives,
-                        amazonBrowse: amazonBrowseEarly,
+                        shopLinks: shopLinksEarly,
                       });
                     } catch {
                       // Not actually valid JSON yet despite balanced
@@ -772,28 +773,24 @@ export async function POST(req) {
             // under an explanation of why not to buy it. A sponsored slot
             // we can't defend is worth less than an empty one.
             matchedListing: buildClientListingPayload(chosenMatch),
-            // Amazon Associates browse link — ONLY when no partner product
-            // matched, so it monetizes otherwise-unmonetized queries
-            // without competing with the sponsored card or touching the
-            // (provably neutral) alternatives. Direct link, no redirect:
-            // Amazon's rules require the destination be apparent; click
-            // tracking happens via the client dataLayer event instead.
-            // Renders only when the AMAZON_ASSOCIATES_TAG env var is set.
-            // Amazon needs a PRODUCT term, not the question. Prefer the
-            // model's shoppingTerm, fall back to the leading alternative's
-            // name, and only then the raw query.
-            amazonBrowse: (() => {
-              if (chosenMatch || !process.env.AMAZON_ASSOCIATES_TAG) return undefined;
+            // Non-affiliate shop-search links — ONLY when no partner
+            // product matched (2026-09-09, replacing the old single Amazon
+            // Associates link): when the genuine pick isn't in anything we
+            // monetize, the honest fallback is to point at where it's
+            // actually sold, not to substitute a DIFFERENT product just
+            // because that one earns us a commission. Deliberately
+            // untagged/untracked — see nonAffiliateLinks. Needs a PRODUCT
+            // term, not the question: prefer the model's shoppingTerm,
+            // fall back to the leading alternative's name, and only then
+            // the raw query.
+            shopLinks: (() => {
+              if (chosenMatch) return undefined;
               const term = [
                 typeof parsed.shoppingTerm === "string" ? parsed.shoppingTerm.trim() : "",
                 parsed.alternatives?.[0]?.name || "",
                 typeof query === "string" ? query.trim() : "",
               ].find((t) => t && t.length > 2);
-              if (!term) return undefined;
-              return {
-                term: term.slice(0, 80),
-                url: `https://www.amazon.in/s?k=${encodeURIComponent(term.slice(0, 120))}&tag=${process.env.AMAZON_ASSOCIATES_TAG}`,
-              };
+              return term ? nonAffiliateLinks(term.slice(0, 80)) : undefined;
             })(),
             // Search points: registered users earn per pick under a daily
             // cap; guests see a day-expiring figure computed from today's
@@ -925,6 +922,23 @@ function extractStringField(text, key) {
   const m = text.match(new RegExp(`"${key}"\\s*:\\s*("(?:[^"\\\\]|\\\\.)*")`));
   if (!m) return null;
   try { return JSON.parse(m[1]); } catch { return null; }
+}
+
+// Shown ONLY when nothing in our own or Amazon's affiliate inventory
+// matched — see the two call sites below. Deliberately untracked, untagged
+// search links (no Associates tag, no network sub-id, nothing to click
+// through for us to earn on) across three retailers big enough to plausibly
+// stock anything: the honest fallback when the actual pick is outside
+// every inventory we monetize is to just point at where it's genuinely
+// sold, not to substitute a different product we do earn on.
+function nonAffiliateLinks(term) {
+  if (!term) return [];
+  const q = encodeURIComponent(term.slice(0, 120));
+  return [
+    { label: "Amazon.in", url: `https://www.amazon.in/s?k=${q}` },
+    { label: "Flipkart", url: `https://www.flipkart.com/search?q=${q}` },
+    { label: "Google Shopping", url: `https://www.google.com/search?tbm=shop&q=${q}` },
+  ];
 }
 
 async function hashQuery(text) {

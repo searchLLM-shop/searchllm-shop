@@ -220,13 +220,6 @@ input, select, textarea {
   .sllm-consent-modal pre { max-height: 46vh !important; }
 }
 
-/* Amazon fallback CTA: full-width and thumb-friendly once the row wraps */
-@media (max-width: 640px) {
-  .sllm-amazon-row { align-items: stretch !important; }
-  .sllm-amazon-row > a { width: 100%; text-align: center; box-sizing: border-box; padding: 11px 16px !important; }
-}
-
-
 /* ============ iOS Safari specifics (2026-07-29) ============
    1. iOS auto-zooms the viewport whenever a focused input has a font-size
       below 16px. Our search box was 14px, so every iPhone user tapping the

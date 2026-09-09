@@ -336,12 +336,12 @@ export default function ResearchTab({ maxSearches, searchCount, onSearchComplete
                 ...fields,
                 matchedListing: evt.matchedListing,
                 alternatives: evt.alternatives || [],
-                // The Amazon fallback card — same field the "final" event
-                // carries, just also sent this early now: on a no-match
-                // answer it's the ONLY actionable product card, and it used
-                // to only arrive with "final", several seconds after
-                // everything else was already visible.
-                amazonBrowse: evt.amazonBrowse,
+                // The non-affiliate shop-search links — same field the
+                // "final" event carries, just also sent this early now: on
+                // a no-match answer they're the ONLY actionable product
+                // links, and used to only arrive with "final", several
+                // seconds after everything else was already visible.
+                shopLinks: evt.shopLinks,
               });
             } else if (evt.type === "final") {
               finalData = evt;
@@ -942,29 +942,29 @@ export default function ResearchTab({ maxSearches, searchCount, onSearchComplete
               ))}
             </div>
           )}
-          {result.amazonBrowse && (
+          {result.shopLinks?.length > 0 && (
             <div style={{ border: "0.5px solid var(--color-border-tertiary)", borderRadius: 10, margin: "12px 0", overflow: "hidden" }}>
-              <div className="sllm-amazon-row" style={{ padding: "12px 14px", display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap", justifyContent: "space-between" }}>
-                <div style={{ minWidth: 0 }}>
-                  <div style={{ fontSize: 10, letterSpacing: "0.05em", textTransform: "uppercase", color: "var(--color-text-tertiary)", marginBottom: 3 }}>
-                    Not in our partner inventory — available on Amazon
-                  </div>
-                  <div style={{ fontSize: 14, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis" }}>
-                    {result.amazonBrowse.term}
-                  </div>
+              <div style={{ padding: "12px 14px" }}>
+                <div style={{ fontSize: 10, letterSpacing: "0.05em", textTransform: "uppercase", color: "var(--color-text-tertiary)", marginBottom: 8 }}>
+                  Not in our partner inventory — here's where to find it
                 </div>
-                <a
-                  href={result.amazonBrowse.url}
-                  target="_blank"
-                  rel="noopener noreferrer sponsored"
-                  onClick={() => trackEvent("amazon_browse_click", {})}
-                  style={{ background: "#FF9900", color: "#111", borderRadius: 8, padding: "9px 16px", fontSize: 13, fontWeight: 600, textDecoration: "none", whiteSpace: "nowrap" }}
-                >
-                  Browse on Amazon ↗
-                </a>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  {result.shopLinks.map((link) => (
+                    <a
+                      key={link.label}
+                      href={link.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={() => trackEvent("shop_link_click", { retailer: link.label })}
+                      style={{ background: "var(--color-background-secondary)", border: "0.5px solid var(--color-border-secondary)", color: "var(--color-text-primary)", borderRadius: 8, padding: "8px 14px", fontSize: 13, fontWeight: 500, textDecoration: "none", whiteSpace: "nowrap" }}
+                    >
+                      {link.label} ↗
+                    </a>
+                  ))}
+                </div>
               </div>
               <div style={{ padding: "7px 14px", background: "var(--color-background-secondary)", fontSize: 11, color: "var(--color-text-tertiary)" }}>
-                Partner link — as an Amazon Associate, we earn from qualifying purchases. Your price never changes, and our answer above was written without knowing this link would appear.
+                Plain search links — we earn nothing from these, unlike a sponsored pick above. The honest answer to this question just isn't something we have a partner link for.
               </div>
             </div>
           )}
@@ -975,10 +975,13 @@ export default function ResearchTab({ maxSearches, searchCount, onSearchComplete
               {result.alternatives.map((a, i) => (
                 <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0", borderTop: i > 0 ? "0.5px solid var(--color-border-tertiary)" : "none" }}>
                   <div>
-                    {/* Tracked but NEVER monetized: /alt records the click as
-                        brand-demand evidence, then opens a neutral web search.
-                        The moment these earn money, the section stops being
-                        proof that advice comes first. */}
+                    {/* /alt records the click as brand-demand evidence, then
+                        redirects to an Amazon Associates search link when a
+                        tag is configured (2026-07-30) — the disclosure line
+                        above says so plainly. The honesty claim that still
+                        holds: the model selects these with no knowledge of
+                        what we earn on anything; monetizing the click never
+                        touches the selection. */}
                     <a
                       onClick={() => trackEvent("alternative_click", {})}
                       href={`/alt?p=${encodeURIComponent(a.name || "")}&ctx=research`}
