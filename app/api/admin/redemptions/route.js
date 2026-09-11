@@ -13,7 +13,12 @@ import { getRedemptionQueue, resolveRedemption } from "@/lib/db";
 import { isAdminUser } from "@/lib/isAdmin";
 import { issueVoucher, isConfigured as isVoucherApiConfigured } from "@/lib/vouchers/qwikcilver";
 
-export const maxDuration = 15;
+// Bumped from 15s (2026-09-11): issueVoucher() now polls Qwikcilver's
+// Order Status API for a few seconds when an order comes back 202/
+// PROCESSING (the NORMAL path on this account, not a rare edge case —
+// see lib/vouchers/qwikcilver.js's getOrderStatus() comment) before
+// falling back to "fulfil manually". 15s left no headroom for that.
+export const maxDuration = 30;
 
 async function isAdmin() {
   const user = await currentUser();
