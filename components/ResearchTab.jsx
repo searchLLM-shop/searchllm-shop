@@ -158,6 +158,13 @@ export default function ResearchTab({ maxSearches, searchCount, onSearchComplete
   const [processing, setProcessing] = useState(false);
   const [step, setStep] = useState(-1);
   const [result, setResult] = useState(null);
+  // Session-only "search block" memory (2026-09): every completed pick from
+  // earlier in this visit, so a shopper assembling a real purchase (laptop,
+  // then a bag, then a mouse) can see the whole chain. Deliberately
+  // client-only, in-memory (not even localStorage) — never sent to the
+  // server, gone on reload or a "go home" remount. See archiveAndClearResult
+  // below for how entries get added.
+  const [searchBlock, setSearchBlock] = useState([]);
   const [errorMsg, setErrorMsg] = useState(null);
   // Pre-research clarifying loop (bosonic layer) — one question at a time
   // from /api/clarify, looping until it says done. clarifyQuery holds the
@@ -225,6 +232,29 @@ export default function ResearchTab({ maxSearches, searchCount, onSearchComplete
   // (no questions / image search / clarify check failed) or once the
   // clarify loop below finishes (engine says done, or the shopper hits
   // "Skip — just search" mid-loop).
+  // Session-only search-block memory: archives the currently-shown result
+  // into searchBlock before clearing it for a new search — UNLESS the new
+  // query is a refinement of the same one (a "Sharpen this pick" chip
+  // builds its query as `${prev.query} ${chip}`, so it's literally a
+  // prefix match — same topic being refined, not a new entry). Passing an
+  // empty string always archives unconditionally (used by the explicit
+  // "New question" button, which has no next-query text to compare against
+  // yet, but is itself an unambiguous "I'm done with this" signal).
+  // Functional setResult update reads the previous value safely without
+  // needing `result` in any calling useCallback's dependency array.
+  const MAX_BLOCK_ENTRIES = 10;
+  const archiveAndClearResult = useCallback((newQuery) => {
+    setResult((prev) => {
+      if (prev?.headline) {
+        const isRefinement = newQuery && prev.query && newQuery.startsWith(`${prev.query} `);
+        if (!isRefinement) {
+          setSearchBlock((block) => [...block, prev].slice(-MAX_BLOCK_ENTRIES));
+        }
+      }
+      return null;
+    });
+  }, []);
+
   const runResearch = useCallback(
     async (q, clarifications = []) => {
       const searchQ = (q || query).trim();
@@ -247,7 +277,7 @@ export default function ResearchTab({ maxSearches, searchCount, onSearchComplete
       setClarifyHistory([]);
       setClarifyAnswerDraft("");
       setProcessing(true);
-      setResult(null);
+      archiveAndClearResult(enrichedQuery);
       setErrorMsg(null);
       setStep(0);
 
@@ -383,7 +413,7 @@ export default function ResearchTab({ maxSearches, searchCount, onSearchComplete
       setStep(-1);
       setProcessing(false);
     },
-    [query, attachment, searchCount, maxSearches, onSearchComplete]
+    [query, attachment, searchCount, maxSearches, onSearchComplete, archiveAndClearResult]
   );
 
   // Fetches one round of the clarify loop and either shows the next
@@ -442,7 +472,7 @@ export default function ResearchTab({ maxSearches, searchCount, onSearchComplete
       }
 
       setProcessing(true);
-      setResult(null);
+      archiveAndClearResult(searchQ);
       setErrorMsg(null);
       setStep(0);
       setClarifyQuery(searchQ);
@@ -450,7 +480,7 @@ export default function ResearchTab({ maxSearches, searchCount, onSearchComplete
       setClarifyCurrent(null);
       await fetchClarifyStep(searchQ, []);
     },
-    [query, attachment, searchCount, maxSearches, fetchClarifyStep, runResearch]
+    [query, attachment, searchCount, maxSearches, fetchClarifyStep, runResearch, archiveAndClearResult]
   );
 
   // Commits an answer to the current question and immediately asks the
@@ -606,6 +636,22 @@ export default function ResearchTab({ maxSearches, searchCount, onSearchComplete
           {processing ? "Researching…" : "Search"}
         </button>
       </div>
+      {/* Search-block summary strip: every completed pick from earlier in
+          this visit (searchBlock, populated by archiveAndClearResult).
+          Read-only for now, not clickable-to-revisit — see the "goes along
+          with this" plan for why that's deliberately out of scope. Shown
+          whenever there's history, independent of whether a result is
+          currently displayed or a new search is processing. */}
+      {searchBlock.length > 0 && (
+        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 14, fontSize: 12, color: "var(--color-text-secondary)" }}>
+          <span style={{ color: "var(--color-text-tertiary)" }}>This visit:</span>
+          {searchBlock.map((entry, i) => (
+            <span key={i} style={{ background: "var(--color-background-secondary)", border: "0.5px solid var(--color-border-tertiary)", borderRadius: 10, padding: "3px 10px" }}>
+              {entry.matchedListing?.product || entry.headline}
+            </span>
+          ))}
+        </div>
+      )}
       {/* Attach-file placement moves above the bar on mobile too (see
           globals.css) — everything else about that block is unchanged. */}
 
@@ -951,6 +997,26 @@ export default function ResearchTab({ maxSearches, searchCount, onSearchComplete
               ))}
             </div>
           )}
+          {/* Complementary-item chips: a genuinely NEW search, not a
+              refinement of this one — bare phrase, no query prefix, so
+              archiveAndClearResult correctly files the current pick into
+              searchBlock rather than discarding it. Distinct indigo color
+              from the green refinement chips above, to read as "starts
+              something new" rather than "sharpens this." */}
+          {result.alsoNeeded?.length > 0 && !processing && (
+            <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", margin: "12px 0" }}>
+              <span style={{ fontSize: 11, color: "var(--color-text-tertiary)" }}>Want something to go with this?</span>
+              {result.alsoNeeded.map((item, i) => (
+                <button
+                  key={i}
+                  onClick={() => handleSearch(item)}
+                  style={{ background: "none", border: "0.5px solid #6366F166", borderRadius: 12, padding: "4px 11px", fontSize: 12, color: "#6366F1", cursor: "pointer" }}
+                >
+                  🛍️ {item}
+                </button>
+              ))}
+            </div>
+          )}
           {result.shopLinks?.length > 0 && (
             <div style={{ border: "0.5px solid var(--color-border-tertiary)", borderRadius: 10, margin: "12px 0", overflow: "hidden" }}>
               <div style={{ padding: "12px 14px" }}>
@@ -1051,7 +1117,7 @@ export default function ResearchTab({ maxSearches, searchCount, onSearchComplete
                 </button>
               );
             })()}
-            <button onClick={() => { setResult(null); setQuery(""); setAttachment(null); }} style={{ background: "none", border: "0.5px solid var(--color-border-secondary)", borderRadius: 8, padding: "8px 14px", cursor: "pointer", fontSize: 13, color: "var(--color-text-secondary)" }}>{tr("newQuestion")}</button>
+            <button onClick={() => { archiveAndClearResult(""); setQuery(""); setAttachment(null); }} style={{ background: "none", border: "0.5px solid var(--color-border-secondary)", borderRadius: 8, padding: "8px 14px", cursor: "pointer", fontSize: 13, color: "var(--color-text-secondary)" }}>{tr("newQuestion")}</button>
           </div>
         </div>
       )}

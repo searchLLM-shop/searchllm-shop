@@ -36,6 +36,7 @@ Price is not quality. A cheap product that does the job well is a legitimate rec
   "micrositeSummary": "1-2 sentence anonymized summary",
   "publicTopic": "the question rephrased as a generic, searchable shopping topic many different people would type (e.g. 'best whey protein under ₹2000'), in the same language as the rest of your answer. Empty string if the question is too personal, niche, or situation-specific to be useful as a public page",
   "refinements": ["up to 3 SHORT phrases (each under 6 words) the person could APPEND to their query to get a sharper, more personal answer — e.g. a budget ('under ₹500'), a use case ('for oily skin'), a form/spec ('resin form'). Each must read naturally when appended to their exact query text. Empty array when the query is already specific enough that refining would not change the answer"],
+  "alsoNeeded": ["up to 3 SHORT phrases (each under 6 words) naming a genuinely complementary product or accessory a shopper buying THIS would plausibly also want — e.g. a laptop bag after a laptop, a screen protector after a phone. NOT a variant or refinement of the same product (that's what refinements above is for) — each must stand alone as its own fresh search, never appended to the original query. Empty array when nothing complementary genuinely applies — never force one."],
   "taskType": "research|creative|technical|predictive|analysis",
   "learnings": ["short reusable knowledge fragment", "another one", "a third"],
   "candidateFitment": [{"id": the numeric id of an offered partner product, "fits": true or false, "reason": "one short phrase — why it does or doesn't fit what you know about the person's need and purpose, from the section below", "valueStatement": "what buying this says about or does for the shopper — ONLY when fits is true, empty string otherwise"}],
@@ -837,6 +838,13 @@ export async function POST(req) {
             // re-run.
             refinements: Array.isArray(parsed.refinements)
               ? parsed.refinements.filter((r) => typeof r === "string" && r.trim() && r.length <= 40).slice(0, 3)
+              : [],
+            // Complementary-item suggestions (2026-09) — same shape/cap as
+            // refinements above, but these render as a SEPARATE chip row
+            // that starts a genuinely new search (not appended to the
+            // current query) — see ResearchTab.jsx's archiveAndClearResult.
+            alsoNeeded: Array.isArray(parsed.alsoNeeded)
+              ? parsed.alsoNeeded.filter((r) => typeof r === "string" && r.trim() && r.length <= 40).slice(0, 3)
               : [],
             // Admins only: what the matcher offered and what the model
             // chose, so "why is there no card" is answerable by looking, not
