@@ -25,7 +25,7 @@ import { trackEvent } from "@/lib/track";
 // — it invalidates stored consent and forces the gate to show again, which
 // is what the Privacy Policy promises ("30 days' notice before any
 // material change") in spirit, applied to first-party UX.
-const CONSENT_VERSION = "2026-09-shop-v3";
+const CONSENT_VERSION = "2026-09-shop-v4";
 
 // Tells the client whether to show the admin tab. This is a soft check for
 // UI purposes only — the real enforcement happens server-side in every
