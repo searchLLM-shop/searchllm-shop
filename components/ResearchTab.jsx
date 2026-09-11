@@ -890,6 +890,15 @@ export default function ResearchTab({ maxSearches, searchCount, onSearchComplete
                 </div>
               </div>
               <div style={{ fontSize: 10, color: "var(--color-text-tertiary)", marginTop: 8 }}>This never changes the price you pay, and it&apos;s never the reason this option was suggested — see alternatives below.</div>
+              {/* vCommission (Shopsy/Myntra) is the one network where we
+                  actually get purchase confirmation back — see the admin
+                  panel in app/api/admin/vcommission-purchases and TERMS
+                  §6AB. Deliberately no percentage/timing detail here. */}
+              {result.matchedListing.network === "vCommission" && (
+                <div style={{ fontSize: 10, color: "#0F6E56", marginTop: 4 }}>
+                  ⭐ You may earn reward points if you purchase this — we get purchase confirmation from this platform and credit points once we do.
+                </div>
+              )}
             </div>
           )}
 

@@ -18,7 +18,7 @@ export default async function Page() {
   const isDe = locale === "de";
 
   return (
-    <LegalPage title={isDe ? "Nutzungsbedingungen" : "Terms of Use"} updated={isDe ? "Juli 2026" : "July 2026"}>
+    <LegalPage title={isDe ? "Nutzungsbedingungen" : "Terms of Use"} updated={isDe ? "Juli 2026" : "September 2026"}>
       {isDe && (
         <div style={{ background: "#BA75171A", border: "0.5px solid #BA751744", borderRadius: 8, padding: "10px 12px", marginBottom: 18, fontSize: 12, color: "#854F0B" }}>
           Diese deutsche Fassung ist eine Übersetzung der englischen Originalfassung und wurde noch nicht

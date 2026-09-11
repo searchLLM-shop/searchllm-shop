@@ -15,6 +15,7 @@ import AnswersAdmin from "@/components/AnswersAdmin";
 import ProductsBrowser from "@/components/ProductsBrowser";
 import QueriesPanel from "@/components/QueriesPanel";
 import PerformancePanel from "@/components/PerformancePanel";
+import VcommissionPurchasesAdmin from "@/components/VcommissionPurchasesAdmin";
 import RewardsTab from "@/components/RewardsTab";
 import PriceAlerts from "@/components/PriceAlerts";
 import InstallApp from "@/components/InstallApp";
@@ -24,7 +25,7 @@ import { trackEvent } from "@/lib/track";
 // — it invalidates stored consent and forces the gate to show again, which
 // is what the Privacy Policy promises ("30 days' notice before any
 // material change") in spirit, applied to first-party UX.
-const CONSENT_VERSION = "2026-09-shop-v2";
+const CONSENT_VERSION = "2026-09-shop-v3";
 
 // Tells the client whether to show the admin tab. This is a soft check for
 // UI purposes only — the real enforcement happens server-side in every
@@ -412,13 +413,13 @@ export default function Home() {
       {showAdminConsole ? (
         <>
           <div className="sllm-tabs" style={{ display: "flex", borderBottom: "0.5px solid var(--color-border-tertiary)", padding: "0 24px", background: "#fff" }}>
-            {["admin", "products", "queries", "performance", "answers", "reports", ...(SHOW_ADVERTISERS ? ["advertisers", "advertise"] : []), ...(SHOW_BRANDS_FORM ? ["brands"] : [])].map((tabKey) => (
+            {["admin", "products", "queries", "performance", "vcommission-purchases", "answers", "reports", ...(SHOW_ADVERTISERS ? ["advertisers", "advertise"] : []), ...(SHOW_BRANDS_FORM ? ["brands"] : [])].map((tabKey) => (
               <button
                 key={tabKey}
                 onClick={() => setActiveTab(tabKey)}
                 style={{ padding: "10px 14px", border: "none", background: "none", cursor: "pointer", fontSize: 13, fontWeight: activeTab === tabKey ? 500 : 400, color: activeTab === tabKey ? "#0F6E56" : "var(--color-text-secondary)", borderBottom: `2px solid ${activeTab === tabKey ? "#0F6E56" : "transparent"}` }}
               >
-                {tabKey === "admin" ? "Review queue" : tabKey === "brands" ? "For brands" : tabKey === "advertise" ? "Advertise" : tabKey}
+                {tabKey === "admin" ? "Review queue" : tabKey === "brands" ? "For brands" : tabKey === "advertise" ? "Advertise" : tabKey === "vcommission-purchases" ? "vCommission purchases" : tabKey}
               </button>
             ))}
           </div>
@@ -430,6 +431,7 @@ export default function Home() {
             {activeTab === "products" && <ProductsBrowser />}
             {activeTab === "queries" && <QueriesPanel />}
             {activeTab === "performance" && <PerformancePanel />}
+            {activeTab === "vcommission-purchases" && <VcommissionPurchasesAdmin />}
             {activeTab === "answers" && <AnswersAdmin />}
             {activeTab === "reports" && <ReportsPanel />}
           </div>
@@ -469,6 +471,14 @@ export default function Home() {
               </span>
             </button>
           )}
+          {/* Always visible, unlike the two banners above — this is general
+              trust/marketing copy (not a personal progress readout), so it
+              shows to everyone, signed in or not, with or without points.
+              Deliberately no percentage or timing detail here — see
+              lib/constants.js's TERMS section 6AB for that. */}
+          <div style={{ fontSize: 12, color: "var(--color-text-secondary)", background: "var(--color-background-secondary)", border: "0.5px solid var(--color-border-tertiary)", borderRadius: 10, padding: "8px 14px", marginBottom: 14 }}>
+            ⭐ We also award reward points on purchases for specific platforms where we get purchase confirmation — <a href="/points" style={{ color: "#0F6E56" }}>see how rewards work</a>.
+          </div>
           <ResearchTab
             key={homeKey}
             isAdmin={isAdminHint}
