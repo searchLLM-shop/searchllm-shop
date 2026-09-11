@@ -1009,7 +1009,7 @@ export default function ResearchTab({ maxSearches, searchCount, onSearchComplete
               {result.alsoNeeded.map((item, i) => (
                 <button
                   key={i}
-                  onClick={() => handleSearch(item)}
+                  onClick={() => { setQuery(item); handleSearch(item); }}
                   style={{ background: "none", border: "0.5px solid #6366F166", borderRadius: 12, padding: "4px 11px", fontSize: 12, color: "#6366F1", cursor: "pointer" }}
                 >
                   🛍️ {item}
