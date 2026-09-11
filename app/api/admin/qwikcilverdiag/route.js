@@ -12,6 +12,9 @@
 // GET  ?orderStatus=<refno> -> Order Status API for a refno testOrder()
 //   returned as 202/PROCESSING (added 2026-09-11 once signature_invalid
 //   was finally resolved and a real order started coming back async).
+// GET  ?activatedCards=<orderId> -> the actual card number/PIN for a
+//   COMPLETE order — keyed on `orderId` (the Order API's own response
+//   field), NOT `refno`. Order Status alone carries no card details.
 // POST {testSku, denomination?} -> places one real order against a
 //   Qwikcilver TEST_SKUS product (not a real brand) — end-to-end proof
 //   the OAuth flow, request signing, and Order API are wired correctly,
@@ -20,7 +23,7 @@
 
 import { auth, currentUser } from "@clerk/nextjs/server";
 import { isAdminUser } from "@/lib/isAdmin";
-import { getCategories, listCategoryProducts, getProduct, testOrder, TEST_SKUS, echoTest, getOrderStatus } from "@/lib/vouchers/qwikcilver";
+import { getCategories, listCategoryProducts, getProduct, testOrder, TEST_SKUS, echoTest, getOrderStatus, getActivatedCards } from "@/lib/vouchers/qwikcilver";
 
 export const maxDuration = 30;
 
@@ -54,6 +57,11 @@ export async function GET(req) {
     if (orderStatus) {
       const result = await getOrderStatus(orderStatus);
       return Response.json({ mode: "orderStatus", refno: orderStatus, ...result });
+    }
+    const activatedCards = params.get("activatedCards");
+    if (activatedCards) {
+      const result = await getActivatedCards(activatedCards);
+      return Response.json({ mode: "activatedCards", orderId: activatedCards, ...result });
     }
     if (sku) {
       const result = await getProduct(sku);
