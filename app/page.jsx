@@ -16,7 +16,9 @@ import ProductsBrowser from "@/components/ProductsBrowser";
 import QueriesPanel from "@/components/QueriesPanel";
 import PerformancePanel from "@/components/PerformancePanel";
 import VcommissionPurchasesAdmin from "@/components/VcommissionPurchasesAdmin";
+import ReferralsAdmin from "@/components/ReferralsAdmin";
 import RewardsTab from "@/components/RewardsTab";
+import ReferralsTab from "@/components/ReferralsTab";
 import PriceAlerts from "@/components/PriceAlerts";
 import InstallApp from "@/components/InstallApp";
 import { trackEvent } from "@/lib/track";
@@ -25,7 +27,7 @@ import { trackEvent } from "@/lib/track";
 // — it invalidates stored consent and forces the gate to show again, which
 // is what the Privacy Policy promises ("30 days' notice before any
 // material change") in spirit, applied to first-party UX.
-const CONSENT_VERSION = "2026-09-shop-v4";
+const CONSENT_VERSION = "2026-09-shop-v5";
 
 // Tells the client whether to show the admin tab. This is a soft check for
 // UI purposes only — the real enforcement happens server-side in every
@@ -249,6 +251,17 @@ export default function Home() {
       .catch(() => {});
   }, [consented, isSignedIn]);
 
+  // Referral confirmation (2026-09-12) — fire-and-forget, once per signed-in
+  // load, NOT gated on ever opening the Referrals tab: a referred friend
+  // should get counted the moment they first land here signed in, not only
+  // if they happen to go looking for it. Safe to call every load — the
+  // server-side check is a no-op once already processed (or if there was
+  // never a referral cookie to begin with); see app/api/referrals/route.js.
+  useEffect(() => {
+    if (!consented || !isSignedIn) return;
+    fetch("/api/referrals", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "confirm" }) }).catch(() => {});
+  }, [consented, isSignedIn]);
+
   // Pays the flat platform fee to unlock the current 250-point block —
   // the only payment this app takes (2026-08-25: no more Plus plan).
   async function handlePayPlatformFee() {
@@ -327,6 +340,16 @@ export default function Home() {
               style={{ background: "none", border: "none", cursor: "pointer", fontSize: 13, color: "#854F0B", fontWeight: 600, padding: 0, display: "flex", alignItems: "center", gap: 4 }}
             >
               ⭐ Rewards
+            </button>
+            {/* Same "same drawer, just discoverable from the nav bar" idiom
+                as Rewards above (2026-09-12). Registered-users-only is
+                enforced inside ReferralsTab itself (a guest sees the same
+                sign-in prompt Rewards shows), not by hiding this link. */}
+            <button
+              onClick={() => { setShowAdminConsole(false); setDrawerTab("referrals"); setShowAccountDrawer(true); }}
+              style={{ background: "none", border: "none", cursor: "pointer", fontSize: 13, color: "#4B5563", padding: 0 }}
+            >
+              Refer a friend
             </button>
             {SHOW_BRANDS_FORM && (
               <button onClick={() => { setShowAdminConsole(true); setActiveTab("brands"); }} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 13, color: "#4B5563", padding: 0 }}>For brands</button>
@@ -413,13 +436,13 @@ export default function Home() {
       {showAdminConsole ? (
         <>
           <div className="sllm-tabs" style={{ display: "flex", borderBottom: "0.5px solid var(--color-border-tertiary)", padding: "0 24px", background: "#fff" }}>
-            {["admin", "products", "queries", "performance", "vcommission-purchases", "answers", "reports", ...(SHOW_ADVERTISERS ? ["advertisers", "advertise"] : []), ...(SHOW_BRANDS_FORM ? ["brands"] : [])].map((tabKey) => (
+            {["admin", "products", "queries", "performance", "vcommission-purchases", "referrals-admin", "answers", "reports", ...(SHOW_ADVERTISERS ? ["advertisers", "advertise"] : []), ...(SHOW_BRANDS_FORM ? ["brands"] : [])].map((tabKey) => (
               <button
                 key={tabKey}
                 onClick={() => setActiveTab(tabKey)}
                 style={{ padding: "10px 14px", border: "none", background: "none", cursor: "pointer", fontSize: 13, fontWeight: activeTab === tabKey ? 500 : 400, color: activeTab === tabKey ? "#0F6E56" : "var(--color-text-secondary)", borderBottom: `2px solid ${activeTab === tabKey ? "#0F6E56" : "transparent"}` }}
               >
-                {tabKey === "admin" ? "Review queue" : tabKey === "brands" ? "For brands" : tabKey === "advertise" ? "Advertise" : tabKey === "vcommission-purchases" ? "vCommission purchases" : tabKey}
+                {tabKey === "admin" ? "Review queue" : tabKey === "brands" ? "For brands" : tabKey === "advertise" ? "Advertise" : tabKey === "vcommission-purchases" ? "vCommission purchases" : tabKey === "referrals-admin" ? "Referrals" : tabKey}
               </button>
             ))}
           </div>
@@ -432,6 +455,7 @@ export default function Home() {
             {activeTab === "queries" && <QueriesPanel />}
             {activeTab === "performance" && <PerformancePanel />}
             {activeTab === "vcommission-purchases" && <VcommissionPurchasesAdmin />}
+            {activeTab === "referrals-admin" && <ReferralsAdmin />}
             {activeTab === "answers" && <AnswersAdmin />}
             {activeTab === "reports" && <ReportsPanel />}
           </div>
@@ -502,13 +526,13 @@ export default function Home() {
           <div style={{ position: "fixed", top: 0, right: 0, bottom: 0, width: "min(420px, 100vw)", background: "var(--color-background-primary)", boxShadow: "-8px 0 24px rgba(16,24,40,0.12)", zIndex: 41, display: "flex", flexDirection: "column" }}>
             <div style={{ padding: "16px 18px", borderBottom: "0.5px solid var(--color-border-tertiary)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
               <div className="sllm-tabs sllm-drawer-tabs" style={{ display: "flex", gap: 4 }}>
-                {["saved", "watchlist", "rewards"].map((dt) => (
+                {["saved", "watchlist", "rewards", "referrals"].map((dt) => (
                   <button
                     key={dt}
                     onClick={() => setDrawerTab(dt)}
                     style={{ padding: "6px 11px", border: "none", borderRadius: 8, cursor: "pointer", fontSize: 12, fontWeight: drawerTab === dt ? 600 : 400, background: drawerTab === dt ? "var(--color-background-tertiary)" : "none", color: drawerTab === dt ? "var(--color-text-primary)" : "var(--color-text-secondary)", textTransform: "capitalize", position: "relative" }}
                   >
-                    {dt === "saved" ? tr("tabSaved") : dt === "watchlist" ? "Watchlist" : "Rewards"}
+                    {dt === "saved" ? tr("tabSaved") : dt === "watchlist" ? "Watchlist" : dt === "referrals" ? "Refer & Earn" : "Rewards"}
                     {dt === "watchlist" && watchlistUnseen > 0 && (
                       <span style={{ marginLeft: 5, background: "#D85A30", color: "#fff", borderRadius: 10, fontSize: 9, fontWeight: 700, padding: "1px 5px" }}>{watchlistUnseen}</span>
                     )}
@@ -534,6 +558,7 @@ export default function Home() {
 
               {drawerTab === "watchlist" && <PriceAlerts onMarkSeen={() => setWatchlistUnseen(0)} />}
               {drawerTab === "rewards" && <RewardsTab />}
+              {drawerTab === "referrals" && <ReferralsTab />}
               {drawerTab === "saved" && (
           <div>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", margin: "0 0 12px" }}>

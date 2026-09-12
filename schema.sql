@@ -664,3 +664,40 @@ ALTER TABLE loyalty_members ADD COLUMN IF NOT EXISTS kyc_first_name TEXT;
 ALTER TABLE loyalty_members ADD COLUMN IF NOT EXISTS kyc_last_name TEXT;
 ALTER TABLE redemptions ADD COLUMN IF NOT EXISTS kyc_first_name TEXT;
 ALTER TABLE redemptions ADD COLUMN IF NOT EXISTS kyc_last_name TEXT;
+
+-- =========================================================================
+-- REFERRAL PROGRAMME (2026-09-12)
+--
+-- A registered user shares their own link via their own WhatsApp (a wa.me
+-- deep link — we never send anything ourselves, never see the friend's
+-- phone number; see app/api/referrals/route.js). Each confirmed NEW
+-- registration earns the referrer a flat number of points (see
+-- REFERRALS.POINTS_PER_REFERRAL in lib/constants.js), capped at
+-- REFERRALS.MAX_REFERRALS successful referrals per referrer for life.
+--
+-- Deliberately no per-click tracking table here (unlike network_clicks) —
+-- nothing here needs per-click revenue/analytics the way affiliate clicks
+-- do. The /r/[code] landing route only sets a cookie; the only thing ever
+-- written to the database is a CONFIRMED, credited referral.
+-- =========================================================================
+CREATE TABLE IF NOT EXISTS referral_codes (
+  user_id TEXT PRIMARY KEY,          -- the referrer's Clerk user id
+  code TEXT NOT NULL UNIQUE,         -- short shareable code (8 hex chars)
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- referred_user_id UNIQUE is the core anti-double-credit guard: a person
+-- can complete exactly one successful referral, ever, no matter how many
+-- times a confirm attempt fires (page reloads, retries, etc.).
+CREATE TABLE IF NOT EXISTS referrals (
+  id SERIAL PRIMARY KEY,
+  referrer_user_id TEXT NOT NULL,
+  referred_user_id TEXT NOT NULL UNIQUE,
+  code TEXT NOT NULL,
+  points INTEGER NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_referrals_referrer ON referrals (referrer_user_id, created_at DESC);
+
+ALTER TABLE referral_codes ENABLE ROW LEVEL SECURITY;
+ALTER TABLE referrals ENABLE ROW LEVEL SECURITY;
