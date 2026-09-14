@@ -20,10 +20,15 @@
 //   the OAuth flow, request signing, and Order API are wired correctly,
 //   without needing a real BRAND_SKU_MAP entry yet. See testOrder() in
 //   lib/vouchers/qwikcilver.js for the full list of testSku keys.
+// POST {custom: {...}} -> places one order with any combination of
+//   qty/paymentCode/refno/telephone/products/corruptToken/corruptSignature
+//   overrides (added 2026-09-14 for the UAT test-case sheet's failure
+//   scenarios). See testOrderCustom()'s doc comment in
+//   lib/vouchers/qwikcilver.js for every option.
 
 import { auth, currentUser } from "@clerk/nextjs/server";
 import { isAdminUser } from "@/lib/isAdmin";
-import { getCategories, listCategoryProducts, getProduct, testOrder, TEST_SKUS, echoTest, getOrderStatus, getActivatedCards } from "@/lib/vouchers/qwikcilver";
+import { getCategories, listCategoryProducts, getProduct, testOrder, testOrderCustom, TEST_SKUS, echoTest, getOrderStatus, getActivatedCards } from "@/lib/vouchers/qwikcilver";
 
 export const maxDuration = 30;
 
@@ -85,8 +90,21 @@ export async function POST(req) {
   let body;
   try { body = await req.json(); } catch { return Response.json({ error: "Bad request" }, { status: 400 }); }
 
+  // {custom: {...}} -> testOrderCustom(), for the UAT failure-scenario
+  // rows (#6, #12, #14, #16-20, #27) that plain testOrder() can't reach
+  // (fixed qty/payment-method/single-SKU shape). See testOrderCustom()'s
+  // own doc comment in lib/vouchers/qwikcilver.js for every option.
+  if (body.custom && typeof body.custom === "object") {
+    try {
+      const result = await testOrderCustom(body.custom);
+      return Response.json(result);
+    } catch (err2) {
+      return Response.json({ error: String(err2?.message || err2) }, { status: 500 });
+    }
+  }
+
   const testSku = String(body.testSku || "");
-  if (!testSku) return Response.json({ error: `Pass {"testSku": "..."} — one of: ${Object.keys(TEST_SKUS).join(", ")}` }, { status: 400 });
+  if (!testSku) return Response.json({ error: `Pass {"testSku": "..."} — one of: ${Object.keys(TEST_SKUS).join(", ")}, or {"custom": {...}} — see testOrderCustom() in lib/vouchers/qwikcilver.js` }, { status: 400 });
 
   try {
     const result = await testOrder(testSku, Number(body.denomination) || 100);
