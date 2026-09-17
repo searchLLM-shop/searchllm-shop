@@ -137,34 +137,33 @@ export async function GET(req) {
     // "women red dress" query being outscored by children's dresses because
     // the catalog itself is skewed toward kids' listings under these words?
     //
-    // The previous version (2026-09-17) still timed out even through the
-    // tsv index: `dress` alone matches a huge share of a clothing-heavy
-    // 3.4M-row catalog, so the CTE still had to materialize and then
-    // ILIKE-scan a massive intermediate set before COUNT(*) could finish.
-    // Fixed two ways: (1) compound tsqueries (`dress & women`, letting GIN
-    // intersect both terms instead of filtering the smaller set in a
-    // second pass), (2) every count is capped at 5000 via a LIMIT
-    // subquery — plenty to answer "does this exist in real numbers", far
-    // cheaper than an exact count over however many hundreds of thousands
-    // of rows actually match.
-    const cappedCount = (label, tsq) => query(
-      `SELECT '${label}' AS label, COUNT(*)::int AS n FROM (
-         SELECT 1 FROM listings
-         WHERE status = 'approved' AND network = 'vCommission'
-           AND search_tsv @@ to_tsquery('english', $1)
-         LIMIT 5000
-       ) t`,
-      [tsq]
-    );
-    const [womens, kids, allDress] = await Promise.all([
-      cappedCount("womens_dresses", "dress & women"),
-      cappedCount("kids_dresses", "dress & (girl | baby | kid)"),
-      cappedCount("all_dresses", "dress"),
-    ]);
+    // Root cause of the earlier 60s timeouts, confirmed via ?timedquery=1
+    // (2026-09-17): "dress & women" alone runs in ~2.7s — the plan was
+    // never the problem. It was running 3 queries concurrently via
+    // Promise.all against lib/db.js's pool (max: 1 connection) PLUS one of
+    // those three counting bare "dress" — a weakly-selective term that
+    // forces Postgres to build a huge GIN bitmap before a LIMIT can even
+    // apply. On a 1-connection pool that one slow query blocked the other
+    // two behind it. Fixed by dropping the bare-"dress" count (not needed
+    // for this diagnosis anyway) and running the two compound queries
+    // sequentially, respecting the pool's actual concurrency.
+    const cappedCount = async (tsq) => {
+      const r = await query(
+        `SELECT COUNT(*)::int AS n FROM (
+           SELECT 1 FROM listings
+           WHERE status = 'approved' AND network = 'vCommission'
+             AND search_tsv @@ to_tsquery('english', $1)
+           LIMIT 5000
+         ) t`,
+        [tsq]
+      );
+      return r.rows[0].n;
+    };
+    const womensCount = await cappedCount("dress & women");
+    const kidsCount = await cappedCount("dress & (girl | baby | kid)");
     out.counts = {
-      womens_dresses: womens.rows[0].n,
-      kids_dresses: kids.rows[0].n,
-      all_dresses: allDress.rows[0].n,
+      womens_dresses: womensCount,
+      kids_dresses: kidsCount,
       note: "each capped at 5000 — a count of 5000 means 'at least 5000', not exact",
     };
     const womensSample = await query(`
