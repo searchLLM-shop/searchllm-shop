@@ -29,3 +29,6 @@ npm-debug.log*
 # Local one-time import script checkpoints (machine-specific progress state,
 # not something to share/commit — see scripts/import-vcommission-myntra.mjs)
 scripts/.myntra-import-progress.json
+
+.vercel
+.env*
