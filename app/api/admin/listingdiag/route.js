@@ -49,6 +49,38 @@ export async function GET(req) {
     return Response.json(out);
   }
 
+  if (params.get("probe")) {
+    // Does the catalog actually contain approved women's dresses, or is the
+    // "women red dress" query being outscored by children's dresses because
+    // the catalog itself is skewed toward kids' listings under these words?
+    const counts = await query(`
+      SELECT
+        COUNT(*) FILTER (WHERE status = 'approved' AND network = 'vCommission'
+          AND product ILIKE '%dress%' AND product ILIKE '%women%'
+          AND product NOT ILIKE '%girl%' AND product NOT ILIKE '%baby%' AND product NOT ILIKE '%kid%')::int
+          AS womens_dresses,
+        COUNT(*) FILTER (WHERE status = 'approved' AND network = 'vCommission'
+          AND product ILIKE '%dress%'
+          AND (product ILIKE '%girl%' OR product ILIKE '%baby%' OR product ILIKE '%kid%'))::int
+          AS kids_dresses,
+        COUNT(*) FILTER (WHERE status = 'approved' AND network = 'vCommission'
+          AND product ILIKE '%dress%')::int AS all_dresses
+      FROM listings
+    `);
+    out.counts = counts.rows[0];
+    const womensSample = await query(`
+      SELECT id, brand, product, category, keywords
+      FROM listings
+      WHERE status = 'approved' AND network = 'vCommission'
+        AND product ILIKE '%dress%' AND product ILIKE '%women%'
+        AND product NOT ILIKE '%girl%' AND product NOT ILIKE '%baby%' AND product NOT ILIKE '%kid%'
+      ORDER BY id DESC
+      LIMIT 8
+    `);
+    out.womensDressSample = womensSample.rows;
+    return Response.json(out);
+  }
+
   const q = params.get("q") || "";
   if (!q) return Response.json({ error: "Pass ?q=<search text> or ?health=1" }, { status: 400 });
   const country = params.get("country") || "IN";
