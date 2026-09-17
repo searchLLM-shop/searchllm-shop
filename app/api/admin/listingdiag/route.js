@@ -61,29 +61,42 @@ export async function GET(req) {
     // Does the catalog actually contain approved women's dresses, or is the
     // "women red dress" query being outscored by children's dresses because
     // the catalog itself is skewed toward kids' listings under these words?
-    const counts = await query(`
-      WITH dresses AS (
-        SELECT product FROM listings
-        WHERE status = 'approved' AND network = 'vCommission'
-          AND search_tsv @@ to_tsquery('english', 'dress')
-      )
-      SELECT
-        COUNT(*) FILTER (WHERE product ILIKE '%women%'
-          AND product NOT ILIKE '%girl%' AND product NOT ILIKE '%baby%' AND product NOT ILIKE '%kid%')::int
-          AS womens_dresses,
-        COUNT(*) FILTER (WHERE product ILIKE '%girl%' OR product ILIKE '%baby%' OR product ILIKE '%kid%')::int
-          AS kids_dresses,
-        COUNT(*)::int AS all_dresses
-      FROM dresses
-    `);
-    out.counts = counts.rows[0];
+    //
+    // The previous version (2026-09-17) still timed out even through the
+    // tsv index: `dress` alone matches a huge share of a clothing-heavy
+    // 3.4M-row catalog, so the CTE still had to materialize and then
+    // ILIKE-scan a massive intermediate set before COUNT(*) could finish.
+    // Fixed two ways: (1) compound tsqueries (`dress & women`, letting GIN
+    // intersect both terms instead of filtering the smaller set in a
+    // second pass), (2) every count is capped at 5000 via a LIMIT
+    // subquery — plenty to answer "does this exist in real numbers", far
+    // cheaper than an exact count over however many hundreds of thousands
+    // of rows actually match.
+    const cappedCount = (label, tsq) => query(
+      `SELECT '${label}' AS label, COUNT(*)::int AS n FROM (
+         SELECT 1 FROM listings
+         WHERE status = 'approved' AND network = 'vCommission'
+           AND search_tsv @@ to_tsquery('english', $1)
+         LIMIT 5000
+       ) t`,
+      [tsq]
+    );
+    const [womens, kids, allDress] = await Promise.all([
+      cappedCount("womens_dresses", "dress & women"),
+      cappedCount("kids_dresses", "dress & (girl | baby | kid)"),
+      cappedCount("all_dresses", "dress"),
+    ]);
+    out.counts = {
+      womens_dresses: womens.rows[0].n,
+      kids_dresses: kids.rows[0].n,
+      all_dresses: allDress.rows[0].n,
+      note: "each capped at 5000 — a count of 5000 means 'at least 5000', not exact",
+    };
     const womensSample = await query(`
       SELECT id, brand, product, category, keywords
       FROM listings
       WHERE status = 'approved' AND network = 'vCommission'
-        AND search_tsv @@ to_tsquery('english', 'dress')
-        AND product ILIKE '%women%'
-        AND product NOT ILIKE '%girl%' AND product NOT ILIKE '%baby%' AND product NOT ILIKE '%kid%'
+        AND search_tsv @@ to_tsquery('english', 'dress & women')
       ORDER BY id DESC
       LIMIT 8
     `);
