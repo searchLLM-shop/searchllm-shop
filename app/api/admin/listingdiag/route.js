@@ -109,23 +109,31 @@ export async function GET(req) {
     // execution entirely — most likely connection/pool exhaustion.
     const startedAt = Date.now();
     try {
-      // Sent as ONE multi-statement string (no bind params -> node-pg uses
-      // the simple query protocol, so SET and SELECT run on the SAME
-      // connection in one round trip) — two separate query() calls could
-      // each land on a different pooled connection, making the timeout a
-      // no-op for the second one.
+      // BEGIN + SET LOCAL (not plain SET) makes the timeout strictly
+      // transaction-scoped — it cannot outlive this one query, regardless
+      // of success or failure. (Real bug, found 2026-09-17: an earlier
+      // version used plain SET with no transaction wrapper and no cleanup
+      // — it leaked onto the pooled connection, which lib/db.js's pool
+      // only ever has ONE of (max: 1, reused across warm invocations), and
+      // capped a LATER, unrelated request's statement_timeout at 8s too.)
       const r = await query(`
-        SET statement_timeout = '8000';
+        BEGIN;
+        SET LOCAL statement_timeout = '8000';
         SELECT id FROM listings
         WHERE status = 'approved' AND network = 'vCommission'
           AND search_tsv @@ to_tsquery('english', 'dress & women')
         LIMIT 5000;
+        COMMIT;
       `);
       const rows = Array.isArray(r) ? r[r.length - 1]?.rows : r.rows;
       out.result = `success, ${rows?.length ?? "?"} rows`;
     } catch (err) {
       out.error = String(err?.message || err);
       out.errorCode = err?.code || null;
+      // The transaction is aborted on the server after an error — clear it
+      // so the (single, reused) connection isn't left mid-transaction for
+      // whatever request comes next.
+      try { await query(`ROLLBACK;`); } catch {}
     } finally {
       out.elapsedMs = Date.now() - startedAt;
     }
