@@ -57,6 +57,42 @@ export async function GET(req) {
     return Response.json(out);
   }
 
+  if (params.get("explain")) {
+    // The probe still hit the full 60s Vercel Runtime Timeout even after
+    // compound-tsquery + LIMIT 5000 (confirmed via `vercel logs` — a real
+    // Postgres-side timeout, not a client artifact). That's suspicious for
+    // an indexed, capped query, so check the two likeliest causes directly
+    // instead of guessing further: (1) table statistics never refreshed
+    // after the 3.4M-row bulk import, so the planner may be choosing a
+    // sequential scan over the GIN index; (2) whether the index is even
+    // being considered at all. EXPLAIN alone (no ANALYZE) just asks the
+    // planner for its chosen plan — it does not execute the query, so this
+    // returns instantly regardless of how slow the real query is.
+    const stats = await query(`
+      SELECT relname, n_live_tup, n_dead_tup, last_analyze, last_autoanalyze,
+             last_vacuum, last_autovacuum
+      FROM pg_stat_user_tables
+      WHERE relname = 'listings'
+    `);
+    out.tableStats = stats.rows[0] || null;
+
+    const plan = await query(`
+      EXPLAIN (FORMAT JSON)
+      SELECT 1 FROM listings
+      WHERE status = 'approved' AND network = 'vCommission'
+        AND search_tsv @@ to_tsquery('english', 'dress & women')
+      LIMIT 5000
+    `);
+    out.queryPlan = plan.rows[0]["QUERY PLAN"];
+
+    const idx = await query(`
+      SELECT indexname, indexdef FROM pg_indexes WHERE tablename = 'listings'
+    `);
+    out.indexes = idx.rows;
+
+    return Response.json(out);
+  }
+
   if (params.get("probe")) {
     // Does the catalog actually contain approved women's dresses, or is the
     // "women red dress" query being outscored by children's dresses because
