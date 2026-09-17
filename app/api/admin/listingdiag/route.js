@@ -93,6 +93,45 @@ export async function GET(req) {
     return Response.json(out);
   }
 
+  if (params.get("timedquery")) {
+    // The EXPLAIN plan came back CHEAP (cost ~4046, bitmap index scan on
+    // both idx_listings_search_tsv and idx_listings_status_approved) —
+    // that should execute in well under a second, nowhere near the 60s
+    // Vercel actually killed it at. Something other than a bad query plan
+    // is going on. This sets a tight Postgres-side statement_timeout (8s)
+    // around ONE real (non-EXPLAIN) execution of the same query, alone —
+    // no Promise.all concurrency this time, to rule out connection-pool
+    // contention as a separate variable. If Postgres itself cancels with
+    // "statement timeout" inside 8s, the query is genuinely slow to
+    // EXECUTE despite its cheap-looking plan (stale row estimates from
+    // the bulk import are the leading suspect). If instead this hangs
+    // past 8s with no such error, the problem is upstream of query
+    // execution entirely — most likely connection/pool exhaustion.
+    const startedAt = Date.now();
+    try {
+      // Sent as ONE multi-statement string (no bind params -> node-pg uses
+      // the simple query protocol, so SET and SELECT run on the SAME
+      // connection in one round trip) — two separate query() calls could
+      // each land on a different pooled connection, making the timeout a
+      // no-op for the second one.
+      const r = await query(`
+        SET statement_timeout = '8000';
+        SELECT id FROM listings
+        WHERE status = 'approved' AND network = 'vCommission'
+          AND search_tsv @@ to_tsquery('english', 'dress & women')
+        LIMIT 5000;
+      `);
+      const rows = Array.isArray(r) ? r[r.length - 1]?.rows : r.rows;
+      out.result = `success, ${rows?.length ?? "?"} rows`;
+    } catch (err) {
+      out.error = String(err?.message || err);
+      out.errorCode = err?.code || null;
+    } finally {
+      out.elapsedMs = Date.now() - startedAt;
+    }
+    return Response.json(out);
+  }
+
   if (params.get("probe")) {
     // Does the catalog actually contain approved women's dresses, or is the
     // "women red dress" query being outscored by children's dresses because
