@@ -15,7 +15,7 @@ import { isAdminUser } from "@/lib/isAdmin";
 import { query, findCandidateListings } from "@/lib/db";
 import { findTopMatchingListings, extractQueryTerms } from "@/lib/listingMatcher";
 
-export const maxDuration = 30;
+export const maxDuration = 60;
 
 export async function GET(req) {
   const { userId } = await auth();
@@ -26,11 +26,18 @@ export async function GET(req) {
   const params = new URL(req.url).searchParams;
   const out = {};
 
+  // Both modes below use search_tsv @@ to_tsquery(...) to narrow FIRST — it
+  // hits the existing GIN index (idx_listings_search_tsv). A bare ILIKE
+  // '%dress%' over 3.4M+ rows with no index support is a full sequential
+  // scan and timed out past this route's maxDuration on first try
+  // (2026-09-17) — the fix is narrowing via the index before doing any
+  // per-row regex work, not just raising the timeout.
   if (params.get("health")) {
     const byNetworkStatus = await query(`
       SELECT network, status, COUNT(*)::int AS n,
              COUNT(*) FILTER (WHERE network_link IS NULL OR network_link = '')::int AS no_link
       FROM listings
+      WHERE status = 'approved'
       GROUP BY network, status
       ORDER BY n DESC
       LIMIT 30
@@ -41,7 +48,8 @@ export async function GET(req) {
       SELECT id, brand, product, category, keywords, status,
              (network_link IS NOT NULL AND network_link <> '') AS "hasLink"
       FROM listings
-      WHERE network = 'vCommission' AND product ILIKE '%dress%'
+      WHERE network = 'vCommission' AND status = 'approved'
+        AND search_tsv @@ to_tsquery('english', 'dress')
       ORDER BY id DESC
       LIMIT 8
     `);
@@ -54,25 +62,27 @@ export async function GET(req) {
     // "women red dress" query being outscored by children's dresses because
     // the catalog itself is skewed toward kids' listings under these words?
     const counts = await query(`
+      WITH dresses AS (
+        SELECT product FROM listings
+        WHERE status = 'approved' AND network = 'vCommission'
+          AND search_tsv @@ to_tsquery('english', 'dress')
+      )
       SELECT
-        COUNT(*) FILTER (WHERE status = 'approved' AND network = 'vCommission'
-          AND product ILIKE '%dress%' AND product ILIKE '%women%'
+        COUNT(*) FILTER (WHERE product ILIKE '%women%'
           AND product NOT ILIKE '%girl%' AND product NOT ILIKE '%baby%' AND product NOT ILIKE '%kid%')::int
           AS womens_dresses,
-        COUNT(*) FILTER (WHERE status = 'approved' AND network = 'vCommission'
-          AND product ILIKE '%dress%'
-          AND (product ILIKE '%girl%' OR product ILIKE '%baby%' OR product ILIKE '%kid%'))::int
+        COUNT(*) FILTER (WHERE product ILIKE '%girl%' OR product ILIKE '%baby%' OR product ILIKE '%kid%')::int
           AS kids_dresses,
-        COUNT(*) FILTER (WHERE status = 'approved' AND network = 'vCommission'
-          AND product ILIKE '%dress%')::int AS all_dresses
-      FROM listings
+        COUNT(*)::int AS all_dresses
+      FROM dresses
     `);
     out.counts = counts.rows[0];
     const womensSample = await query(`
       SELECT id, brand, product, category, keywords
       FROM listings
       WHERE status = 'approved' AND network = 'vCommission'
-        AND product ILIKE '%dress%' AND product ILIKE '%women%'
+        AND search_tsv @@ to_tsquery('english', 'dress')
+        AND product ILIKE '%women%'
         AND product NOT ILIKE '%girl%' AND product NOT ILIKE '%baby%' AND product NOT ILIKE '%kid%'
       ORDER BY id DESC
       LIMIT 8
