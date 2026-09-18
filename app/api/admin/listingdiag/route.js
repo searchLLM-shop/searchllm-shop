@@ -27,6 +27,39 @@ export async function GET(req) {
   const params = new URL(req.url).searchParams;
   const out = {};
 
+  if (params.get("explainCandidates")) {
+    // findCandidateListings itself started 504-ing right after the bulk
+    // approve (2026-09-18) grew the approved pool 22x (169K -> 3.8M) —
+    // check whether its query plan has genuinely gotten more expensive at
+    // this new scale, via EXPLAIN alone (no execution, so this call can't
+    // itself time out regardless of how slow the real query has become).
+    // Mirrors findCandidateListings' exact SQL shape (lib/db.js) — same
+    // WHERE clause, same ORDER BY ts_rank, so the plan shown here is
+    // exactly what that function is actually choosing right now.
+    const qtext = String(params.get("explainCandidates"));
+    const terms = extractQueryTerms(qtext);
+    const ftsQuery = terms
+      .filter((t) => !t.includes(" "))
+      .map((t) => t.replace(/[^a-z0-9]/g, ""))
+      .filter((t) => t.length >= 3)
+      .join(" | ");
+    out.terms = terms;
+    out.ftsQuery = ftsQuery;
+    const plan = await query(
+      `EXPLAIN (FORMAT JSON)
+       SELECT id FROM listings
+       WHERE status = 'approved'
+         AND (keywords && $1::text[]
+              OR ($2 <> '' AND search_tsv @@ to_tsquery('english', $2)))
+       ORDER BY (CASE WHEN $2 <> '' THEN ts_rank(search_tsv, to_tsquery('english', $2)) ELSE 0 END) DESC,
+                rating_count DESC NULLS LAST, id DESC
+       LIMIT 200`,
+      [terms, ftsQuery]
+    );
+    out.queryPlan = plan.rows[0]["QUERY PLAN"];
+    return Response.json(out);
+  }
+
   if (params.get("analyze")) {
     // ~2.18M rows just flipped from 'pending' to 'approved' in one bulk
     // operation (2026-09-18, approving the long-pending Myntra import) —
