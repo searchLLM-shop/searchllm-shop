@@ -51,13 +51,24 @@ export async function GET(req) {
     // so the actual scoring inputs (findTopMatchingListings, lib/
     // listingMatcher.js) can be checked against real data instead of the
     // assumed-kids-heavy sample seen so far.
+    // No ORDER BY id DESC (real bug, found 2026-09-18): sorting by a plain
+    // btree-indexed column unrelated to the filter can push Postgres into
+    // scanning that index in sort order, filtering row by row, instead of
+    // building the bitmap from idx_listings_search_tsv first — fine when
+    // matches are dense near the high end of `id`, a very long scan when
+    // they aren't. The bare LIMIT-only version (no ORDER BY) already
+    // proven fast via ?timedquery=1 doesn't have this failure mode; row
+    // order doesn't matter for this diagnostic anyway. (Real production
+    // code doesn't hit this: findCandidateListings orders by ts_rank
+    // first, a computed expression with no matching index, which forces a
+    // Sort node AFTER the bitmap scan rather than tempting the planner
+    // into scanning an index in output order.)
     const tsq = String(params.get("sample")).replace(/'/g, "''");
     const r = await query(
       `SELECT id, brand, product, keywords, price
        FROM listings
        WHERE status = 'approved' AND network = 'vCommission'
          AND search_tsv @@ to_tsquery('english', '${tsq}')
-       ORDER BY id DESC
        LIMIT 8`
     );
     out.tsq = params.get("sample");
@@ -89,7 +100,6 @@ export async function GET(req) {
       FROM listings
       WHERE network = 'vCommission' AND status = 'approved'
         AND search_tsv @@ to_tsquery('english', 'dress')
-      ORDER BY id DESC
       LIMIT 8
     `);
     out.myntraDressSample = myntraSample.rows;
@@ -226,7 +236,6 @@ export async function GET(req) {
       FROM listings
       WHERE status = 'approved' AND network = 'vCommission'
         AND search_tsv @@ to_tsquery('english', 'dress & women')
-      ORDER BY id DESC
       LIMIT 8
     `);
     out.womensDressSample = womensSample.rows;
