@@ -329,7 +329,7 @@ export async function POST(req) {
     // is a ranker, so give it a wider shortlist to choose from. At ~30
     // tokens per candidate line this costs almost nothing, and it makes
     // "the real product was #5 in mechanical order" a non-event.
-    const topMatches = findTopMatchingListings(matchText, candidates, userCountry, 8);
+    const topMatches = findTopMatchingListings(matchText, candidates, userCountry, 8, intent?.productType);
 
     // A search with no relevant partner product is an inventory gap worth
     // measuring — it tells us which categories to go and get merchants for.

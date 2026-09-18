@@ -262,7 +262,13 @@ export async function GET(req) {
     hasLink: Boolean(c.networkLink),
   }));
 
-  const topMatches = findTopMatchingListings(q, candidates, country, 8);
+  // ?productType=<...> lets this diagnostic exercise the productType boost
+  // (added 2026-09-18 to lib/listingMatcher.js) without paying for a live
+  // extractIntent() call — the real research route always passes
+  // intent?.productType through automatically.
+  const productType = params.get("productType") || null;
+  out.productType = productType;
+  const topMatches = findTopMatchingListings(q, candidates, country, 8, productType);
   out.topMatches = topMatches.map((m) => ({
     id: m.listing.id, brand: m.listing.brand, product: m.listing.product,
     network: m.listing.network, score: Number(m.score.toFixed(1)),
