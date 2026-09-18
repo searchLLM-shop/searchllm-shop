@@ -340,7 +340,7 @@ export async function POST(req) {
     // dress for a party" needed the same fix as an explicit "women red
     // dress", since most real shoppers never say "women" at all).
     const excludeMinors = !mentionsMinors(matchText);
-    const candidates = await findCandidateListings(Array.from(new Set(queryTerms)), userCountry, 200, excludeMinors);
+    const candidates = await findCandidateListings(Array.from(new Set(queryTerms)), userCountry, 200, excludeMinors, matchText);
     // Top few plausible candidates — the MODEL chooses which one (if any)
     // genuinely answers the question. Mechanical scoring is the recall gate;
     // the model is the precision gate. See findTopMatchingListings.

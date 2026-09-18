@@ -38,18 +38,36 @@ export async function GET(req) {
     // exactly what that function is actually choosing right now.
     const qtext = String(params.get("explainCandidates"));
     const terms = extractQueryTerms(qtext);
-    // Mirrors findCandidateListings' MAX_FTS_TERMS cap (lib/db.js,
-    // 2026-09-18) exactly — this diagnostic's own ftsQuery construction
-    // needs to match the real function's, not just its WHERE/ORDER BY
-    // shape, or the plan shown here is for a query the real code doesn't
-    // actually run anymore.
-    const ftsQuery = terms
+    // Mirrors findCandidateListings' quorum logic (lib/db.js, 2026-09-18)
+    // exactly — this diagnostic's own ftsQuery construction needs to
+    // match the real function's, not just its WHERE/ORDER BY shape, or
+    // the plan shown here is for a query the real code doesn't actually
+    // run anymore. (Two earlier versions of this mirror got the pool
+    // wrong — see the long comment on findCandidateListings for the full
+    // story of why a length-based cap, and then a pool drawn from the
+    // already-expanded terms array, both failed.)
+    const cleanTerms = terms
       .filter((t) => !t.includes(" "))
       .map((t) => t.replace(/[^a-z0-9]/g, ""))
-      .filter((t) => t.length >= 3)
-      .sort((a, b) => b.length - a.length)
-      .slice(0, 15)
-      .join(" | ");
+      .filter((t) => t.length >= 3);
+    let ftsQuery;
+    if (cleanTerms.length <= 8) {
+      ftsQuery = cleanTerms.join(" | ");
+    } else {
+      const plainWords = qtext
+        .toLowerCase()
+        .replace(/[^a-z0-9\s]/g, " ")
+        .split(/\s+/)
+        .filter((w) => w.length >= 4 && !/^\d+$/.test(w));
+      const pool = plainWords.length >= 2
+        ? Array.from(new Set(plainWords)).sort((a, b) => b.length - a.length).slice(0, 8)
+        : Array.from(new Set(cleanTerms)).sort((a, b) => b.length - a.length).slice(0, 8);
+      const pairs = [];
+      for (let i = 0; i < pool.length; i++) {
+        for (let j = i + 1; j < pool.length; j++) pairs.push(`(${pool[i]} & ${pool[j]})`);
+      }
+      ftsQuery = pairs.join(" | ");
+    }
     out.terms = terms;
     out.ftsQuery = ftsQuery;
     const plan = await query(
@@ -381,7 +399,7 @@ export async function GET(req) {
   // exactly, so this diagnostic reflects real production behavior.
   const excludeMinors = !mentionsMinors(q);
   out.excludeMinors = excludeMinors;
-  const candidates = await findCandidateListings(Array.from(new Set(queryTerms)), country, 200, excludeMinors);
+  const candidates = await findCandidateListings(Array.from(new Set(queryTerms)), country, 200, excludeMinors, q);
   out.candidateCount = candidates.length;
   out.candidateSample = candidates.slice(0, 5).map((c) => ({
     id: c.id, brand: c.brand, product: c.product, category: c.category,
