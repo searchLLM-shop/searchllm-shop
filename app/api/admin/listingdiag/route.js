@@ -67,6 +67,34 @@ export async function GET(req) {
     return Response.json(out);
   }
 
+  if (params.get("myntraSample")) {
+    // Every fashion match this session has actually resolved to
+    // merchant_domain "shopsy.in" (a different vCommission campaign, not
+    // Myntra) — the user explicitly wants to SEE a real myntra.com link, so
+    // check what real Myntra-hosted listings actually look like before
+    // recommending a query, rather than assuming the fashion queries
+    // already tested land on Myntra specifically.
+    const r = await query(
+      `SELECT id, brand, product, keywords, price, merchant_domain AS "merchantDomain"
+       FROM listings
+       WHERE status = 'approved' AND network = 'vCommission'
+         AND merchant_domain = 'myntra.com'
+       LIMIT 10`
+    );
+    out.myntraCount = r.rows.length;
+    out.myntraSample = r.rows;
+    const domainCounts = await query(
+      `SELECT merchant_domain AS "merchantDomain", COUNT(*)::int AS n
+       FROM listings
+       WHERE status = 'approved' AND network = 'vCommission'
+       GROUP BY merchant_domain
+       ORDER BY n DESC
+       LIMIT 10`
+    );
+    out.domainCounts = domainCounts.rows;
+    return Response.json(out);
+  }
+
   if (params.get("sample")) {
     // 2149 women's dresses vs 2041 kids' dresses in the approved Myntra
     // catalog (confirmed via ?timedquery=1, 2026-09-18) — comparable
