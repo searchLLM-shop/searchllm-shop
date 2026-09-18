@@ -44,6 +44,29 @@ export async function GET(req) {
     return Response.json(out);
   }
 
+  if (params.get("nonaccessory")) {
+    // "iphone 15" returned nothing but cases/cables/covers in topMatches
+    // (2026-09-18) — before treating this as a scoring bug (same shape as
+    // the dress fix), check the more basic question first, same discipline
+    // as the earlier catalog-gap check: does this catalog carry ANY
+    // non-accessory "iphone 15" listing at all, or is this a genuine
+    // inventory gap (no actual phones in this feed, only accessories for
+    // them) rather than something scoring can fix. tsv-narrows first (the
+    // proven-fast pattern), THEN excludes common accessory words on that
+    // already-small set.
+    const tsq = String(params.get("nonaccessory")).replace(/'/g, "''");
+    const r = await query(
+      `SELECT id, brand, product, price FROM listings
+       WHERE status = 'approved' AND network = 'vCommission'
+         AND search_tsv @@ to_tsquery('english', '${tsq}')
+         AND product !~* '\\y(cover|case|cable|charger|screen|protector|tempered|glass|skin|pouch|holder|stand|strap|adapter|sticker)\\y'
+       LIMIT 10`
+    );
+    out.tsq = params.get("nonaccessory");
+    out.nonAccessoryMatches = r.rows;
+    return Response.json(out);
+  }
+
   if (params.get("sample")) {
     // 2149 women's dresses vs 2041 kids' dresses in the approved Myntra
     // catalog (confirmed via ?timedquery=1, 2026-09-18) — comparable
