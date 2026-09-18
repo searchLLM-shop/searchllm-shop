@@ -38,10 +38,17 @@ export async function GET(req) {
     // exactly what that function is actually choosing right now.
     const qtext = String(params.get("explainCandidates"));
     const terms = extractQueryTerms(qtext);
+    // Mirrors findCandidateListings' MAX_FTS_TERMS cap (lib/db.js,
+    // 2026-09-18) exactly — this diagnostic's own ftsQuery construction
+    // needs to match the real function's, not just its WHERE/ORDER BY
+    // shape, or the plan shown here is for a query the real code doesn't
+    // actually run anymore.
     const ftsQuery = terms
       .filter((t) => !t.includes(" "))
       .map((t) => t.replace(/[^a-z0-9]/g, ""))
       .filter((t) => t.length >= 3)
+      .sort((a, b) => b.length - a.length)
+      .slice(0, 15)
       .join(" | ");
     out.terms = terms;
     out.ftsQuery = ftsQuery;
