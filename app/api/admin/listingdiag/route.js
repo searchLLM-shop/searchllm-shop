@@ -36,46 +36,35 @@ export async function GET(req) {
     // Mirrors findCandidateListings' exact SQL shape (lib/db.js) — same
     // WHERE clause, same ORDER BY ts_rank, so the plan shown here is
     // exactly what that function is actually choosing right now.
+    // Mirrors findCandidateListings' TWO-STAGE shape (lib/db.js,
+    // 2026-09-18) exactly — three earlier attempts at taming the tsquery
+    // itself (length cap, then a co-occurrence quorum two different ways)
+    // all failed: this catalog's fashion titles are formulaic enough that
+    // even requiring "women"+"saree" to co-occur barely narrowed anything
+    // real, so the fix moved to bounding the WORK (inner LIMIT, no ORDER
+    // BY) instead of trying to shrink the match count via vocabulary
+    // heuristics. Plain OR again — see the long comment on
+    // findCandidateListings for the full story.
     const qtext = String(params.get("explainCandidates"));
     const terms = extractQueryTerms(qtext);
-    // Mirrors findCandidateListings' quorum logic (lib/db.js, 2026-09-18)
-    // exactly — this diagnostic's own ftsQuery construction needs to
-    // match the real function's, not just its WHERE/ORDER BY shape, or
-    // the plan shown here is for a query the real code doesn't actually
-    // run anymore. (Two earlier versions of this mirror got the pool
-    // wrong — see the long comment on findCandidateListings for the full
-    // story of why a length-based cap, and then a pool drawn from the
-    // already-expanded terms array, both failed.)
-    const cleanTerms = terms
+    const ftsQuery = terms
       .filter((t) => !t.includes(" "))
       .map((t) => t.replace(/[^a-z0-9]/g, ""))
-      .filter((t) => t.length >= 3);
-    let ftsQuery;
-    if (cleanTerms.length <= 8) {
-      ftsQuery = cleanTerms.join(" | ");
-    } else {
-      const plainWords = qtext
-        .toLowerCase()
-        .replace(/[^a-z0-9\s]/g, " ")
-        .split(/\s+/)
-        .filter((w) => w.length >= 4 && !/^\d+$/.test(w));
-      const pool = plainWords.length >= 2
-        ? Array.from(new Set(plainWords)).sort((a, b) => b.length - a.length).slice(0, 8)
-        : Array.from(new Set(cleanTerms)).sort((a, b) => b.length - a.length).slice(0, 8);
-      const pairs = [];
-      for (let i = 0; i < pool.length; i++) {
-        for (let j = i + 1; j < pool.length; j++) pairs.push(`(${pool[i]} & ${pool[j]})`);
-      }
-      ftsQuery = pairs.join(" | ");
-    }
+      .filter((t) => t.length >= 3)
+      .join(" | ");
     out.terms = terms;
     out.ftsQuery = ftsQuery;
     const plan = await query(
       `EXPLAIN (FORMAT JSON)
-       SELECT id FROM listings
-       WHERE status = 'approved'
-         AND (keywords && $1::text[]
-              OR ($2 <> '' AND search_tsv @@ to_tsquery('english', $2)))
+       WITH seed AS (
+         SELECT id, search_tsv, rating_count
+         FROM listings
+         WHERE status = 'approved'
+           AND (keywords && $1::text[]
+                OR ($2 <> '' AND search_tsv @@ to_tsquery('english', $2)))
+         LIMIT 5000
+       )
+       SELECT id FROM seed
        ORDER BY (CASE WHEN $2 <> '' THEN ts_rank(search_tsv, to_tsquery('english', $2)) ELSE 0 END) DESC,
                 rating_count DESC NULLS LAST, id DESC
        LIMIT 200`,
