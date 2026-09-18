@@ -281,7 +281,7 @@ export async function GET(req) {
   out.candidateCount = candidates.length;
   out.candidateSample = candidates.slice(0, 5).map((c) => ({
     id: c.id, brand: c.brand, product: c.product, category: c.category,
-    keywords: c.keywords, network: c.network, status: undefined,
+    keywords: c.keywords, network: c.network, price: c.price, status: undefined,
     hasLink: Boolean(c.networkLink),
   }));
 
@@ -294,7 +294,7 @@ export async function GET(req) {
   const topMatches = findTopMatchingListings(q, candidates, country, 8, productType);
   out.topMatches = topMatches.map((m) => ({
     id: m.listing.id, brand: m.listing.brand, product: m.listing.product,
-    network: m.listing.network, score: Number(m.score.toFixed(1)),
+    network: m.listing.network, price: m.listing.price, score: Number(m.score.toFixed(1)),
     hasLink: Boolean(m.listing.networkLink),
   }));
 
