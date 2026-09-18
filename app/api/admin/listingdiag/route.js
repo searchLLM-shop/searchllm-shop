@@ -14,6 +14,7 @@ import { auth, currentUser } from "@clerk/nextjs/server";
 import { isAdminUser } from "@/lib/isAdmin";
 import { query, findCandidateListings } from "@/lib/db";
 import { findTopMatchingListings, extractQueryTerms } from "@/lib/listingMatcher";
+import { hasAdultContext, mentionsMinors, mentionsAdultAudience } from "@/lib/contentFilter";
 
 export const maxDuration = 60;
 
@@ -249,7 +250,11 @@ export async function GET(req) {
   const queryTerms = extractQueryTerms(q);
   out.queryTerms = queryTerms;
 
-  const candidates = await findCandidateListings(Array.from(new Set(queryTerms)), country);
+  // Mirrors app/api/research/route.js's own excludeMinors computation
+  // exactly, so this diagnostic reflects real production behavior.
+  const excludeMinors = !mentionsMinors(q) && (hasAdultContext(q) || mentionsAdultAudience(q));
+  out.excludeMinors = excludeMinors;
+  const candidates = await findCandidateListings(Array.from(new Set(queryTerms)), country, 200, excludeMinors);
   out.candidateCount = candidates.length;
   out.candidateSample = candidates.slice(0, 5).map((c) => ({
     id: c.id, brand: c.brand, product: c.product, category: c.category,

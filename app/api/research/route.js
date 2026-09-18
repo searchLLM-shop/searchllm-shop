@@ -8,7 +8,7 @@
 import { auth, currentUser } from "@clerk/nextjs/server";
 import { findCandidateListings, insertMicrosite, getAndIncrementUsage, getUsageToday, reserveSlug } from "@/lib/db";
 import { isAdminUser } from "@/lib/isAdmin";
-import { checkQuery } from "@/lib/contentFilter";
+import { checkQuery, hasAdultContext, mentionsMinors, mentionsAdultAudience } from "@/lib/contentFilter";
 import { slugify } from "@/lib/slug";
 import { languageForModel, resolveLocale } from "@/lib/i18n";
 import { recordEvent, recordSearchQuery } from "@/lib/db";
@@ -314,8 +314,14 @@ export async function POST(req) {
       ...(vision?.isProduct ? vision.searchTerms : []),
       ...(vision?.productType ? extractQueryTerms(vision.productType) : []),
     ];
-    const candidates = await findCandidateListings(Array.from(new Set(queryTerms)), userCountry);
     const matchText = [query, vision?.description, vision?.productType].filter(Boolean).join(" ");
+    // Computed here (not left to findTopMatchingListings' own post-fetch
+    // filter alone) and passed all the way down to the SQL candidate
+    // fetch — see findCandidateListings' own comment in lib/db.js for why
+    // filtering only after the top-`limit` candidates are already chosen
+    // isn't enough on a catalog where kids' listings rank this densely.
+    const excludeMinors = !mentionsMinors(matchText) && (hasAdultContext(matchText) || mentionsAdultAudience(matchText));
+    const candidates = await findCandidateListings(Array.from(new Set(queryTerms)), userCountry, 200, excludeMinors);
     // Top few plausible candidates — the MODEL chooses which one (if any)
     // genuinely answers the question. Mechanical scoring is the recall gate;
     // the model is the precision gate. See findTopMatchingListings.
