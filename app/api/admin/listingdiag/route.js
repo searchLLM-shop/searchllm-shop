@@ -134,18 +134,27 @@ export async function GET(req) {
     const tsq = params.get("tsq") || "dress & women";
     const startedAt = Date.now();
     try {
+      // Real bug (found 2026-09-18): with COMMIT as the trailing statement,
+      // r[r.length - 1] was COMMIT's (empty) result, not the SELECT's —
+      // every "0 rows" result since the BEGIN/COMMIT wrapper was added is
+      // an artifact of THIS bug, not a real finding about the catalog.
+      // Fixed by making SELECT the last statement in the batch (so it's
+      // unambiguously r[r.length - 1]) and issuing ROLLBACK as a SEPARATE
+      // follow-up call — safe for a read-only SELECT either way, and this
+      // pool's one connection (max: 1) is what ROLLBACK is protecting,
+      // same reasoning as the error path below already had.
       const r = await query(
         `BEGIN;
          SET LOCAL statement_timeout = '8000';
          SELECT id FROM listings
          WHERE status = 'approved' AND network = 'vCommission'
            AND search_tsv @@ to_tsquery('english', '${tsq.replace(/'/g, "''")}')
-         LIMIT 5000;
-         COMMIT;`
+         LIMIT 5000;`
       );
       const rows = Array.isArray(r) ? r[r.length - 1]?.rows : r.rows;
       out.tsq = tsq;
       out.result = `success, ${rows?.length ?? "?"} rows`;
+      try { await query(`ROLLBACK;`); } catch {}
     } catch (err) {
       out.tsq = tsq;
       out.error = String(err?.message || err);
@@ -165,27 +174,23 @@ export async function GET(req) {
     // "women red dress" query being outscored by children's dresses because
     // the catalog itself is skewed toward kids' listings under these words?
     //
-    // Root cause of the earlier 60s timeouts, confirmed via ?timedquery=1
-    // (2026-09-17): "dress & women" alone runs in ~2.7s — the plan was
-    // never the problem. It was running 3 queries concurrently via
-    // Promise.all against lib/db.js's pool (max: 1 connection) PLUS one of
-    // those three counting bare "dress" — a weakly-selective term that
-    // forces Postgres to build a huge GIN bitmap before a LIMIT can even
-    // apply. On a 1-connection pool that one slow query blocked the other
-    // two behind it. Fixed by dropping the bare-"dress" count (not needed
-    // for this diagnosis anyway) and running the two compound queries
-    // sequentially, respecting the pool's actual concurrency.
+    // Every attempt at this via a parameterized query ($1, extended
+    // protocol) either hit the full 60s Vercel timeout or (once concurrency
+    // and a leaked statement_timeout were both fixed) still never came
+    // back. ?timedquery=1 proved the SAME logical query, sent as a raw
+    // interpolated string (simple protocol, no bind params), runs in
+    // 2-4 seconds for both "dress & women" and "dress & (girl|baby|kid)" —
+    // so the query and the data were never the problem, something about
+    // the parameterized/extended-protocol form specifically was. Reusing
+    // the proven-working shape here rather than chasing that further.
     const cappedCount = async (tsq) => {
       const r = await query(
-        `SELECT COUNT(*)::int AS n FROM (
-           SELECT 1 FROM listings
-           WHERE status = 'approved' AND network = 'vCommission'
-             AND search_tsv @@ to_tsquery('english', $1)
-           LIMIT 5000
-         ) t`,
-        [tsq]
+        `SELECT id FROM listings
+         WHERE status = 'approved' AND network = 'vCommission'
+           AND search_tsv @@ to_tsquery('english', '${tsq.replace(/'/g, "''")}')
+         LIMIT 5000`
       );
-      return r.rows[0].n;
+      return r.rows.length;
     };
     const womensCount = await cappedCount("dress & women");
     const kidsCount = await cappedCount("dress & (girl | baby | kid)");
