@@ -10,6 +10,14 @@ import { auth, currentUser } from "@clerk/nextjs/server";
 import { getPendingListings, countPendingListings, setListingStatus, bulkSetPendingStatus } from "@/lib/db";
 import { isAdminUser } from "@/lib/isAdmin";
 
+// Raised from the platform default (2026-09-18): bulkSetPendingStatus is
+// now batched internally and safe to re-invoke, but each call still
+// spends real time working through its own time budget (45s, comfortably
+// under this) before returning — the previous unset maxDuration left this
+// route on whatever short default the platform applies, ample for the
+// single-row PATCH but not for a POST against millions of pending rows.
+export const maxDuration = 60;
+
 async function isAdmin() {
   const user = await currentUser();
   return isAdminUser(user);
@@ -48,6 +56,13 @@ export async function PATCH(req) {
 
 // Bulk approve/reject. Body: { status: 'approved'|'rejected', network?: 'Awin' }
 // If network is omitted, applies to ALL pending listings.
+//
+// Batched, not all-at-once (2026-09-18) — see bulkSetPendingStatus's own
+// comment in lib/db.js. { done: false } means real work happened but the
+// time budget ran out with pending rows still left: call this same
+// request again (identical body) to continue — every call only ever
+// touches rows still in 'pending', so repeating it is always safe, never
+// double-applies to an already-approved row.
 export async function POST(req) {
   const { userId } = await auth();
   if (!userId) return Response.json({ error: "Not signed in" }, { status: 401 });
@@ -58,6 +73,6 @@ export async function POST(req) {
     return Response.json({ error: "Invalid status" }, { status: 400 });
   }
 
-  const count = await bulkSetPendingStatus(status, network || null);
-  return Response.json({ status, network: network || "all", count });
+  const { count, done } = await bulkSetPendingStatus(status, network || null);
+  return Response.json({ status, network: network || "all", count, done });
 }
