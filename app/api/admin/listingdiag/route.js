@@ -67,6 +67,26 @@ export async function GET(req) {
     return Response.json(out);
   }
 
+  if (params.get("feedStatus")) {
+    // scripts/import-vcommission-myntra.mjs hardcodes status='pending',
+    // source='feed' on every insert — bulk approval was always meant to
+    // be a SEPARATE step. myntraSample's zero result (2026-09-18) means
+    // either that step never ran, never persisted, or something else is
+    // going on — check the real current state of the 'feed'-sourced
+    // vCommission rows directly instead of guessing. idx_listings_source
+    // is a real btree index, so this is filtered, not a bare table scan.
+    const byStatus = await query(
+      `SELECT status, COUNT(*)::int AS n,
+              COUNT(*) FILTER (WHERE merchant_domain = 'myntra.com')::int AS myntra_domain_n
+       FROM listings
+       WHERE network = 'vCommission' AND source = 'feed'
+       GROUP BY status
+       ORDER BY n DESC`
+    );
+    out.byStatus = byStatus.rows;
+    return Response.json(out);
+  }
+
   if (params.get("myntraSample")) {
     // Every fashion match this session has actually resolved to
     // merchant_domain "shopsy.in" (a different vCommission campaign, not
