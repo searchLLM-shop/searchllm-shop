@@ -94,40 +94,43 @@ export async function GET(req) {
   }
 
   if (params.get("timedquery")) {
-    // The EXPLAIN plan came back CHEAP (cost ~4046, bitmap index scan on
-    // both idx_listings_search_tsv and idx_listings_status_approved) —
-    // that should execute in well under a second, nowhere near the 60s
-    // Vercel actually killed it at. Something other than a bad query plan
-    // is going on. This sets a tight Postgres-side statement_timeout (8s)
-    // around ONE real (non-EXPLAIN) execution of the same query, alone —
-    // no Promise.all concurrency this time, to rule out connection-pool
-    // contention as a separate variable. If Postgres itself cancels with
-    // "statement timeout" inside 8s, the query is genuinely slow to
-    // EXECUTE despite its cheap-looking plan (stale row estimates from
-    // the bulk import are the leading suspect). If instead this hangs
-    // past 8s with no such error, the problem is upstream of query
-    // execution entirely — most likely connection/pool exhaustion.
+    // General-purpose: test ANY tsquery expression's real execution time,
+    // safely — every subsequent probe attempt still hit the full 60s
+    // Vercel timeout even after fixing concurrency and the statement_
+    // timeout leak, so the remaining suspect is that "dress & women" (the
+    // only term actually verified fast so far, 2.7s) isn't representative
+    // of every compound term this route runs — "dress & (girl|baby|kid)"
+    // may itself be weakly selective if the catalog is kids-dress-heavy
+    // (exactly what the topMatches results already suggested), hitting
+    // the same "huge GIN bitmap before LIMIT can help" cost bare "dress"
+    // had. ?timedquery=1&tsq=dress+%26+(girl+%7C+baby+%7C+kid) tests that
+    // directly. Defaults to "dress & women" (the one already confirmed
+    // fast) when no ?tsq= is given.
+    //
+    // BEGIN + SET LOCAL (not plain SET) makes the timeout strictly
+    // transaction-scoped — it cannot outlive this one query, regardless
+    // of success or failure. (Real bug, found 2026-09-17: an earlier
+    // version used plain SET with no transaction wrapper and no cleanup
+    // — it leaked onto the pooled connection, which lib/db.js's pool
+    // only ever has ONE of (max: 1, reused across warm invocations), and
+    // capped a LATER, unrelated request's statement_timeout at 8s too.)
+    const tsq = params.get("tsq") || "dress & women";
     const startedAt = Date.now();
     try {
-      // BEGIN + SET LOCAL (not plain SET) makes the timeout strictly
-      // transaction-scoped — it cannot outlive this one query, regardless
-      // of success or failure. (Real bug, found 2026-09-17: an earlier
-      // version used plain SET with no transaction wrapper and no cleanup
-      // — it leaked onto the pooled connection, which lib/db.js's pool
-      // only ever has ONE of (max: 1, reused across warm invocations), and
-      // capped a LATER, unrelated request's statement_timeout at 8s too.)
-      const r = await query(`
-        BEGIN;
-        SET LOCAL statement_timeout = '8000';
-        SELECT id FROM listings
-        WHERE status = 'approved' AND network = 'vCommission'
-          AND search_tsv @@ to_tsquery('english', 'dress & women')
-        LIMIT 5000;
-        COMMIT;
-      `);
+      const r = await query(
+        `BEGIN;
+         SET LOCAL statement_timeout = '8000';
+         SELECT id FROM listings
+         WHERE status = 'approved' AND network = 'vCommission'
+           AND search_tsv @@ to_tsquery('english', '${tsq.replace(/'/g, "''")}')
+         LIMIT 5000;
+         COMMIT;`
+      );
       const rows = Array.isArray(r) ? r[r.length - 1]?.rows : r.rows;
+      out.tsq = tsq;
       out.result = `success, ${rows?.length ?? "?"} rows`;
     } catch (err) {
+      out.tsq = tsq;
       out.error = String(err?.message || err);
       out.errorCode = err?.code || null;
       // The transaction is aborted on the server after an error — clear it
