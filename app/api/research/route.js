@@ -314,7 +314,21 @@ export async function POST(req) {
       ...(vision?.isProduct ? vision.searchTerms : []),
       ...(vision?.productType ? extractQueryTerms(vision.productType) : []),
     ];
-    const matchText = [query, vision?.description, vision?.productType].filter(Boolean).join(" ");
+    // Real bug (found 2026-09-18): this dropped clarifying-question answers
+    // entirely, unlike intentSource just above it (which already folds them
+    // in with an explicit comment about why). A shopper who types the short
+    // "face wash for oily skin" and THEN answers "acne-prone" / "salicylic
+    // acid" via the clarify step gets those words into intent extraction
+    // and DB retrieval terms just fine (intent.retrievalTerms threads
+    // through to queryTerms below) — but matchText is what the MECHANICAL
+    // SCORER (findTopMatchingListings) actually scores candidates against,
+    // and without "acne"/"salicylic" in it, a genuinely on-target product
+    // scores no better than one that only matches the shorter original
+    // query, and can lose the shortlist to it entirely. Same variable, same
+    // fix as intentSource.
+    const matchText = [query, vision?.description, vision?.productType, ...safeClarifications.map((c) => c.answer)]
+      .filter(Boolean)
+      .join(" ");
     // Computed here (not left to findTopMatchingListings' own post-fetch
     // filter alone) and passed all the way down to the SQL candidate
     // fetch — see findCandidateListings' own comment in lib/db.js for why
