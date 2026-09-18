@@ -43,6 +43,28 @@ export async function GET(req) {
     return Response.json(out);
   }
 
+  if (params.get("sample")) {
+    // 2149 women's dresses vs 2041 kids' dresses in the approved Myntra
+    // catalog (confirmed via ?timedquery=1, 2026-09-18) — comparable
+    // volume, so the earlier "no women's dress in the top 8" result isn't
+    // a catalog gap. This pulls real titles/keywords for a given tsquery
+    // so the actual scoring inputs (findTopMatchingListings, lib/
+    // listingMatcher.js) can be checked against real data instead of the
+    // assumed-kids-heavy sample seen so far.
+    const tsq = String(params.get("sample")).replace(/'/g, "''");
+    const r = await query(
+      `SELECT id, brand, product, keywords, price
+       FROM listings
+       WHERE status = 'approved' AND network = 'vCommission'
+         AND search_tsv @@ to_tsquery('english', '${tsq}')
+       ORDER BY id DESC
+       LIMIT 8`
+    );
+    out.tsq = params.get("sample");
+    out.sample = r.rows;
+    return Response.json(out);
+  }
+
   // Both modes below use search_tsv @@ to_tsquery(...) to narrow FIRST — it
   // hits the existing GIN index (idx_listings_search_tsv). A bare ILIKE
   // '%dress%' over 3.4M+ rows with no index support is a full sequential
