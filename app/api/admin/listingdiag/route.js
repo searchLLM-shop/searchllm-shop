@@ -27,6 +27,22 @@ export async function GET(req) {
   const params = new URL(req.url).searchParams;
   const out = {};
 
+  if (params.get("analyze")) {
+    // ~2.18M rows just flipped from 'pending' to 'approved' in one bulk
+    // operation (2026-09-18, approving the long-pending Myntra import) —
+    // the planner's statistics on `listings` are now badly stale relative
+    // to that, and feedStatus's own simple GROUP BY started timing out
+    // immediately afterward as a direct result. ANALYZE just refreshes
+    // planner statistics via sampling — it doesn't rewrite any data, and
+    // takes only a brief, non-blocking lock, safe to run against a live
+    // table.
+    const startedAt = Date.now();
+    await query(`ANALYZE listings`);
+    out.analyzed = true;
+    out.elapsedMs = Date.now() - startedAt;
+    return Response.json(out);
+  }
+
   if (params.get("inspect")) {
     // "girl" alone matches 0 rows even restricted to approved+vCommission —
     // surprising given we've directly seen sample product titles containing
