@@ -8,7 +8,7 @@
 import { auth, currentUser } from "@clerk/nextjs/server";
 import { findCandidateListings, insertMicrosite, getAndIncrementUsage, getUsageToday, reserveSlug } from "@/lib/db";
 import { isAdminUser } from "@/lib/isAdmin";
-import { checkQuery, hasAdultContext, mentionsMinors, mentionsAdultAudience } from "@/lib/contentFilter";
+import { checkQuery, mentionsMinors } from "@/lib/contentFilter";
 import { slugify } from "@/lib/slug";
 import { languageForModel, resolveLocale } from "@/lib/i18n";
 import { recordEvent, recordSearchQuery } from "@/lib/db";
@@ -320,7 +320,12 @@ export async function POST(req) {
     // fetch — see findCandidateListings' own comment in lib/db.js for why
     // filtering only after the top-`limit` candidates are already chosen
     // isn't enough on a catalog where kids' listings rank this densely.
-    const excludeMinors = !mentionsMinors(matchText) && (hasAdultContext(matchText) || mentionsAdultAudience(matchText));
+    // Minors excluded by DEFAULT, included only when the query itself
+    // names one — see findTopMatchingListings' own comment in
+    // lib/listingMatcher.js for why (2026-09-18: an unqualified "red
+    // dress for a party" needed the same fix as an explicit "women red
+    // dress", since most real shoppers never say "women" at all).
+    const excludeMinors = !mentionsMinors(matchText);
     const candidates = await findCandidateListings(Array.from(new Set(queryTerms)), userCountry, 200, excludeMinors);
     // Top few plausible candidates — the MODEL chooses which one (if any)
     // genuinely answers the question. Mechanical scoring is the recall gate;
