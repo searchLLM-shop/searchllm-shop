@@ -26,6 +26,23 @@ export async function GET(req) {
   const params = new URL(req.url).searchParams;
   const out = {};
 
+  if (params.get("inspect")) {
+    // "girl" alone matches 0 rows even restricted to approved+vCommission —
+    // surprising given we've directly seen sample product titles containing
+    // "Girls". Look at the ACTUAL computed search_tsv for one of those exact
+    // rows: does it contain a 'girl' lexeme at all, or is something about
+    // how search_tsv is built (or how these specific rows were inserted)
+    // different from what schema.sql describes.
+    const id = Number(params.get("inspect"));
+    const r = await query(
+      `SELECT id, product, brand, category, status, network, search_tsv::text AS tsv
+       FROM listings WHERE id = $1`,
+      [id]
+    );
+    out.row = r.rows[0] || null;
+    return Response.json(out);
+  }
+
   // Both modes below use search_tsv @@ to_tsquery(...) to narrow FIRST — it
   // hits the existing GIN index (idx_listings_search_tsv). A bare ILIKE
   // '%dress%' over 3.4M+ rows with no index support is a full sequential
