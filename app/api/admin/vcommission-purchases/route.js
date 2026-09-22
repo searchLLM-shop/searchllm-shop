@@ -15,7 +15,7 @@
 // POST { clickId, commission } -> credits that click's purchase.
 
 import { auth, currentUser, clerkClient } from "@clerk/nextjs/server";
-import { getVcommissionClicksForAdmin, creditVcommissionPurchasePoints } from "@/lib/db";
+import { getVcommissionClicksForAdmin, creditVcommissionPurchasePoints, getDecryptedPhoneForUser } from "@/lib/db";
 import { isAdminUser } from "@/lib/isAdmin";
 
 async function isAdmin() {
@@ -23,8 +23,10 @@ async function isAdmin() {
   return isAdminUser(user);
 }
 
-// Resolves Clerk user ids to an email for display, batched in one call per
-// page rather than one Clerk API call per row. Guest identities (not real
+// Resolves Clerk user ids to an email (or, since 2026-09-22, our own
+// decrypted phone — Clerk no longer holds the real one, see schema.sql's
+// user_identities comment) for display, batched in one call per page
+// rather than one Clerk API call per row. Guest identities (not real
 // Clerk ids) simply won't resolve — those rows fall back to showing the raw
 // identity, which is also the "not a registered member" signal for the UI.
 async function resolveEmails(identities) {
@@ -35,8 +37,11 @@ async function resolveEmails(identities) {
     const { data } = await client.users.getUserList({ userId: ids, limit: ids.length });
     const map = {};
     for (const u of data) {
-      map[u.id] = u.emailAddresses?.[0]?.emailAddress || u.phoneNumbers?.[0]?.phoneNumber || u.id;
+      map[u.id] = u.emailAddresses?.[0]?.emailAddress || u.phoneNumbers?.[0]?.phoneNumber || null;
     }
+    await Promise.all(ids.filter((id) => !map[id]).map(async (id) => {
+      map[id] = (await getDecryptedPhoneForUser(id).catch(() => null)) || id;
+    }));
     return map;
   } catch (err) {
     console.error("Clerk user lookup failed (non-fatal, falling back to raw identity):", err.message);

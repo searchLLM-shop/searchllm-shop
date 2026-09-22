@@ -8,7 +8,7 @@
 // — nothing about a member's purchases is ever linked to this programme.
 
 import { auth, currentUser } from "@clerk/nextjs/server";
-import { joinLoyalty, getRewardsSummary, requestRedemption, claimGuestDayPoints } from "@/lib/db";
+import { joinLoyalty, getRewardsSummary, requestRedemption, claimGuestDayPoints, getDecryptedPhoneForUser } from "@/lib/db";
 import { getOrCreateGuestId } from "@/lib/guestId";
 import { LOYALTY } from "@/lib/constants";
 
@@ -55,18 +55,22 @@ export async function POST(req) {
 
       // RBI mandate for gift vouchers issued in India: first name, last
       // name, mobile, email and postal address are required for every
-      // redemption. First/last name and mobile are NOT taken from the
-      // request body (2026-09-02) — they're read straight from the
-      // signed-in Clerk account, now sign-up's mandatory, single identifier
-      // (phone-only sign-up — see lib/constants.js), editable only via the
-      // account's own Clerk profile, never on this form. This closes a
-      // trust gap: a client could previously claim any name it liked here,
-      // whether or not it matched the signed-in account.
-      // Email is different: sign-up no longer collects it at all (phone is
-      // the sole identifier now), so there is no account-level email to
-      // read — it's asked for here, at redemption, same as the address.
+      // redemption. First/last name are NOT taken from the request body
+      // (2026-09-02) — they're read straight from the signed-in Clerk
+      // account, editable only via the account's own Clerk profile, never
+      // on this form. This closes a trust gap: a client could previously
+      // claim any name it liked here, whether or not it matched the
+      // signed-in account.
+      // Mobile is read from user_identities, NOT Clerk (2026-09-22): Clerk
+      // no longer holds the real phone number at all — see schema.sql's
+      // user_identities comment, lib/phoneAuth.js — this is the one place
+      // besides account creation that still needs it, and it's read from
+      // our own encrypted, India-hosted copy rather than a third party.
+      // Email is different: sign-up no longer collects it at all, so there
+      // is no account-level email to read — it's asked for here, at
+      // redemption, same as the address.
       const account = await currentUser();
-      const rawMobile = account?.primaryPhoneNumber?.phoneNumber || "";
+      const rawMobile = (await getDecryptedPhoneForUser(userId).catch(() => null)) || "";
       const kyc = {
         firstName: String(account?.firstName || "").trim().slice(0, 80),
         lastName: String(account?.lastName || "").trim().slice(0, 80),

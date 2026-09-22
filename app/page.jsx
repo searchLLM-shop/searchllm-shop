@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { useUser, SignInButton, SignOutButton } from "@clerk/nextjs";
+import { useUser, SignOutButton } from "@clerk/nextjs";
+import PhoneSignInButton from "@/components/PhoneSignInButton";
 import ConsentGate from "@/components/ConsentGate";
 import ResearchTab from "@/components/ResearchTab";
 import BrandForm from "@/components/BrandForm";
@@ -39,6 +40,15 @@ const CONSENT_VERSION = "2026-09-shop-v5";
 // same allowlists, since server-only env vars aren't visible here.
 function useIsAdminClientHint() {
   const { user } = useUser();
+  // publicMetadata.isAdmin (2026-09-22) is the primary check now — set
+  // once, server-side, at account-creation time (lib/phoneAuth.js), the
+  // same source of truth the real server-side gate (lib/isAdmin.js) uses.
+  // Needed because Clerk no longer holds the real phone number at all
+  // (the RBI data-localization fix — see schema.sql's user_identities
+  // comment), so matching against it client-side stopped being possible.
+  // Email/phone matching kept as a fallback purely for any pre-migration
+  // account that still has one of those set on Clerk directly.
+  if (user?.publicMetadata?.isAdmin === true) return true;
   const email = user?.primaryEmailAddress?.emailAddress;
   const phone = user?.primaryPhoneNumber?.phoneNumber;
   const adminEmails = (process.env.NEXT_PUBLIC_ADMIN_EMAILS || "")
@@ -425,9 +435,9 @@ export default function Home() {
               >
                 ?
               </button>
-              <SignInButton mode="modal">
+              <PhoneSignInButton>
                 <button style={{ background: "#3F3F46", border: "none", borderRadius: 6, padding: "6px 14px", cursor: "pointer", fontSize: 12, color: "#fff", fontWeight: 500, whiteSpace: "nowrap" }}>Sign in</button>
-              </SignInButton>
+              </PhoneSignInButton>
             </>
           )}
         </div>
@@ -552,7 +562,7 @@ export default function Home() {
                 </div>
               ) : (
                 <div style={{ fontSize: 11, color: "var(--color-text-tertiary)", marginBottom: 14, lineHeight: 1.6 }}>
-                  Browsing as a guest — {tr("guest")} data stays on this device. <SignInButton mode="modal"><button style={{ background: "none", border: "none", padding: 0, color: "#0F6E56", cursor: "pointer", fontSize: 11, textDecoration: "underline" }}>Sign in</button></SignInButton> to keep it everywhere.
+                  Browsing as a guest — {tr("guest")} data stays on this device. <PhoneSignInButton><button style={{ background: "none", border: "none", padding: 0, color: "#0F6E56", cursor: "pointer", fontSize: 11, textDecoration: "underline" }}>Sign in</button></PhoneSignInButton> to keep it everywhere.
                 </div>
               )}
 

@@ -701,3 +701,44 @@ CREATE INDEX IF NOT EXISTS idx_referrals_referrer ON referrals (referrer_user_id
 
 ALTER TABLE referral_codes ENABLE ROW LEVEL SECURITY;
 ALTER TABLE referrals ENABLE ROW LEVEL SECURITY;
+
+-- =========================================================================
+-- CUSTOMER IDENTITY — decoupled from Clerk (2026-09-22, RBI data
+-- localization fix)
+--
+-- Clerk (US-hosted, no India data-residency option) previously held the
+-- real sign-up phone number as the account identifier — flagged by Pine
+-- Labs' compliance team as a violation of RBI's 2018 payment-data
+-- localization circular ("customer data" tied to a payment system, which
+-- this platform's Qwikcilver voucher issuance is). This table is the one
+-- place the real phone number now lives: India-hosted, encrypted, same
+-- pattern as the existing redemptions.kyc_* columns
+-- (lib/piiCrypto.js's encryptPII/decryptPII). Clerk still issues the
+-- session/JWT (clerk_user_id is still what every route's auth() call
+-- returns) — it just never sees the real number. See lib/phoneAuth.js and
+-- app/api/auth/*.
+CREATE TABLE IF NOT EXISTS user_identities (
+  clerk_user_id TEXT PRIMARY KEY,
+  phone_encrypted TEXT NOT NULL,       -- encryptPII() — same as kyc_mobile
+  phone_hash TEXT NOT NULL UNIQUE,     -- sha256(salt + phone), lookup only, never reversed
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_user_identities_phone_hash ON user_identities (phone_hash);
+
+-- Short-lived OTP records. Never joined to phone_encrypted — only
+-- phone_hash, so a compromise of this table alone reveals no real phone
+-- numbers. Rows are disposable (5-minute expiry); no cleanup job is
+-- required for correctness (verifyOtp always filters on expires_at), but
+-- a periodic delete of old rows keeps the table small.
+CREATE TABLE IF NOT EXISTS phone_otps (
+  id SERIAL PRIMARY KEY,
+  phone_hash TEXT NOT NULL,
+  otp_hash TEXT NOT NULL,              -- sha256(salt + otp) — the raw code is never stored
+  expires_at TIMESTAMPTZ NOT NULL,
+  attempts INTEGER NOT NULL DEFAULT 0, -- brute-force guard, capped in verifyOtp
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_phone_otps_phone_hash ON phone_otps (phone_hash, created_at DESC);
+
+ALTER TABLE user_identities ENABLE ROW LEVEL SECURITY;
+ALTER TABLE phone_otps ENABLE ROW LEVEL SECURITY;

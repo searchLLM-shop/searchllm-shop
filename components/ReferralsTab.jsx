@@ -10,7 +10,8 @@
 // lib/db.js's confirmReferral for how "confirmed" is actually decided.
 
 import { useState, useEffect, useCallback } from "react";
-import { useUser, SignInButton } from "@clerk/nextjs";
+import { useUser } from "@clerk/nextjs";
+import PhoneSignInButton from "@/components/PhoneSignInButton";
 
 const n = (v) => Number(v || 0).toLocaleString();
 
@@ -46,11 +47,11 @@ export default function ReferralsTab() {
         <p style={{ fontSize: 13, color: "var(--color-text-secondary)", maxWidth: 460, margin: "0 auto 16px", lineHeight: 1.7 }}>
           Share your own link with friends on WhatsApp — when they register, you earn points. Sign in to get your link, free.
         </p>
-        <SignInButton mode="modal">
+        <PhoneSignInButton>
           <button style={{ background: "#0F6E56", color: "#fff", border: "none", borderRadius: 8, padding: "9px 20px", fontSize: 13, fontWeight: 500, cursor: "pointer" }}>
             Sign in to get started
           </button>
-        </SignInButton>
+        </PhoneSignInButton>
       </div>
     );
   }
