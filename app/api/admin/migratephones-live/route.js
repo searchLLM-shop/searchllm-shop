@@ -56,7 +56,14 @@ export async function GET() {
       }
       results.push({ clerkUserId: targetId, action: "migrated", phone: `...${phone.slice(-4)}` });
     } catch (err) {
-      results.push({ clerkUserId: targetId, action: "error", error: String(err?.message || err) });
+      console.error(`migratephones-live failed for ${targetId}:`, err?.status, JSON.stringify(err?.errors || err?.message || err));
+      results.push({
+        clerkUserId: targetId,
+        action: "error",
+        error: String(err?.message || err),
+        status: err?.status,
+        clerkErrors: err?.errors || null,
+      });
     }
   }
 
