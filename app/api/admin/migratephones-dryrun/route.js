@@ -42,6 +42,9 @@ export async function GET(req) {
       const common = {
         clerkUserId: u.id,
         username: u.username || null,
+        firstName: u.firstName || null,
+        lastName: u.lastName || null,
+        email: u.emailAddresses?.[0]?.emailAddress || null,
         isAdmin: u.publicMetadata?.isAdmin === true,
         createdAt: u.createdAt ? new Date(u.createdAt).toISOString() : null,
       };
