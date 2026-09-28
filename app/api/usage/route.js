@@ -7,7 +7,7 @@
 // platform-fee block ceiling, the same for every account.
 
 import { auth, currentUser } from "@clerk/nextjs/server";
-import { getHeaderSnapshot, getGuestDayPoints } from "@/lib/db";
+import { getHeaderSnapshot, getGuestDayPoints, getDecryptedPhoneForUser } from "@/lib/db";
 import { getOrCreateGuestId } from "@/lib/guestId";
 import { PLANS, LOYALTY, dailyPickLimit } from "@/lib/constants";
 import { isAdminUser } from "@/lib/isAdmin";
@@ -50,5 +50,14 @@ export async function GET() {
     points = { kind: "guest", today: guestToday };
   }
 
-  return Response.json({ limit, used: limit === -1 ? 0 : snapshot.used, points });
+  // Real phone number, decrypted, for display only (account drawer, KYC
+  // form prefill) — 2026-09-22, since Clerk no longer holds it (see
+  // schema.sql's user_identities comment). Piggy-backed on this
+  // already-on-every-page-load route rather than a new one.
+  let phone = null;
+  if (userId) {
+    try { phone = await getDecryptedPhoneForUser(userId); } catch (err) { console.error("Phone lookup failed:", err.message); }
+  }
+
+  return Response.json({ limit, used: limit === -1 ? 0 : snapshot.used, points, phone });
 }

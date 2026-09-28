@@ -5,7 +5,7 @@
 // auth boilerplate as every other admin route.
 
 import { auth, currentUser, clerkClient } from "@clerk/nextjs/server";
-import { getReferralsReport } from "@/lib/db";
+import { getReferralsReport, getDecryptedPhoneForUser } from "@/lib/db";
 import { isAdminUser } from "@/lib/isAdmin";
 
 async function isAdmin() {
@@ -14,7 +14,9 @@ async function isAdmin() {
 }
 
 // Same pattern as app/api/admin/vcommission-purchases/route.js — resolve
-// Clerk ids to an email for admin readability, one batched call.
+// Clerk ids to an email (or, since 2026-09-22, our own decrypted phone —
+// Clerk no longer holds the real one, see schema.sql's user_identities
+// comment) for admin readability, one batched call.
 async function resolveEmails(identities) {
   const ids = Array.from(new Set(identities.filter(Boolean)));
   if (!ids.length) return {};
@@ -23,8 +25,11 @@ async function resolveEmails(identities) {
     const { data } = await client.users.getUserList({ userId: ids, limit: ids.length });
     const map = {};
     for (const u of data) {
-      map[u.id] = u.emailAddresses?.[0]?.emailAddress || u.phoneNumbers?.[0]?.phoneNumber || u.id;
+      map[u.id] = u.emailAddresses?.[0]?.emailAddress || u.phoneNumbers?.[0]?.phoneNumber || null;
     }
+    await Promise.all(ids.filter((id) => !map[id]).map(async (id) => {
+      map[id] = (await getDecryptedPhoneForUser(id).catch(() => null)) || id;
+    }));
     return map;
   } catch (err) {
     console.error("Clerk user lookup failed (non-fatal, falling back to raw identity):", err.message);

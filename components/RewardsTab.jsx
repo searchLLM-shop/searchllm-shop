@@ -16,7 +16,8 @@
 // no plan check: it's just a balance check against whatever's available.
 
 import { useState, useEffect, useCallback } from "react";
-import { useUser, useClerk, SignInButton } from "@clerk/nextjs";
+import { useUser, useClerk } from "@clerk/nextjs";
+import PhoneSignInButton from "@/components/PhoneSignInButton";
 import { LOYALTY } from "@/lib/constants";
 
 const n = (v) => Number(v || 0).toLocaleString();
@@ -69,15 +70,20 @@ export default function RewardsTab() {
   const [pendingDenom, setPendingDenom] = useState(null);
   const [address, setAddress] = useState("");
   const [email, setEmail] = useState("");
+  // Real phone, decrypted server-side from user_identities (2026-09-22) —
+  // NOT from Clerk any more, which no longer holds it at all (see
+  // schema.sql's user_identities comment). Piggy-backed on /api/usage,
+  // already fetched elsewhere on every page load.
+  const [accountPhone, setAccountPhone] = useState("");
 
-  // The account profile fields RBI KYC needs, straight from Clerk — never
-  // client-typed, never trusted from anywhere else. The server independently
-  // re-derives the same thing from the session on redeem, so this is purely
-  // for display; it can't be spoofed into unlocking a redemption.
+  // The account profile fields RBI KYC needs — never client-typed, never
+  // trusted from anywhere else. The server independently re-derives the
+  // same thing from the session on redeem, so this is purely for display;
+  // it can't be spoofed into unlocking a redemption.
   const accountKyc = {
     firstName: user?.firstName || "",
     lastName: user?.lastName || "",
-    mobile: user?.primaryPhoneNumber?.phoneNumber || "",
+    mobile: accountPhone,
   };
   const accountKycComplete = Boolean(accountKyc.firstName && accountKyc.lastName && accountKyc.mobile);
   const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
@@ -96,6 +102,13 @@ export default function RewardsTab() {
       setError(e.message);
     } finally {
       setLoading(false);
+    }
+    try {
+      const usageResp = await fetch("/api/usage");
+      const usageJson = await usageResp.json();
+      if (usageJson.phone) setAccountPhone(usageJson.phone);
+    } catch (e) {
+      console.error("Phone lookup failed:", e.message);
     }
   }, [isSignedIn]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -144,11 +157,11 @@ export default function RewardsTab() {
         <p style={{ fontSize: 12, color: "var(--color-text-tertiary)", maxWidth: 460, margin: "0 auto 16px", lineHeight: 1.7 }}>
           Separately, worth knowing: brands don&apos;t pay to be featured or clicked, and we only earn anything ourselves when you actually buy — that revenue never influences which product we recommend.
         </p>
-        <SignInButton mode="modal">
+        <PhoneSignInButton>
           <button style={{ background: "#0F6E56", color: "#fff", border: "none", borderRadius: 8, padding: "9px 20px", fontSize: 13, fontWeight: 500, cursor: "pointer" }}>
             Sign in to get started
           </button>
-        </SignInButton>
+        </PhoneSignInButton>
         <div style={{ maxWidth: 560, margin: "0 auto", textAlign: "left" }}>
           <VoucherShowcase caption={`What points turn into — earn free from your first pick, every ${LOYALTY.POINTS_BLOCK_SIZE} points is a ₹${LOYALTY.PLATFORM_FEE_INR} platform fee away from a voucher.`} />
         </div>

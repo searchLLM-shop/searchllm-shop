@@ -701,3 +701,51 @@ CREATE INDEX IF NOT EXISTS idx_referrals_referrer ON referrals (referrer_user_id
 
 ALTER TABLE referral_codes ENABLE ROW LEVEL SECURITY;
 ALTER TABLE referrals ENABLE ROW LEVEL SECURITY;
+
+-- =========================================================================
+-- CUSTOMER IDENTITY — decoupled from Clerk (2026-09-22, RBI data
+-- localization fix)
+--
+-- Clerk (US-hosted, no India data-residency option) previously held the
+-- real sign-up phone number as the account identifier — flagged by Pine
+-- Labs' compliance team as a violation of RBI's 2018 payment-data
+-- localization circular ("customer data" tied to a payment system, which
+-- this platform's Qwikcilver voucher issuance is). This table is the one
+-- place the real phone number now lives: India-hosted, encrypted, same
+-- pattern as the existing redemptions.kyc_* columns
+-- (lib/piiCrypto.js's encryptPII/decryptPII). Clerk still issues the
+-- session/JWT (clerk_user_id is still what every route's auth() call
+-- returns) — it just never sees the real number. See lib/phoneAuth.js and
+-- app/api/auth/*.
+CREATE TABLE IF NOT EXISTS user_identities (
+  clerk_user_id TEXT PRIMARY KEY,
+  phone_encrypted TEXT NOT NULL,       -- encryptPII() — same as kyc_mobile
+  phone_hash TEXT NOT NULL UNIQUE,     -- sha256(salt + phone), lookup only, never reversed
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_user_identities_phone_hash ON user_identities (phone_hash);
+
+-- 2026-09-27: switched from self-issued OTPs to MSG91's own OTP
+-- Verification API (control.msg91.com/api/v5/otp + /otp/verify) — MSG91
+-- now generates, stores, and verifies the code itself; we never see or
+-- hash it. This does NOT reopen the RBI compliance gap: that was about
+-- the *persistent* phone+identity record living on non-India (Clerk)
+-- infrastructure, which user_identities above still fixes. MSG91 is an
+-- Indian SMS/OTP provider that necessarily sees the phone number to
+-- deliver the text (true of any SMS gateway) and holds the OTP itself
+-- only as a disposable few-minute challenge, not an identity record.
+--
+-- This table is now just a send-cooldown log — one row per OTP SEND
+-- attempt, so a phone number (or a script hammering our endpoint) can't
+-- be used to run up real MSG91 SMS charges, independent of whatever
+-- retry limit MSG91 itself enforces. No OTP or its hash is stored here
+-- at all anymore.
+CREATE TABLE IF NOT EXISTS phone_otp_sends (
+  id SERIAL PRIMARY KEY,
+  phone_hash TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_phone_otp_sends_phone_hash ON phone_otp_sends (phone_hash, created_at DESC);
+
+ALTER TABLE user_identities ENABLE ROW LEVEL SECURITY;
+ALTER TABLE phone_otp_sends ENABLE ROW LEVEL SECURITY;
