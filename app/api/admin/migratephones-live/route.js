@@ -20,6 +20,7 @@ import { auth, currentUser, clerkClient } from "@clerk/nextjs/server";
 import { isAdminUser } from "@/lib/isAdmin";
 import { hashPhone, query } from "@/lib/db";
 import { encryptPII } from "@/lib/piiCrypto";
+import { randomUUID } from "crypto";
 
 export const maxDuration = 30;
 
@@ -50,6 +51,15 @@ export async function GET() {
          ON CONFLICT (clerk_user_id) DO NOTHING`,
         [targetId, encryptPII(phone), hashPhone(phone)]
       );
+      // Clerk refuses to delete a user's last remaining identification —
+      // these two accounts (confirmed live, 2026-09-28) have only the
+      // phone number and no username/email, so a replacement identifier
+      // has to exist first. Same opaque pattern as createClerkUser() in
+      // lib/phoneAuth.js for freshly-created users — synthetic, no real
+      // PII, never shown to the account's owner.
+      if (!u.username) {
+        await client.users.updateUser(targetId, { username: `u_${randomUUID().replace(/-/g, "")}` });
+      }
       const phoneNumberId = u.phoneNumbers?.[0]?.id;
       if (phoneNumberId) {
         await client.phoneNumbers.deletePhoneNumber(phoneNumberId);
