@@ -39,14 +39,20 @@ export async function GET(req) {
       if (processed >= limit) break;
       processed++;
       const phone = u.phoneNumbers?.[0]?.phoneNumber;
+      const common = {
+        clerkUserId: u.id,
+        username: u.username || null,
+        isAdmin: u.publicMetadata?.isAdmin === true,
+        createdAt: u.createdAt ? new Date(u.createdAt).toISOString() : null,
+      };
       if (!phone) {
         skipped++;
-        results.push({ clerkUserId: u.id, action: "skip", reason: "no phone number on file" });
+        results.push({ ...common, action: "skip", reason: "no phone number on file" });
         continue;
       }
       wouldMigrate++;
       results.push({
-        clerkUserId: u.id,
+        ...common,
         action: "would-migrate",
         phone: `...${phone.slice(-4)}`,
         phoneHashPreview: hashPhone(phone)?.slice(0, 12) + "…",
