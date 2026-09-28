@@ -1,10 +1,11 @@
 // app/api/admin/applyschema/route.js
 //
-// ONE-OFF: applies the user_identities/phone_otps tables from schema.sql
-// directly to production (schema.sql itself is never auto-applied — same
-// pattern used for every schema change this session, e.g. referral_codes/
-// referrals). Idempotent (IF NOT EXISTS throughout) — safe to call more
-// than once. Delete this route once confirmed applied.
+// ONE-OFF: applies the user_identities/phone_otp_sends tables from
+// schema.sql directly to production (schema.sql itself is never
+// auto-applied — same pattern used for every schema change this session,
+// e.g. referral_codes/referrals). Idempotent (IF NOT EXISTS throughout)
+// — safe to call more than once. Delete this route once confirmed
+// applied.
 
 import { auth, currentUser } from "@clerk/nextjs/server";
 import { isAdminUser } from "@/lib/isAdmin";
@@ -24,17 +25,14 @@ export async function GET(req) {
        created_at TIMESTAMPTZ NOT NULL DEFAULT now()
      )`,
     `CREATE INDEX IF NOT EXISTS idx_user_identities_phone_hash ON user_identities (phone_hash)`,
-    `CREATE TABLE IF NOT EXISTS phone_otps (
+    `CREATE TABLE IF NOT EXISTS phone_otp_sends (
        id SERIAL PRIMARY KEY,
        phone_hash TEXT NOT NULL,
-       otp_hash TEXT NOT NULL,
-       expires_at TIMESTAMPTZ NOT NULL,
-       attempts INTEGER NOT NULL DEFAULT 0,
        created_at TIMESTAMPTZ NOT NULL DEFAULT now()
      )`,
-    `CREATE INDEX IF NOT EXISTS idx_phone_otps_phone_hash ON phone_otps (phone_hash, created_at DESC)`,
+    `CREATE INDEX IF NOT EXISTS idx_phone_otp_sends_phone_hash ON phone_otp_sends (phone_hash, created_at DESC)`,
     `ALTER TABLE user_identities ENABLE ROW LEVEL SECURITY`,
-    `ALTER TABLE phone_otps ENABLE ROW LEVEL SECURITY`,
+    `ALTER TABLE phone_otp_sends ENABLE ROW LEVEL SECURITY`,
   ];
 
   const results = [];

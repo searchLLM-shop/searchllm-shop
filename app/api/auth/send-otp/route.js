@@ -4,9 +4,9 @@
 // own phone modal — see lib/phoneAuth.js's header comment for the full
 // story). No auth required: this IS the auth step. Rate-limited per-IP
 // (same hashIp/recordAndCheckIp fair-use gate every other unauthenticated
-// route uses) on top of lib/db.js's own per-phone cooldown inside
-// issuePhoneOtp, so neither a single phone nor a single connection can be
-// used to spam SMS sends.
+// route uses) on top of lib/db.js's own per-phone send cooldown
+// (checkOtpSendCooldown), so neither a single phone nor a single
+// connection can be used to run up real MSG91 SMS charges.
 
 import { requestOtp } from "@/lib/phoneAuth";
 import { hashIp, recordAndCheckIp } from "@/lib/db";

@@ -136,7 +136,7 @@ function PhoneAuthModal({ onClose }) {
             <input
               type="text"
               inputMode="numeric"
-              placeholder="6-digit code"
+              placeholder="Enter the code"
               value={code}
               onChange={(e) => setCode(e.target.value)}
               style={inputStyle}

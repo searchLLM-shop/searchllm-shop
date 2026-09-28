@@ -725,20 +725,27 @@ CREATE TABLE IF NOT EXISTS user_identities (
 );
 CREATE INDEX IF NOT EXISTS idx_user_identities_phone_hash ON user_identities (phone_hash);
 
--- Short-lived OTP records. Never joined to phone_encrypted — only
--- phone_hash, so a compromise of this table alone reveals no real phone
--- numbers. Rows are disposable (5-minute expiry); no cleanup job is
--- required for correctness (verifyOtp always filters on expires_at), but
--- a periodic delete of old rows keeps the table small.
-CREATE TABLE IF NOT EXISTS phone_otps (
+-- 2026-09-27: switched from self-issued OTPs to MSG91's own OTP
+-- Verification API (control.msg91.com/api/v5/otp + /otp/verify) — MSG91
+-- now generates, stores, and verifies the code itself; we never see or
+-- hash it. This does NOT reopen the RBI compliance gap: that was about
+-- the *persistent* phone+identity record living on non-India (Clerk)
+-- infrastructure, which user_identities above still fixes. MSG91 is an
+-- Indian SMS/OTP provider that necessarily sees the phone number to
+-- deliver the text (true of any SMS gateway) and holds the OTP itself
+-- only as a disposable few-minute challenge, not an identity record.
+--
+-- This table is now just a send-cooldown log — one row per OTP SEND
+-- attempt, so a phone number (or a script hammering our endpoint) can't
+-- be used to run up real MSG91 SMS charges, independent of whatever
+-- retry limit MSG91 itself enforces. No OTP or its hash is stored here
+-- at all anymore.
+CREATE TABLE IF NOT EXISTS phone_otp_sends (
   id SERIAL PRIMARY KEY,
   phone_hash TEXT NOT NULL,
-  otp_hash TEXT NOT NULL,              -- sha256(salt + otp) — the raw code is never stored
-  expires_at TIMESTAMPTZ NOT NULL,
-  attempts INTEGER NOT NULL DEFAULT 0, -- brute-force guard, capped in verifyOtp
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
-CREATE INDEX IF NOT EXISTS idx_phone_otps_phone_hash ON phone_otps (phone_hash, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_phone_otp_sends_phone_hash ON phone_otp_sends (phone_hash, created_at DESC);
 
 ALTER TABLE user_identities ENABLE ROW LEVEL SECURITY;
-ALTER TABLE phone_otps ENABLE ROW LEVEL SECURITY;
+ALTER TABLE phone_otp_sends ENABLE ROW LEVEL SECURITY;
