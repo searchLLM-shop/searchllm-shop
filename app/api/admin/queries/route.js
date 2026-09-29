@@ -6,7 +6,7 @@
 // the actionable output: the feeds to request from the networks next.
 
 import { auth, currentUser } from "@clerk/nextjs/server";
-import { getSearchQueryStats, getRecentSearchQueries } from "@/lib/db";
+import { getSearchQueryStats, getRecentSearchQueries, getCategoryTrends } from "@/lib/db";
 import { isAdminUser } from "@/lib/isAdmin";
 
 export const maxDuration = 30;
@@ -28,11 +28,12 @@ export async function GET(req) {
     const range = url.searchParams.get("from") && url.searchParams.get("to")
       ? { from: url.searchParams.get("from"), to: url.searchParams.get("to") }
       : null;
-    const [stats, recent] = await Promise.all([
+    const [stats, recent, categoryTrends] = await Promise.all([
       getSearchQueryStats(days, range),
       getRecentSearchQueries(days, page, PAGE_SIZE, range),
+      getCategoryTrends(days, range),
     ]);
-    return Response.json({ ...stats, recent, page, pageSize: PAGE_SIZE });
+    return Response.json({ ...stats, recent, page, pageSize: PAGE_SIZE, categoryTrends });
   } catch (err) {
     console.error("Query stats failed:", err);
     return Response.json({ error: "Could not load queries", detail: String(err?.message || err) }, { status: 500 });

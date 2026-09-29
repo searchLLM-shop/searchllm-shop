@@ -4,6 +4,7 @@ import { useState, useCallback, useRef, useEffect } from "react";
 import { trackEvent } from "@/lib/track";
 import { LOYALTY } from "@/lib/constants";
 import { t } from "@/lib/i18n";
+import TrendingStrip from "./TrendingStrip";
 
 // Physics-themed processing stages — cosmetic labels over the same four
 // real steps the backend actually performs (retrieval, matching, model
@@ -669,6 +670,8 @@ export default function ResearchTab({ maxSearches, searchCount, onSearchComplete
           ))}
         </div>
       )}
+
+      {showIdle && <TrendingStrip onPick={setQuery} />}
 
       {errorMsg && (
         <div style={{ background: "#D85A3011", border: "1px solid #D85A3044", borderRadius: 9, padding: "10px 14px", marginBottom: 14, fontSize: 12, color: "#D85A30" }}>

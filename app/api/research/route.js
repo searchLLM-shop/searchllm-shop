@@ -372,6 +372,11 @@ export async function POST(req) {
         listingId: topCandidate?.id || null,
         network: topCandidate?.network || null,
         country: userCountry,
+        // The model's own normalized category (e.g. "smart tv") — powers
+        // the category-level trend/gap analysis in the admin panel and
+        // the public "trending now" strip. Already computed above for
+        // matching; nothing extra to run here.
+        productType: intent?.productType || null,
       }).catch(() => {});
     }
 

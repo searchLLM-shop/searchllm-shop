@@ -90,6 +90,34 @@ export default function QueriesPanel() {
       </div>
 
       <div style={{ marginBottom: 22 }}>
+        <div style={{ fontSize: 13, fontWeight: 500, marginBottom: 2 }}>Trending categories</div>
+        <div style={{ fontSize: 11, color: "var(--color-text-tertiary)", marginBottom: 8 }}>
+          Grouped by the model's own normalized category (not raw phrasing) — the read on what to pursue exclusive
+          offers/partnerships for. Only from searches logged since 2026-09-29 (when this grouping was added).
+        </div>
+        {(!data.categoryTrends?.trending || data.categoryTrends.trending.length === 0)
+          ? <div style={{ fontSize: 12, color: "var(--color-text-tertiary)" }}>Not enough category data yet in this window.</div>
+          : <QueryTable
+              rows={data.categoryTrends.trending.map((r) => ({ query: r.category, searches: r.searches, matched: r.matched }))}
+              showMatched={true}
+            />}
+      </div>
+
+      <div style={{ marginBottom: 22 }}>
+        <div style={{ fontSize: 13, fontWeight: 500, marginBottom: 2 }}>Category gaps — no affiliate link</div>
+        <div style={{ fontSize: 11, color: "var(--color-text-tertiary)", marginBottom: 8 }}>
+          Same category grouping, restricted to searches that never had a matching offer — real demand with zero
+          inventory today.
+        </div>
+        {(!data.categoryTrends?.gaps || data.categoryTrends.gaps.length === 0)
+          ? <div style={{ fontSize: 12, color: "var(--color-text-tertiary)" }}>No category gaps in this window.</div>
+          : <QueryTable
+              rows={data.categoryTrends.gaps.map((r) => ({ query: r.category, searches: r.searches }))}
+              showMatched={false}
+            />}
+      </div>
+
+      <div style={{ marginBottom: 22 }}>
         <div style={{ fontSize: 13, fontWeight: 500, marginBottom: 2 }}>Top unmatched queries</div>
         <div style={{ fontSize: 11, color: "var(--color-text-tertiary)", marginBottom: 8 }}>
           The inventory gap, ranked. This list — as written — is what to ask the networks to provide feeds for.

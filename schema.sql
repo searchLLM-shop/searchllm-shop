@@ -373,10 +373,17 @@ CREATE TABLE IF NOT EXISTS search_queries (
   listing_id INTEGER,
   network TEXT,
   country TEXT,
+  -- The model's own normalized "core thing being shopped for" (lib/
+  -- queryIntent.js's intent.productType — e.g. "smart tv", "maxi dress"),
+  -- added 2026-09-29 so trend/gap analysis can group by CATEGORY instead
+  -- of fragmenting across every raw phrasing of the same search. Still
+  -- anonymous — no identity ever accompanies this row, same as `query`.
+  product_type TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 CREATE INDEX IF NOT EXISTS idx_search_queries_created ON search_queries (created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_search_queries_product_type ON search_queries (lower(trim(product_type)));
 
 -- =========================================================================
 -- Loyalty programme (opt-in).
@@ -664,6 +671,11 @@ ALTER TABLE loyalty_members ADD COLUMN IF NOT EXISTS kyc_first_name TEXT;
 ALTER TABLE loyalty_members ADD COLUMN IF NOT EXISTS kyc_last_name TEXT;
 ALTER TABLE redemptions ADD COLUMN IF NOT EXISTS kyc_first_name TEXT;
 ALTER TABLE redemptions ADD COLUMN IF NOT EXISTS kyc_last_name TEXT;
+
+-- Category/gap trend analysis (2026-09-29) — see search_queries' own
+-- product_type comment above.
+ALTER TABLE search_queries ADD COLUMN IF NOT EXISTS product_type TEXT;
+CREATE INDEX IF NOT EXISTS idx_search_queries_product_type ON search_queries (lower(trim(product_type)));
 
 -- =========================================================================
 -- REFERRAL PROGRAMME (2026-09-12)
