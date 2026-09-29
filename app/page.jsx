@@ -484,14 +484,14 @@ export default function Home() {
           {usage?.points?.kind === "user" && usage.points.atCeiling && (
             <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center", justifyContent: "space-between", background: "#FDF8EF", border: "1px solid #EADFC8", borderRadius: 12, padding: "12px 16px", marginBottom: 14 }}>
               <div style={{ fontSize: 13, color: "#854F0B", lineHeight: 1.6 }}>
-                ⭐ <strong>You&apos;ve earned {Number(usage.points.totalPoints).toLocaleString()} points!</strong> Pay the ₹{usage.points.platformFeeInr} platform fee to claim your ₹{LOYALTY.POINTS_BLOCK_SIZE} voucher and keep earning — or keep researching for free any time, no rush.
+                ⭐ <strong>You&apos;ve earned {Number(usage.points.totalPoints).toLocaleString()} points!</strong> Pay the ₹{usage.points.platformFeeInr} platform fee and avail your complimentary ₹{LOYALTY.POINTS_BLOCK_SIZE} gift voucher, then keep earning — or keep researching for free any time, no rush.
               </div>
               <button
                 onClick={handlePayPlatformFee}
                 disabled={upgrading}
                 style={{ background: "#0F6E56", border: "none", borderRadius: 6, padding: "7px 16px", cursor: upgrading ? "default" : "pointer", fontSize: 12, color: "#fff", fontWeight: 500, opacity: upgrading ? 0.6 : 1, whiteSpace: "nowrap" }}
               >
-                {upgrading ? "Redirecting…" : `Pay ₹${usage.points.platformFeeInr} platform fee`}
+                {upgrading ? "Redirecting…" : `Pay ₹${usage.points.platformFeeInr} & avail your voucher`}
               </button>
             </div>
           )}

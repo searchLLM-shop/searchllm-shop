@@ -163,7 +163,7 @@ export default function RewardsTab() {
           </button>
         </PhoneSignInButton>
         <div style={{ maxWidth: 560, margin: "0 auto", textAlign: "left" }}>
-          <VoucherShowcase caption={`What points turn into — earn free from your first pick, every ${LOYALTY.POINTS_BLOCK_SIZE} points is a ₹${LOYALTY.PLATFORM_FEE_INR} platform fee away from a voucher.`} />
+          <VoucherShowcase caption={`What points turn into — earn free from your first pick, every ${LOYALTY.POINTS_BLOCK_SIZE} points is a ₹${LOYALTY.PLATFORM_FEE_INR} platform fee away from a complimentary voucher.`} />
         </div>
       </div>
     );
@@ -204,7 +204,7 @@ export default function RewardsTab() {
           Join — it&apos;s free
         </button>
         {notice && <div style={{ fontSize: 12, color: "var(--color-text-secondary)", marginTop: 10 }}>{notice}</div>}
-        <VoucherShowcase caption={`What points turn into — every ${blockSize}-point block is one ₹${feeInr} platform fee away from a voucher.`} />
+        <VoucherShowcase caption={`What points turn into — every ${blockSize}-point block is one ₹${feeInr} platform fee away from a complimentary voucher.`} />
       </div>
     );
   }
@@ -239,15 +239,15 @@ export default function RewardsTab() {
         </div>
         <div style={{ fontSize: 12, color: "var(--color-text-secondary)", lineHeight: 1.7 }}>
           {data.atCeiling
-            ? <>You&apos;ve earned {n(data.totalPoints)} points — that&apos;s the cap for this block, so <strong>no further points until you pay the ₹{feeInr} platform fee</strong> for it. Paying unlocks this block&apos;s voucher and lets earning carry on toward {n(data.ceiling + blockSize)}.</>
-            : <>{n(data.totalPoints)} of {n(data.ceiling)} points — once you reach {n(data.ceiling)}, earning pauses until you pay the ₹{feeInr} platform fee for that block.</>}
+            ? <>You&apos;ve earned {n(data.totalPoints)} points — that&apos;s the cap for this block. <strong>Pay the ₹{feeInr} platform fee and avail your complimentary voucher</strong> for it, then earning carries on toward {n(data.ceiling + blockSize)}.</>
+            : <>{n(data.totalPoints)} of {n(data.ceiling)} points — once you reach {n(data.ceiling)}, pay the ₹{feeInr} platform fee to avail your complimentary voucher for that block, and earning resumes.</>}
           <div style={{ marginTop: 8 }}>
             <button
               onClick={payPlatformFee}
               disabled={payingFee}
               style={{ background: "#0F6E56", color: "#fff", border: "none", borderRadius: 6, padding: "7px 14px", fontSize: 12, fontWeight: 500, cursor: payingFee ? "default" : "pointer", opacity: payingFee ? 0.6 : 1 }}
             >
-              {payingFee ? "Redirecting…" : `Pay ₹${feeInr} platform fee`}
+              {payingFee ? "Redirecting…" : `Pay ₹${feeInr} & avail your voucher`}
             </button>
           </div>
           <VoucherShowcase caption="What your points can become the moment you pay:" />

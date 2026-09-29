@@ -966,14 +966,14 @@ export default function ResearchTab({ maxSearches, searchCount, onSearchComplete
                 ) : (
                   <div>
                     <div style={{ marginBottom: 8, lineHeight: 1.6 }}>
-                      🎉 <strong>You&apos;ve reached {LOYALTY.POINTS_BLOCK_SIZE} points!</strong> That&apos;s a ₹{LOYALTY.POINTS_BLOCK_SIZE} voucher waiting — pay the ₹{LOYALTY.PLATFORM_FEE_INR} platform fee to claim it and start earning your next {LOYALTY.POINTS_BLOCK_SIZE}. Researching stays free either way — this only pauses new points. <a href="/points" style={{ color: "#854F0B", textDecoration: "underline" }}>How points work</a>
+                      🎉 <strong>You&apos;ve reached {LOYALTY.POINTS_BLOCK_SIZE} points!</strong> Pay the ₹{LOYALTY.PLATFORM_FEE_INR} platform fee and avail your complimentary ₹{LOYALTY.POINTS_BLOCK_SIZE} gift voucher, then start earning your next {LOYALTY.POINTS_BLOCK_SIZE}. Researching stays free either way — this only pauses new points. <a href="/points" style={{ color: "#854F0B", textDecoration: "underline" }}>How points work</a>
                     </div>
                     <button
                       onClick={handlePayPlatformFee}
                       disabled={payingFee}
                       style={{ background: "#0F6E56", color: "#fff", border: "none", borderRadius: 6, padding: "7px 14px", fontSize: 12, fontWeight: 500, cursor: payingFee ? "default" : "pointer", opacity: payingFee ? 0.6 : 1 }}
                     >
-                      {payingFee ? "Redirecting…" : `Pay ₹${LOYALTY.PLATFORM_FEE_INR} platform fee`}
+                      {payingFee ? "Redirecting…" : `Pay ₹${LOYALTY.PLATFORM_FEE_INR} & avail your voucher`}
                     </button>
                   </div>
                 )
