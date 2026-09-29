@@ -966,7 +966,7 @@ export default function ResearchTab({ maxSearches, searchCount, onSearchComplete
                 ) : (
                   <div>
                     <div style={{ marginBottom: 8, lineHeight: 1.6 }}>
-                      🎉 <strong>You&apos;ve reached {LOYALTY.POINTS_BLOCK_SIZE} points!</strong> Pay the ₹{LOYALTY.PLATFORM_FEE_INR} platform fee and avail your complimentary ₹{LOYALTY.POINTS_BLOCK_SIZE} gift voucher, then start earning your next {LOYALTY.POINTS_BLOCK_SIZE}. Researching stays free either way — this only pauses new points. <a href="/points" style={{ color: "#854F0B", textDecoration: "underline" }}>How points work</a>
+                      🎉 <strong>You&apos;ve reached {LOYALTY.POINTS_BLOCK_SIZE} points!</strong> Pay the ₹{LOYALTY.PLATFORM_FEE_INR} platform fee and avail your complimentary gift voucher, then start earning your next {LOYALTY.POINTS_BLOCK_SIZE}. Researching stays free either way — this only pauses new points. <a href="/points" style={{ color: "#854F0B", textDecoration: "underline" }}>How points work</a>
                     </div>
                     <button
                       onClick={handlePayPlatformFee}
