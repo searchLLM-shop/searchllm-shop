@@ -73,6 +73,12 @@ export default function PrivacyRequestsAdmin() {
                 <span style={{ color: "var(--color-text-tertiary)" }}>{TYPE_LABEL[r.request_type] || r.request_type}</span>
                 <span style={{ color: "var(--color-text-tertiary)" }}>{new Date(r.created_at).toLocaleDateString()}</span>
                 <span style={{ display: "flex", gap: 6 }}>
+                  <a
+                    href={`/api/admin/privacy-requests/export?requestId=${r.id}`}
+                    style={{ background: "#fff", color: "#0F6E56", border: "1px solid #0F6E56", borderRadius: 6, padding: "4px 10px", fontSize: 11, textDecoration: "none" }}
+                  >
+                    {r.request_type === "access" ? "Download data" : "Download record"}
+                  </a>
                   <button
                     disabled={busyId === r.id}
                     onClick={() => resolve(r.id, "fulfilled")}
