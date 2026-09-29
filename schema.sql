@@ -761,3 +761,24 @@ CREATE INDEX IF NOT EXISTS idx_phone_otp_sends_phone_hash ON phone_otp_sends (ph
 
 ALTER TABLE user_identities ENABLE ROW LEVEL SECURITY;
 ALTER TABLE phone_otp_sends ENABLE ROW LEVEL SECURITY;
+
+-- DPDP Act, 2023 data-principal requests (access/correction/erasure),
+-- added 2026-09-29. Privacy Policy section 8 already offered an
+-- email-based path (deploy@pibitsai.com); this is the self-service,
+-- TRACKED version of the same right — a real record of what was asked
+-- and when it was resolved, not just an inbox. Fulfilment itself
+-- (compiling an export, actually deleting rows) stays a manual admin
+-- action for now — reasonable at this account scale, and DPDP requires
+-- a working channel to submit/track requests, not full automation.
+CREATE TABLE IF NOT EXISTS privacy_requests (
+  id SERIAL PRIMARY KEY,
+  clerk_user_id TEXT NOT NULL,
+  request_type TEXT NOT NULL,           -- 'access' | 'delete'
+  status TEXT NOT NULL DEFAULT 'pending', -- 'pending' | 'fulfilled' | 'rejected'
+  note TEXT,                            -- admin note on resolution
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  resolved_at TIMESTAMPTZ
+);
+CREATE INDEX IF NOT EXISTS idx_privacy_requests_user ON privacy_requests (clerk_user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_privacy_requests_status ON privacy_requests (status, created_at DESC);
+ALTER TABLE privacy_requests ENABLE ROW LEVEL SECURITY;
