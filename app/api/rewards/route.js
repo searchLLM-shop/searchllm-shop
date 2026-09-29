@@ -8,7 +8,7 @@
 // — nothing about a member's purchases is ever linked to this programme.
 
 import { auth, currentUser } from "@clerk/nextjs/server";
-import { joinLoyalty, getRewardsSummary, requestRedemption, claimGuestDayPoints, getDecryptedPhoneForUser } from "@/lib/db";
+import { joinLoyalty, getRewardsSummary, requestRedemption, claimGuestDayPoints, getDecryptedPhoneForUser, setEmailMarketingConsentIn } from "@/lib/db";
 import { getOrCreateGuestId } from "@/lib/guestId";
 import { LOYALTY } from "@/lib/constants";
 
@@ -98,6 +98,13 @@ export async function POST(req) {
       // unpaid block boundary in the first place.
       const ok = await requestRedemption(userId, points, voucherType, kyc);
       if (!ok) return Response.json({ error: "Not enough available points for that voucher." }, { status: 400 });
+      // Separate, explicit, unchecked-by-default opt-in — never implied
+      // by redeeming itself. See schema.sql's marketing_consent comment
+      // for why this has to be its own specific consent, not folded
+      // into anything mandatory.
+      if (body.marketingEmailConsent === true) {
+        setEmailMarketingConsentIn(userId, kyc.email).catch(() => {});
+      }
       return Response.json({ ok: true });
     }
 

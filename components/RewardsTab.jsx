@@ -70,6 +70,10 @@ export default function RewardsTab() {
   const [pendingDenom, setPendingDenom] = useState(null);
   const [address, setAddress] = useState("");
   const [email, setEmail] = useState("");
+  // Unchecked by default, always — this is a separate, specific opt-in
+  // for promotional email, never implied by redeeming itself. See
+  // schema.sql's marketing_consent comment.
+  const [marketingEmailConsent, setMarketingEmailConsent] = useState(false);
   // Real phone, decrypted server-side from user_identities (2026-09-22) —
   // NOT from Clerk any more, which no longer holds it at all (see
   // schema.sql's user_identities comment). Piggy-backed on /api/usage,
@@ -324,12 +328,26 @@ export default function RewardsTab() {
                 </button>
               </div>
             )}
+            {/* Separate, unchecked-by-default opt-in — this is the ONLY
+                place email marketing consent can be switched on, since
+                it's the only place an email exists at all. Entirely
+                optional: leaving it unchecked doesn't affect the
+                redemption itself in any way. */}
+            <label style={{ display: "flex", alignItems: "flex-start", gap: 7, fontSize: 11, color: "var(--color-text-tertiary)", marginBottom: 12, cursor: "pointer" }}>
+              <input
+                type="checkbox"
+                checked={marketingEmailConsent}
+                onChange={(e) => setMarketingEmailConsent(e.target.checked)}
+                style={{ marginTop: 2 }}
+              />
+              <span>Also send me promotional offers and platform updates by email. Optional — turn this off any time in the Privacy tab.</span>
+            </label>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
               <button
                 disabled={busy || !accountKycComplete || !emailValid || !address.trim()}
                 onClick={async () => {
                   await act(
-                    { action: "redeem", voucherType, points: pendingDenom, email, address, kycConfirmed: true },
+                    { action: "redeem", voucherType, points: pendingDenom, email, address, kycConfirmed: true, marketingEmailConsent },
                     "Redemption requested — your voucher code will appear below once issued (usually within 2 working days)."
                   );
                   setPendingDenom(null);

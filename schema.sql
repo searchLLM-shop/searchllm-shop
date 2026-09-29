@@ -782,3 +782,32 @@ CREATE TABLE IF NOT EXISTS privacy_requests (
 CREATE INDEX IF NOT EXISTS idx_privacy_requests_user ON privacy_requests (clerk_user_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_privacy_requests_status ON privacy_requests (status, created_at DESC);
 ALTER TABLE privacy_requests ENABLE ROW LEVEL SECURITY;
+
+-- Promotional/marketing consent (2026-09-29), tracked SEPARATELY from
+-- the mandatory account/service consent gate — DPDP requires consent
+-- for a new purpose like marketing to be its own specific, freely
+-- given, unbundled choice, never folded into the checkbox that gates
+-- using the service at all. SMS consent uses the phone already on file
+-- (user_identities) — nothing extra to collect. Email consent is
+-- opt-in only at redemption time (the one place an email is ever
+-- collected — see redemptions.kyc_email) but can be turned off any
+-- time from the account's Privacy tab.
+--
+-- IMPORTANT: consent being on here does NOT mean promotional SMS is
+-- actually being sent. lib/constants.js's MARKETING_SMS_LIVE gates
+-- that separately, and stays false until a PROMOTIONAL-category DLT
+-- header/template is registered with MSG91 — the existing SLLMSH
+-- header/template (lib/phoneAuth.js) is transactional-only (OTP), and
+-- TRAI prohibits sending promotional content through a transactional
+-- header. Consent is collected and tracked now so it's ready the
+-- moment that registration is done.
+CREATE TABLE IF NOT EXISTS marketing_consent (
+  clerk_user_id TEXT PRIMARY KEY,
+  sms_consent BOOLEAN NOT NULL DEFAULT false,
+  sms_consent_at TIMESTAMPTZ,
+  email_consent BOOLEAN NOT NULL DEFAULT false,
+  email_consent_at TIMESTAMPTZ,
+  marketing_email_encrypted TEXT,      -- encryptPII(), same pattern as redemptions.kyc_email
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+ALTER TABLE marketing_consent ENABLE ROW LEVEL SECURITY;

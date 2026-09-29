@@ -1,12 +1,15 @@
 "use client";
 
 // The account drawer's Privacy tab — self-service DPDP data-principal
-// rights. See Privacy Policy section 8 and schema.sql's privacy_requests
-// comment. "Access" is instant and fully self-service (a download link
+// rights, plus standing promotional-consent toggles. See Privacy Policy
+// section 8/6D and schema.sql's privacy_requests/marketing_consent
+// comments. "Access" is instant and fully self-service (a download link
 // straight to /api/privacy-request/export, scoped to your own account —
 // no admin step, nothing to wait on). "Delete" is a real reviewed
 // request, since it's destructive and touches rows across several
-// tables — tracked here so you can see its status.
+// tables — tracked here so you can see its status. Promotional consent
+// is separate again from both — a standing on/off preference, never
+// bundled into anything mandatory.
 
 import { useState, useEffect, useCallback } from "react";
 import { useUser } from "@clerk/nextjs";
@@ -16,22 +19,50 @@ const STATUS_LABEL = { pending: "Pending", fulfilled: "Completed", rejected: "De
 const STATUS_COLOR = { pending: "#854F0B", fulfilled: "#0F6E56", rejected: "#A03530" };
 const TYPE_LABEL = { access: "Downloaded my data", delete: "Delete my account" };
 
+function Toggle({ checked, onChange, disabled }) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      disabled={disabled}
+      onClick={() => onChange(!checked)}
+      style={{
+        width: 36, height: 20, borderRadius: 10, border: "none", padding: 2,
+        background: checked ? "#0F6E56" : "var(--color-border-secondary)",
+        cursor: disabled ? "default" : "pointer", opacity: disabled ? 0.5 : 1,
+        display: "flex", justifyContent: checked ? "flex-end" : "flex-start", flexShrink: 0,
+      }}
+    >
+      <span style={{ width: 16, height: 16, borderRadius: 8, background: "#fff" }} />
+    </button>
+  );
+}
+
 export default function PrivacyTab() {
   const { isSignedIn } = useUser();
   const [requests, setRequests] = useState([]);
+  const [consent, setConsent] = useState(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [consentBusy, setConsentBusy] = useState(null); // "sms" | "email" | null
   const [error, setError] = useState(null);
+  const [consentError, setConsentError] = useState(null);
 
   const load = useCallback(async () => {
     if (!isSignedIn) { setLoading(false); return; }
     setLoading(true);
     try {
-      const resp = await fetch("/api/privacy-request");
-      const json = await resp.json();
-      setRequests(json.requests || []);
+      const [reqResp, consentResp] = await Promise.all([
+        fetch("/api/privacy-request"),
+        fetch("/api/marketing-consent"),
+      ]);
+      const reqJson = await reqResp.json();
+      const consentJson = await consentResp.json();
+      setRequests(reqJson.requests || []);
+      setConsent(consentJson);
     } catch {
-      // fails soft — the buttons still work even if history can't load
+      // fails soft — the buttons still work even if history/state can't load
     } finally {
       setLoading(false);
     }
@@ -65,6 +96,25 @@ export default function PrivacyTab() {
     }
   }
 
+  async function toggleConsent(channel, value) {
+    setConsentBusy(channel);
+    setConsentError(null);
+    try {
+      const resp = await fetch("/api/marketing-consent", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ channel, consent: value }),
+      });
+      const json = await resp.json();
+      if (!resp.ok) throw new Error(json.error || "Could not update that.");
+      await load();
+    } catch (e) {
+      setConsentError(e.message);
+    } finally {
+      setConsentBusy(null);
+    }
+  }
+
   if (!isSignedIn) {
     return (
       <div style={{ textAlign: "center", padding: "40px 16px" }}>
@@ -93,7 +143,7 @@ export default function PrivacyTab() {
         <a href="mailto:deploy@pibitsai.com" style={{ color: "#0F6E56" }}>deploy@pibitsai.com</a> directly at any time.
       </p>
 
-      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 18 }}>
+      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 22 }}>
         <a
           href="/api/privacy-request/export"
           onClick={onDownloadClick}
@@ -111,6 +161,40 @@ export default function PrivacyTab() {
       </div>
 
       {error && <div style={{ color: "#A03530", fontSize: 12, marginBottom: 14 }}>{error}</div>}
+
+      {!loading && consent && (
+        <div style={{ marginBottom: 22 }}>
+          <div style={{ fontSize: 13, fontWeight: 500, marginBottom: 2 }}>Promotional messages</div>
+          <div style={{ fontSize: 11, color: "var(--color-text-tertiary)", marginBottom: 10 }}>
+            Entirely optional — off by default, and turning these off never affects your account or any redemption.
+          </div>
+          <div style={{ border: "0.5px solid var(--color-border-tertiary)", borderRadius: 10, overflow: "hidden" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 12px" }}>
+              <div>
+                <div style={{ fontSize: 12 }}>SMS to your registered number</div>
+                <div style={{ fontSize: 10, color: "var(--color-text-tertiary)" }}>Occasional offers and updates by text</div>
+              </div>
+              <Toggle checked={consent.smsConsent} disabled={consentBusy === "sms"} onChange={(v) => toggleConsent("sms", v)} />
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 12px", borderTop: "0.5px solid var(--color-border-tertiary)" }}>
+              <div>
+                <div style={{ fontSize: 12 }}>Email {consent.marketingEmail ? `(${consent.marketingEmail})` : ""}</div>
+                <div style={{ fontSize: 10, color: "var(--color-text-tertiary)" }}>
+                  {consent.marketingEmail
+                    ? "Occasional offers and updates by email"
+                    : "Set an email and opt in at your next voucher redemption"}
+                </div>
+              </div>
+              <Toggle
+                checked={consent.emailConsent}
+                disabled={consentBusy === "email" || !consent.marketingEmail}
+                onChange={(v) => toggleConsent("email", v)}
+              />
+            </div>
+          </div>
+          {consentError && <div style={{ color: "#A03530", fontSize: 12, marginTop: 8 }}>{consentError}</div>}
+        </div>
+      )}
 
       {!loading && requests.length > 0 && (
         <div>
