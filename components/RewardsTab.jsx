@@ -16,7 +16,7 @@
 // no plan check: it's just a balance check against whatever's available.
 
 import { useState, useEffect, useCallback } from "react";
-import { useUser, useClerk } from "@clerk/nextjs";
+import { useUser } from "@clerk/nextjs";
 import PhoneSignInButton from "@/components/PhoneSignInButton";
 import { LOYALTY } from "@/lib/constants";
 
@@ -50,8 +50,7 @@ function VoucherShowcase({ caption }) {
 }
 
 export default function RewardsTab() {
-  const { isSignedIn, user } = useUser();
-  const { openUserProfile } = useClerk();
+  const { isSignedIn } = useUser();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -60,14 +59,20 @@ export default function RewardsTab() {
   const [busy, setBusy] = useState(false);
   const [payingFee, setPayingFee] = useState(false);
   const [notice, setNotice] = useState(null);
-  // RBI KYC confirmation step (2026-09-02): first/last name and mobile are
-  // no longer typed here at all — they're read straight from the Clerk
-  // account (sign-up is phone-only now, so mobile in particular IS the
-  // account's identifier) and shown locked, so they can't drift from what
-  // the account actually says. Email and the postal address ARE typed here
-  // — email because sign-up no longer collects it at all, address because
-  // it never has.
+  // RBI KYC confirmation step. Mobile is locked (read from our own
+  // encrypted user_identities copy — the account's own verified sign-in
+  // identifier, never client-typed). First/last name, email and the
+  // postal address are all typed here and reconfirmed on every
+  // redemption — 2026-09-29: first/last name moved off Clerk's own
+  // profile UI onto this form, same treatment as email/address already
+  // had (see app/api/rewards/route.js's redeem handler for why: it was
+  // also the app's one remaining Clerk-branded UI surface). Prefilled
+  // from storedKyc below for convenience on a repeat redemption, but
+  // never trusted blindly — the server independently validates whatever
+  // is actually submitted.
   const [pendingDenom, setPendingDenom] = useState(null);
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
   const [address, setAddress] = useState("");
   const [email, setEmail] = useState("");
   // Unchecked by default, always — this is a separate, specific opt-in
@@ -80,16 +85,7 @@ export default function RewardsTab() {
   // already fetched elsewhere on every page load.
   const [accountPhone, setAccountPhone] = useState("");
 
-  // The account profile fields RBI KYC needs — never client-typed, never
-  // trusted from anywhere else. The server independently re-derives the
-  // same thing from the session on redeem, so this is purely for display;
-  // it can't be spoofed into unlocking a redemption.
-  const accountKyc = {
-    firstName: user?.firstName || "",
-    lastName: user?.lastName || "",
-    mobile: accountPhone,
-  };
-  const accountKycComplete = Boolean(accountKyc.firstName && accountKyc.lastName && accountKyc.mobile);
+  const accountKycComplete = Boolean(firstName.trim() && lastName.trim() && accountPhone);
   const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 
   const load = useCallback(async () => {
@@ -270,7 +266,7 @@ export default function RewardsTab() {
                 <button
                   key={d}
                   disabled={busy || d > available}
-                  onClick={() => { setAddress(data.storedKyc?.address || ""); setEmail(data.storedKyc?.email || ""); setPendingDenom(d); setNotice(null); }}
+                  onClick={() => { setFirstName(data.storedKyc?.firstName || ""); setLastName(data.storedKyc?.lastName || ""); setAddress(data.storedKyc?.address || ""); setEmail(data.storedKyc?.email || ""); setPendingDenom(d); setNotice(null); }}
                   style={{ background: d <= available ? "#854F0B" : "none", color: d <= available ? "#fff" : "var(--color-text-tertiary)", border: "0.5px solid var(--color-border-secondary)", borderRadius: 6, padding: "7px 14px", fontSize: 12, fontWeight: 500, cursor: d <= available ? "pointer" : "default", opacity: busy ? 0.5 : 1 }}
                 >
                   ₹{n(d)}
@@ -284,23 +280,38 @@ export default function RewardsTab() {
         ) : (
           <div>
             <div style={{ fontSize: 12, color: "var(--color-text-secondary)", lineHeight: 1.7, marginBottom: 10 }}>
-              This ₹{n(pendingDenom)} {voucherType} voucher will be issued to the name and mobile on your account, plus the email and address you confirm below — required every time by the RBI&apos;s rules for gift vouchers in India.
+              This ₹{n(pendingDenom)} {voucherType} voucher will be issued to the mobile on your account, plus the name, email and address you confirm below — required every time by the RBI&apos;s rules for gift vouchers in India.
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 8, marginBottom: 10 }}>
-              {/* Locked, filled boxes — not inputs. Name/mobile come from
-                  the Clerk account (mobile is sign-up's sole identifier now)
-                  and can only be changed via the account's own profile,
-                  never on this form; showing them as editable text here
-                  would imply they could drift from what the account
-                  actually says. */}
-              {[["First name", accountKyc.firstName], ["Last name", accountKyc.lastName], ["Mobile", accountKyc.mobile]].map(([label, value]) => (
-                <div key={label}>
-                  <div style={{ fontSize: 10, color: "var(--color-text-tertiary)", marginBottom: 3 }}>{label}</div>
-                  <div style={{ border: "0.5px solid var(--color-border-tertiary)", borderRadius: 6, padding: "7px 9px", fontSize: 12, background: "var(--color-background-tertiary)", color: value ? "var(--color-text-primary)" : "#A03530" }}>
-                    {value || "Not set"}
-                  </div>
+              {/* Mobile stays a locked, filled box — it's the account's own
+                  verified sign-in identifier (read from our own encrypted
+                  user_identities copy), never something to silently let
+                  drift from what was actually verified. Name, email and
+                  address are all plain inputs, reconfirmed every time. */}
+              <div>
+                <div style={{ fontSize: 10, color: "var(--color-text-tertiary)", marginBottom: 3 }}>Mobile</div>
+                <div style={{ border: "0.5px solid var(--color-border-tertiary)", borderRadius: 6, padding: "7px 9px", fontSize: 12, background: "var(--color-background-tertiary)", color: accountPhone ? "var(--color-text-primary)" : "#A03530" }}>
+                  {accountPhone || "Not set"}
                 </div>
-              ))}
+              </div>
+              <div>
+                <div style={{ fontSize: 10, color: "var(--color-text-tertiary)", marginBottom: 3 }}>First name</div>
+                <input
+                  placeholder="First name"
+                  value={firstName}
+                  onChange={(e) => setFirstName(e.target.value)}
+                  style={{ width: "100%", boxSizing: "border-box", border: "0.5px solid var(--color-border-secondary)", borderRadius: 6, padding: "7px 9px", fontSize: 12, background: "none", color: "var(--color-text-primary)" }}
+                />
+              </div>
+              <div>
+                <div style={{ fontSize: 10, color: "var(--color-text-tertiary)", marginBottom: 3 }}>Last name</div>
+                <input
+                  placeholder="Last name"
+                  value={lastName}
+                  onChange={(e) => setLastName(e.target.value)}
+                  style={{ width: "100%", boxSizing: "border-box", border: "0.5px solid var(--color-border-secondary)", borderRadius: 6, padding: "7px 9px", fontSize: 12, background: "none", color: "var(--color-text-primary)" }}
+                />
+              </div>
               <div>
                 <div style={{ fontSize: 10, color: "var(--color-text-tertiary)", marginBottom: 3 }}>Email</div>
                 <input
@@ -320,12 +331,9 @@ export default function RewardsTab() {
                 />
               </div>
             </div>
-            {!accountKycComplete && (
+            {!accountPhone && (
               <div style={{ fontSize: 12, color: "#854F0B", background: "#FDF8EF", border: "0.5px solid #EADFC8", borderRadius: 8, padding: "8px 10px", marginBottom: 10, lineHeight: 1.6 }}>
-                Your account is missing a first name, last name or mobile number — all three are required to issue a voucher.{" "}
-                <button onClick={() => openUserProfile()} style={{ background: "none", border: "none", padding: 0, color: "#854F0B", fontWeight: 600, textDecoration: "underline", cursor: "pointer", fontSize: 12 }}>
-                  Complete your profile
-                </button>
+                Your account is missing a verified mobile number — please sign in again before redeeming.
               </div>
             )}
             {/* Separate, unchecked-by-default opt-in — this is the ONLY
@@ -347,7 +355,7 @@ export default function RewardsTab() {
                 disabled={busy || !accountKycComplete || !emailValid || !address.trim()}
                 onClick={async () => {
                   await act(
-                    { action: "redeem", voucherType, points: pendingDenom, email, address, kycConfirmed: true, marketingEmailConsent },
+                    { action: "redeem", voucherType, points: pendingDenom, firstName, lastName, email, address, kycConfirmed: true, marketingEmailConsent },
                     "Redemption requested — your voucher code will appear below once issued (usually within 2 working days)."
                   );
                   setPendingDenom(null);

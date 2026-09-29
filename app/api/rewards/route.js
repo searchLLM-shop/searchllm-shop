@@ -7,7 +7,7 @@
 // removed 2026-08-25 — see the LOYALTY.POINTS comment in lib/constants.js)
 // — nothing about a member's purchases is ever linked to this programme.
 
-import { auth, currentUser } from "@clerk/nextjs/server";
+import { auth } from "@clerk/nextjs/server";
 import { joinLoyalty, getRewardsSummary, requestRedemption, claimGuestDayPoints, getDecryptedPhoneForUser, setEmailMarketingConsentIn } from "@/lib/db";
 import { getOrCreateGuestId } from "@/lib/guestId";
 import { LOYALTY } from "@/lib/constants";
@@ -55,31 +55,37 @@ export async function POST(req) {
 
       // RBI mandate for gift vouchers issued in India: first name, last
       // name, mobile, email and postal address are required for every
-      // redemption. First/last name are NOT taken from the request body
-      // (2026-09-02) — they're read straight from the signed-in Clerk
-      // account, editable only via the account's own Clerk profile, never
-      // on this form. This closes a trust gap: a client could previously
-      // claim any name it liked here, whether or not it matched the
-      // signed-in account.
-      // Mobile is read from user_identities, NOT Clerk (2026-09-22): Clerk
-      // no longer holds the real phone number at all — see schema.sql's
-      // user_identities comment, lib/phoneAuth.js — this is the one place
-      // besides account creation that still needs it, and it's read from
-      // our own encrypted, India-hosted copy rather than a third party.
-      // Email is different: sign-up no longer collects it at all, so there
-      // is no account-level email to read — it's asked for here, at
-      // redemption, same as the address.
-      const account = await currentUser();
+      // redemption.
+      // 2026-09-29: first/last name moved OFF Clerk entirely (same reason
+      // phone moved off it on 2026-09-22 — see user_identities' comment)
+      // — Clerk no longer holds any real name we ever wrote there, and
+      // this was also the app's one remaining Clerk-branded UI surface
+      // (openUserProfile()), so removing it lets the Clerk plan itself
+      // drop back to Free. Name is now client-typed at redemption, same
+      // as email/address always were — re-confirmed every time, prefilled
+      // from storedKyc (loyalty_members.kyc_first_name/last_name) for
+      // convenience on a repeat redemption, never trusted blindly (the
+      // whole point of KYC re-confirmation, same as email/address).
+      // Mobile is still read from user_identities, NOT Clerk (2026-09-22):
+      // Clerk no longer holds the real phone number at all — see
+      // schema.sql's user_identities comment, lib/phoneAuth.js — read
+      // from our own encrypted, India-hosted copy rather than a third
+      // party, and not client-typed (unlike name) since it's the
+      // account's own verified sign-in identifier, not something to
+      // silently let drift from what was actually verified.
       const rawMobile = (await getDecryptedPhoneForUser(userId).catch(() => null)) || "";
       const kyc = {
-        firstName: String(account?.firstName || "").trim().slice(0, 80),
-        lastName: String(account?.lastName || "").trim().slice(0, 80),
+        firstName: String(body.firstName || "").trim().slice(0, 80),
+        lastName: String(body.lastName || "").trim().slice(0, 80),
         mobile: rawMobile.replace(/\D/g, "").slice(-10),
         email: String(body.email || "").trim().slice(0, 200),
         address: String(body.address || "").trim().slice(0, 400),
       };
-      if (!kyc.firstName || !kyc.lastName || !/^\d{10}$/.test(kyc.mobile)) {
-        return Response.json({ error: "Your account is missing a first name, last name or mobile number — complete your profile before redeeming. This is required for gift voucher issuance in India." }, { status: 400 });
+      if (!kyc.firstName || !kyc.lastName) {
+        return Response.json({ error: "Enter your first and last name." }, { status: 400 });
+      }
+      if (!/^\d{10}$/.test(kyc.mobile)) {
+        return Response.json({ error: "Your account is missing a verified mobile number — please sign in again." }, { status: 400 });
       }
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(kyc.email)) {
         return Response.json({ error: "Enter a valid email address." }, { status: 400 });
