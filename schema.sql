@@ -811,3 +811,18 @@ CREATE TABLE IF NOT EXISTS marketing_consent (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 ALTER TABLE marketing_consent ENABLE ROW LEVEL SECURITY;
+
+-- Qwikcilver's own UAT feedback (2026-09-30): manually re-checking Order
+-- Status from the partner testing console (app/api/partner/qwikcilver-uat)
+-- creates a real hit on their server every click, with no limit. Capped
+-- per refno rather than globally — a tester legitimately needs to check
+-- several DIFFERENT test orders, just not hammer the same one — enforced
+-- server-side (not just a disabled button) since that's the only place
+-- it can't be bypassed.
+CREATE TABLE IF NOT EXISTS partner_order_status_checks (
+  refno TEXT PRIMARY KEY,
+  checks INTEGER NOT NULL DEFAULT 0,
+  first_checked_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  last_checked_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+ALTER TABLE partner_order_status_checks ENABLE ROW LEVEL SECURITY;

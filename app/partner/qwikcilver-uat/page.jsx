@@ -238,6 +238,11 @@ function OrderStatusCard({ call }) {
   const [refno, setRefno] = useState("");
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null);
+  // Order Status is capped at 3 manual checks per refno, enforced
+  // server-side (so this is just a UX convenience, not the real limit —
+  // see app/api/partner/qwikcilver-uat/route.js). Tracked per refno the
+  // field currently holds, from whatever the server last reported.
+  const [checksInfo, setChecksInfo] = useState(null); // { refno, checksUsed, checksLimit }
 
   async function submit(e) {
     e.preventDefault();
@@ -246,19 +251,28 @@ function OrderStatusCard({ call }) {
     try {
       const res = await call(`${API_BASE}?orderStatus=${encodeURIComponent(refno)}`);
       setResult(res);
+      const info = res.body?.checksUsed != null ? res.body : null;
+      if (info) setChecksInfo({ refno, checksUsed: info.checksUsed, checksLimit: info.checksLimit });
     } finally {
       setLoading(false);
     }
   }
 
+  const atLimit = checksInfo?.refno === refno && checksInfo.checksUsed >= checksInfo.checksLimit;
+
   return (
     <form onSubmit={submit} style={styles.card}>
       <div style={styles.cardTitle}>Order Status API</div>
+      <div style={{ fontSize: 11, color: "var(--color-text-tertiary, #6B7280)", marginBottom: 8 }}>
+        Capped at 3 checks per refno to avoid repeated hits on our sandbox — place a new order to check a fresh one.
+      </div>
       <div style={styles.row}>
         <Field label="Refno">
           <input value={refno} onChange={(e) => setRefno(e.target.value)} style={styles.input} required />
         </Field>
-        <button type="submit" style={styles.buttonSecondary} disabled={loading}>{loading ? "Checking…" : "Check status"}</button>
+        <button type="submit" style={styles.buttonSecondary} disabled={loading || atLimit}>
+          {loading ? "Checking…" : atLimit ? "Limit reached (3/3)" : checksInfo?.refno === refno ? `Check status (${checksInfo.checksUsed}/${checksInfo.checksLimit} used)` : "Check status"}
+        </button>
       </div>
       <ResultPanel label="GET /v3/order/{refno}/status" loading={loading} result={result} />
     </form>

@@ -26,7 +26,10 @@
 //   (no params)                  -> root category list
 //   ?sku=<sku>                   -> product details
 //   ?category=<id>&products=1   -> that category's products
-//   ?orderStatus=<refno>         -> Order Status API
+//   ?orderStatus=<refno>         -> Order Status API — capped at 3 checks
+//                                    per refno (2026-09-30, Qwikcilver's
+//                                    own UAT feedback), enforced server-
+//                                    side via partner_order_status_checks.
 //   ?activatedCards=<orderId>    -> Activated Cards API
 // Same POST bodies:
 //   {testSku, denomination?}     -> testOrder()
@@ -34,6 +37,7 @@
 //                                    comment in lib/vouchers/qwikcilver.js
 
 import { getCategories, listCategoryProducts, getProduct, testOrder, testOrderCustom, TEST_SKUS, getOrderStatus, getActivatedCards } from "@/lib/vouchers/qwikcilver";
+import { checkAndRecordPartnerStatusCheck } from "@/lib/db";
 
 export const maxDuration = 30;
 
@@ -64,8 +68,22 @@ export async function GET(req) {
 
   try {
     if (orderStatus) {
+      // Qwikcilver's own UAT feedback (2026-09-30): capped at 3 manual
+      // checks per refno to avoid repeatedly hitting their server — see
+      // schema.sql's partner_order_status_checks comment.
+      const limitCheck = await checkAndRecordPartnerStatusCheck(orderStatus);
+      if (!limitCheck.ok) {
+        return Response.json(
+          {
+            error: `Order Status has already been checked ${limitCheck.checks - 1} times for this refno — capped at ${limitCheck.limit} to avoid repeated hits on your server. Place a new test order to check a fresh one.`,
+            checksUsed: limitCheck.checks - 1,
+            checksLimit: limitCheck.limit,
+          },
+          { status: 429 }
+        );
+      }
       const result = await getOrderStatus(orderStatus);
-      return Response.json({ mode: "orderStatus", refno: orderStatus, ...result });
+      return Response.json({ mode: "orderStatus", refno: orderStatus, checksUsed: limitCheck.checks, checksLimit: limitCheck.limit, ...result });
     }
     if (activatedCards) {
       const result = await getActivatedCards(activatedCards);
