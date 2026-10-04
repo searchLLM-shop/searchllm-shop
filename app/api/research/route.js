@@ -577,7 +577,7 @@ export async function POST(req) {
             topMatches.some((m) => overBudgetInfo(m.listing))
               ? ` Products marked [OVER BUDGET] cost more than the ceiling the person stated. Prefer any product that is within budget and genuinely fits. ${
                   topMatches.every((m) => overBudgetInfo(m.listing))
-                    ? "Nothing in our inventory is within their budget, so these are the nearest options: you may pick one if it is genuinely right, but you MUST say plainly in your reasoning that it is over their budget and by roughly how much, and let them decide — never imply it fits the budget, and never recommend one that is not a good product for what they asked."
+                    ? "Nothing in our inventory is within their budget, so these are the nearest options. For this case only, being over budget is NOT a reason to mark a product as not fitting or to decline to pick one: the interface labels it \"slightly over budget\" with the exact amount and the shopper decides. Judge fit on every OTHER attribute they asked for; if one meets them, mark it fits:true and choose the best as your pick. You MUST say plainly in your reasoning that it is over their budget and by roughly how much, and never imply it fits the budget. If none meets their other requirements, pick none."
                     : "Choose an over-budget product only if it is clearly better than every within-budget one, and if you do, say plainly that it is over budget and by roughly how much."
                 }`
               : ""
