@@ -342,7 +342,13 @@ export async function POST(req) {
     // dress for a party" needed the same fix as an explicit "women red
     // dress", since most real shoppers never say "women" at all).
     const excludeMinors = !mentionsMinors(matchText);
-    const candidates = await findCandidateListings(Array.from(new Set(queryTerms)), userCountry, 200, excludeMinors, matchText);
+    // 400, not 200 (2026-10-05): the shortlist is now spread across a
+    // stated budget (lib/listingMatcher.js's spreadByPrice), which needs a
+    // pool wide enough to actually contain more than one price band. The
+    // cost is nil — the expensive part is the bounded seed ranking in
+    // findCandidateListings, not the LIMIT, and the JS scorer handles a few
+    // hundred rows in microseconds.
+    const candidates = await findCandidateListings(Array.from(new Set(queryTerms)), userCountry, 400, excludeMinors, matchText);
     // Top few plausible candidates — the MODEL chooses which one (if any)
     // genuinely answers the question. Mechanical scoring is the recall gate;
     // the model is the precision gate. See findTopMatchingListings.
@@ -350,7 +356,12 @@ export async function POST(req) {
     // is a ranker, so give it a wider shortlist to choose from. At ~30
     // tokens per candidate line this costs almost nothing, and it makes
     // "the real product was #5 in mechanical order" a non-event.
-    const topMatches = findTopMatchingListings(matchText, candidates, userCountry, 8, intent?.productType);
+    const topMatches = findTopMatchingListings(matchText, candidates, userCountry, 8, intent?.productType, {
+      // Colour is a hard requirement in browse categories (clothes,
+      // shoes, bags...) — and nonsense in groceries/beauty, where "green"
+      // or "cream" name a product. See the colour section in the matcher.
+      colourMatching: intent?.choiceMode === "browse",
+    });
 
     // A search with no relevant partner product is an inventory gap worth
     // measuring — it tells us which categories to go and get merchants for.
@@ -494,9 +505,9 @@ export async function POST(req) {
               (m, i) =>
                 `${i + 1}. [id ${m.listing.id}] ${m.listing.product} by ${m.listing.brand}, ${m.listing.price}${
                   m.listing.rating ? `, rated ${m.listing.rating}/5 by ${m.listing.ratingCount || "some"} shoppers` : ""
-                }`
+                }${m.listing.description ? `. Retailer's description: ${m.listing.description}` : ""}`
             )
-            .join("\n")}\n${partnerInstruction}`
+            .join("\n")}\nWhere a retailer's description is given it states what the listing actually is — colour, fabric, fit — which titles often omit. Check it against every attribute the person asked for: a product whose description shows a different colour from the one requested does NOT fit, whatever its title says. ${partnerInstruction}`
         : ""
     }${formatIntentContext(intent)}${searchContext}`;
 
