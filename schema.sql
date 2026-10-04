@@ -123,8 +123,11 @@ ON CONFLICT DO NOTHING;
 -- multi-download memory spike that was killing the function.
 CREATE TABLE IF NOT EXISTS sync_state (
   key TEXT PRIMARY KEY,
-  value INTEGER NOT NULL DEFAULT 0
+  value BIGINT NOT NULL DEFAULT 0
 );
+-- BIGINT because the vCommission product sync stores BYTE offsets into feed
+-- files; the Myntra file is multi-GB and INTEGER overflows at 2,147,483,647.
+-- For an existing database run: ALTER TABLE sync_state ALTER COLUMN value TYPE BIGINT;
 
 -- Geography: which countries a listing is valid for (ISO-2 codes, e.g.
 -- {IN}, {GB}, {US}). Affiliate offers are almost always geo-restricted —
