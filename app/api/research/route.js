@@ -6,14 +6,14 @@
 // the real approved-listings table instead of in-memory React state.
 
 import { auth, currentUser } from "@clerk/nextjs/server";
-import { findCandidateListings, insertMicrosite, getAndIncrementUsage, getUsageToday, reserveSlug } from "@/lib/db";
+import { findCandidateListings, findStrictCandidates, insertMicrosite, getAndIncrementUsage, getUsageToday, reserveSlug } from "@/lib/db";
 import { isAdminUser } from "@/lib/isAdmin";
 import { checkQuery, mentionsMinors } from "@/lib/contentFilter";
 import { slugify } from "@/lib/slug";
 import { languageForModel, resolveLocale } from "@/lib/i18n";
 import { recordEvent, recordSearchQuery } from "@/lib/db";
 import { identifyProductFromImage } from "@/lib/visionSearch";
-import { findTopMatchingListings, buildClientListingPayload, extractQueryTerms, extractBudget, priceValue } from "@/lib/listingMatcher";
+import { findTopMatchingListings, buildClientListingPayload, extractQueryTerms, extractBudget, priceValue, strictSearchTerms } from "@/lib/listingMatcher";
 import { creditSearchPoints, getGuestDayPoints, hasPaymentCredit, hashIp, recordAndCheckIp, checkAndConsumeQuota } from "@/lib/db";
 import { getOrCreateGuestId } from "@/lib/guestId";
 import { PLANS, LOYALTY, dailyPickLimit } from "@/lib/constants";
@@ -358,7 +358,24 @@ export async function POST(req) {
       : statedBudget.min
       ? { min: statedBudget.min, max: statedBudget.max }
       : { min: null, max: statedBudget.max * 1.3 };
-    const candidates = await findCandidateListings(Array.from(new Set(queryTerms)), userCountry, 400, excludeMinors, matchText, priceRange);
+    // Queries with a hard spec ("55 inch 4k tv", "8gb phone") also get a
+    // STRICT fetch requiring every key word (findStrictCandidates), merged
+    // into the pool: the normal fetch OR's its terms over an unordered
+    // slice, which is how a 55-inch TV query ended up shortlisting dust
+    // covers and 32-inch sets. Capped at 3s so it can never slow a search.
+    const strictTerms = strictSearchTerms(matchText);
+    const strictFetch = strictTerms
+      ? Promise.race([
+          findStrictCandidates(strictTerms, userCountry, excludeMinors, priceRange),
+          new Promise((resolve) => setTimeout(() => resolve([]), 3000)),
+        ])
+      : Promise.resolve([]);
+    const [mainCandidates, strictCandidates] = await Promise.all([
+      findCandidateListings(Array.from(new Set(queryTerms)), userCountry, 400, excludeMinors, matchText, priceRange),
+      strictFetch,
+    ]);
+    const seenCandidateIds = new Set(mainCandidates.map((l) => l.id));
+    const candidates = [...mainCandidates, ...strictCandidates.filter((l) => !seenCandidateIds.has(l.id))];
     // Top few plausible candidates — the MODEL chooses which one (if any)
     // genuinely answers the question. Mechanical scoring is the recall gate;
     // the model is the precision gate. See findTopMatchingListings.
