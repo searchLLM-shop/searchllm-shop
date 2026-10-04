@@ -627,8 +627,20 @@ export async function POST(req) {
           const reader = anthropicResp.body.getReader();
           const decoder = new TextDecoder();
           let buf = "";
+          // Diagnostic: log any long silence between upstream chunks, with
+          // the event types seen in the chunk that ended it. Added while
+          // chasing answers that paused ~50s mid-stream and then arrived in
+          // one burst — this tells apart "Anthropic was slow" from "we were
+          // blocked". Cheap, and only logs when a gap is abnormal.
+          let lastChunkAt = Date.now();
+          const streamStartedAt = lastChunkAt;
           while (true) {
             const { done, value } = await reader.read();
+            const nowTs = Date.now();
+            if (nowTs - lastChunkAt > 8000) {
+              console.warn(`research upstream gap ${nowTs - lastChunkAt}ms (t+${nowTs - streamStartedAt}ms, done=${done}, raw=${raw.length} chars)`);
+            }
+            lastChunkAt = nowTs;
             if (done) break;
             buf += decoder.decode(value, { stream: true });
             const lines = buf.split("\n");
