@@ -10,6 +10,15 @@
 
 import { useState, useEffect, useCallback } from "react";
 
+function timeAgo(iso) {
+  const mins = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 60000));
+  if (mins < 2) return "just now";
+  if (mins < 60) return `${mins} min ago`;
+  const hrs = Math.round(mins / 60);
+  if (hrs < 48) return `${hrs}h ago`;
+  return `${Math.round(hrs / 24)}d ago`;
+}
+
 export default function PriceAlerts({ onMarkSeen }) {
   const [loading, setLoading] = useState(true);
   const [watches, setWatches] = useState([]);
@@ -110,6 +119,15 @@ export default function PriceAlerts({ onMarkSeen }) {
                   <>Watching since {w.baselinePriceText || "—"} · now {w.currentPriceText || "—"}</>
                 )}
                 {w.targetPrice != null && <span> · alert below ₹{Number(w.targetPrice).toLocaleString()}</span>}
+              </div>
+              {/* Honest about where the price comes from: read from the
+                  merchant's own page where we can, otherwise the product
+                  feed's price, which can lag. */}
+              <div style={{ fontSize: 10, color: "var(--color-text-tertiary)", marginTop: 2 }}>
+                {w.liveTracked
+                  ? `Price checked on the retailer's page${w.lastCheckedAt ? ` · ${timeAgo(w.lastCheckedAt)}` : ""}`
+                  : "Price from the retailer's product feed — may lag the live price"}
+                {w.lowestSeen != null && <span> · lowest seen ₹{Number(w.lowestSeen).toLocaleString("en-IN")}</span>}
               </div>
             </div>
             <button

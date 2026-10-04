@@ -16,6 +16,9 @@ import { identifyProductFromImage } from "@/lib/visionSearch";
 import { findTopMatchingListings, buildClientListingPayload, extractQueryTerms, extractBudget, priceValue, strictSearchTerms } from "@/lib/listingMatcher";
 import { creditSearchPoints, getGuestDayPoints, hasPaymentCredit, hashIp, recordAndCheckIp, checkAndConsumeQuota, refundQuota } from "@/lib/db";
 import { issueRetryTicket, verifyRetryTicket } from "@/lib/retryTicket";
+import { waitUntil } from "@vercel/functions";
+import { refreshPickPrice, getPriceHistorySummary } from "@/lib/priceAlerts";
+import { isProbeSupported, formatInr } from "@/lib/priceProbe";
 import { getOrCreateGuestId } from "@/lib/guestId";
 import { PLANS, LOYALTY, dailyPickLimit } from "@/lib/constants";
 import { shouldSearch, searchDepth, isFactSensitive, webSearch, contextSearchProvider, priceSearchProvider, reviewSearchProvider, formatSearchContext, THIN_RATING_COUNT } from "@/lib/search";
@@ -1083,8 +1086,43 @@ export async function POST(req) {
             }
           }
 
+          // Live price for the pick, read from the merchant's own page when we
+          // can (lib/priceProbe.js) — the feed's price can be weeks old. Capped
+          // at 2.5s so it can never hold the answer up; extras are refreshed
+          // in the background so their price is current for the next shopper
+          // and recorded as price history. Everything here is best-effort.
+          let priceInfo = null;
+          try {
+            if (chosenMatch) {
+              const supported = isProbeSupported(chosenMatch.networkLink);
+              let verified = false;
+              if (supported) {
+                const r = await Promise.race([
+                  refreshPickPrice(chosenMatch.id, { maxAgeHours: 6 }),
+                  new Promise((resolve) => setTimeout(() => resolve(null), 2500)),
+                ]);
+                if (r && (r.status === "ok" || r.status === "out_of_stock" || r.status === "fresh")) {
+                  verified = true;
+                  if (r.price && r.changed) chosenMatch.price = formatInr(r.price);
+                }
+              }
+              const hist = (await getPriceHistorySummary([chosenMatch.id])).get(chosenMatch.id);
+              priceInfo = {
+                verified,
+                lowestSeen: hist && hist.points >= 2 ? hist.lowest : null,
+                highestSeen: hist && hist.points >= 2 ? hist.highest : null,
+                trackedSince: hist && hist.points >= 2 ? hist.firstAt : null,
+              };
+            }
+            const bg = moreChoices.filter((l) => isProbeSupported(l.networkLink)).map((l) => refreshPickPrice(l.id));
+            if (bg.length) waitUntil(Promise.allSettled(bg));
+          } catch (err) {
+            console.error("Live price step failed (ignored):", err.message);
+          }
+
           send({
             type: "final",
+            priceInfo,
             headline: parsed.headline,
             reasoning: parsed.reasoning,
             whoItsFor: parsed.whoItsFor,

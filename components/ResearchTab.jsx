@@ -1002,6 +1002,13 @@ export default function ResearchTab({ maxSearches, searchCount, onSearchComplete
                       Slightly over budget — {result.matchedListing.overBudget.symbol}{result.matchedListing.overBudget.amount.toLocaleString("en-IN")} above your {result.matchedListing.overBudget.symbol}{result.matchedListing.overBudget.budget.toLocaleString("en-IN")}
                     </div>
                   )}
+                  {(result.priceInfo?.verified || result.priceInfo?.lowestSeen != null) && (
+                    <div style={{ fontSize: 10, color: "#0F6E56", marginBottom: 6 }}>
+                      {result.priceInfo.verified && "✓ Price checked on the retailer's page"}
+                      {result.priceInfo.verified && result.priceInfo.lowestSeen != null && " · "}
+                      {result.priceInfo.lowestSeen != null && `Lowest we've seen: ₹${Number(result.priceInfo.lowestSeen).toLocaleString("en-IN")}`}
+                    </div>
+                  )}
                   <div style={{ fontSize: 12, color: "var(--color-text-secondary)", marginBottom: 10 }}>
                     {result.matchedListing.brand}
                     {/* Real shopper ratings from the feed — shown because they're

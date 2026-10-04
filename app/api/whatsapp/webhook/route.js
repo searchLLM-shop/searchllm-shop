@@ -24,6 +24,10 @@ import { checkQuery } from "@/lib/contentFilter";
 import { identifyProductFromImage } from "@/lib/visionSearch";
 import { findCandidateListings, query as dbQuery, getUsageToday, getAndIncrementUsage, recordSearchQuery } from "@/lib/db";
 import { findTopMatchingListings, extractQueryTerms, buildClientListingPayload } from "@/lib/listingMatcher";
+import { extractIntent } from "@/lib/queryIntent";
+import { pickMoreChoices, maxExtrasForMode } from "@/lib/moreChoices";
+import { refreshPickPrice } from "@/lib/priceAlerts";
+import { isProbeSupported } from "@/lib/priceProbe";
 
 // Public origin for links in replies. Set NEXT_PUBLIC_SITE_URL in Vercel;
 // falls back to the production domain.
@@ -46,6 +50,7 @@ Answer in compact chat form. Respond ONLY with valid JSON, no markdown fences:
   "goodFor": "one clause",
   "skipIf": "one clause",
   "sponsoredChoiceId": id or null,
+  "alsoConsiderIds": [ids] (see the instruction after the offered list — usually []),
   "alternatives": [{"name": "...", "priceRange": "₹X–₹Y"}] (max 3)
 }
 
@@ -167,7 +172,19 @@ async function handleMessage(msg) {
     // --- Retrieval → shortlist, identical machinery ---
     const terms = extractQueryTerms(matchText);
     const candidates = terms.length ? await findCandidateListings(terms, "IN") : [];
-    const topMatches = findTopMatchingListings(matchText, candidates, "IN", 8);
+    // Browse-style categories (clothes, shoes, bags...) get a few extra
+    // options, same as the website; spec-driven ones keep one sharp pick.
+    // Also switches on the colour / men-women / brand-cap shortlist rules.
+    const intent = await extractIntent(matchText);
+    const browse = intent?.choiceMode === "browse";
+    const topMatches = findTopMatchingListings(matchText, candidates, "IN", 8, intent?.productType, {
+      colourMatching: browse,
+      audienceMatching: browse,
+      maxPerBrand: browse ? 2 : 0,
+    });
+    const maxExtras = maxExtrasForMode(intent?.choiceMode);
+    const browseMode = maxExtras > 0 && topMatches.length > 1;
+    const candidatesById = new Map(candidates.map((l) => [l.id, l]));
 
     if (queryText.trim()) {
       recordSearchQuery({
@@ -176,6 +193,7 @@ async function handleMessage(msg) {
         listingId: topMatches[0]?.listing.id || null,
         network: null,
         country: "IN",
+        productType: intent?.productType,
       }).catch(() => {});
     }
 
@@ -184,7 +202,11 @@ async function handleMessage(msg) {
       topMatches.length
         ? `\n\nThe following partner products exist in our inventory and MIGHT be relevant:\n${topMatches
             .map((m, i) => `${i + 1}. [id ${m.listing.id}] ${m.listing.product} by ${m.listing.brand}, ${m.listing.price}${m.listing.rating ? `, rated ${m.listing.rating}/5 by ${m.listing.ratingCount || "some"} shoppers` : ""}`)
-            .join("\n")}\nJudge each exactly as you would if no money were involved. Choose the ONE that genuinely answers the question, or none.`
+            .join("\n")}\n${
+            browseMode
+              ? `Judge each exactly as you would if no money were involved. This is a browse-style purchase: people want a few real options. First choose your main pick as sponsoredChoiceId. Then list up to ${maxExtras} OTHER offered products in alsoConsiderIds — each must clear the SAME bar as your pick (every stated attribute, within budget, genuinely worth buying) and together they must give real variety (style, colour, brand or price point), never near-duplicates. Fewer is better than padding; return [] if none qualify. Choose on fit and variety alone. Do not mention the extra options in your text — they are listed separately.`
+              : `Judge each exactly as you would if no money were involved. Choose the ONE that genuinely answers the question, or none. Return alsoConsiderIds as [].`
+          }`
         : ""
     }`;
 
@@ -223,14 +245,49 @@ async function handleMessage(msg) {
     const chosenFull = chosenId ? candidates.find((l) => l.id === chosenId) || null : null;
     const client = buildClientListingPayload(chosenFull);
 
+    // Live price for the pick from the merchant's own page where possible
+    // (lib/priceProbe.js), capped at 2.5s; extras are refreshed in the
+    // background. Best-effort — the feed price is the fallback.
+    let chosenPrice = chosenFull?.price;
+    if (chosenFull && isProbeSupported(chosenFull.networkLink)) {
+      const r = await Promise.race([
+        refreshPickPrice(chosenFull.id, { maxAgeHours: 6 }),
+        new Promise((resolve) => setTimeout(() => resolve(null), 2500)),
+      ]);
+      if (r?.price && r.changed) chosenPrice = `₹${r.price.toLocaleString("en-IN")}`;
+    }
+
+    // Browse-category extras, validated exactly as on the web (offered ids
+    // only, no repeats, no duplicate titles, hard cap).
+    const extras = browseMode && chosenFull
+      ? pickMoreChoices({
+          lead: chosenFull,
+          rawIds: parsed.alsoConsiderIds,
+          offeredIds,
+          candidatesById,
+          max: maxExtras,
+        })
+      : [];
+    const bgPrices = extras.filter((l) => isProbeSupported(l.networkLink)).map((l) => refreshPickPrice(l.id));
+    if (bgPrices.length) waitUntil(Promise.allSettled(bgPrices));
+
+    // The query parameter the /out/ route reads for context is `ctx` (the
+    // old `c=whatsapp` here was silently ignored).
+    const outLink = (l, ctx) => `${SITE_URL}/out/${l.id}?i=${encodeURIComponent(identity)}&ctx=${ctx}`;
+
     let sponsored = null;
     if (chosenFull && client) {
       // The /out/ redirect carries identity + context, so this click lands
       // in network_clicks like any web click — conversions and points
       // attribution work without a single change.
-      const link = `${SITE_URL}/out/${chosenFull.id}?i=${encodeURIComponent(identity)}&c=whatsapp`;
-      sponsored = { product: chosenFull.product, price: chosenFull.price, network: chosenFull.network, link };
+      sponsored = { product: chosenFull.product, price: chosenPrice, network: chosenFull.network, link: outLink(chosenFull, "whatsapp") };
     }
+    const moreOptions = extras.map((l) => ({
+      product: l.product,
+      price: l.price,
+      network: l.network,
+      link: outLink(l, "whatsapp_more"),
+    }));
 
     await getAndIncrementUsage(identity);
 
@@ -240,6 +297,7 @@ async function handleMessage(msg) {
       goodFor: parsed.goodFor,
       skipIf: parsed.skipIf,
       sponsored,
+      moreOptions,
       alternatives: parsed.alternatives,
     }));
   } catch (err) {

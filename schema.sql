@@ -826,3 +826,16 @@ CREATE TABLE IF NOT EXISTS partner_order_status_checks (
   last_checked_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 ALTER TABLE partner_order_status_checks ENABLE ROW LEVEL SECURITY;
+
+-- =========================================================================
+-- Live price checks (2026-10-04). The affiliate feeds don't keep prices
+-- fresh (the vCommission feed is imported once; the hourly sync only adds
+-- new products), so watched and picked listings are re-priced by reading the
+-- merchant's own product page (lib/priceProbe.js). These two columns record
+-- when that last happened and how it went, so it is rate-limited per listing
+-- and so a blocked/unsupported merchant isn't retried every hour.
+-- Nullable, no default: instant even on a very large listings table, and
+-- the code works (less efficiently) until it is applied.
+-- =========================================================================
+ALTER TABLE listings ADD COLUMN IF NOT EXISTS price_checked_at TIMESTAMPTZ;
+ALTER TABLE listings ADD COLUMN IF NOT EXISTS price_check_status TEXT;

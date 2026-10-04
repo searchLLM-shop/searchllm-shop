@@ -22,7 +22,9 @@ import { getOrCreateGuestId } from "@/lib/guestId";
 import { getApprovedListingById, recordNetworkClick, recordEvent, newToken, creditClickPoints, hasPaymentCredit, hashIp, recordAndCheckIp } from "@/lib/db";
 import { buildOutboundUrl } from "@/lib/outbound";
 
-const CONTEXTS = new Set(["research", "answer"]);
+// whatsapp / whatsapp_more: chat links (lead pick / extra options);
+// watchlist: price-drop links. All were previously silently dropped to null.
+const CONTEXTS = new Set(["research", "answer", "whatsapp", "whatsapp_more", "watchlist"]);
 
 export async function GET(req, { params }) {
   const { listingId } = await params;
