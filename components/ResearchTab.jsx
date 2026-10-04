@@ -943,6 +943,11 @@ export default function ResearchTab({ maxSearches, searchCount, onSearchComplete
                       )}
                     </span>
                   </div>
+                  {result.matchedListing.overBudget && (
+                    <div style={{ display: "inline-block", fontSize: 11, fontWeight: 600, color: "#854F0B", background: "#FAEEDA", border: "0.5px solid #E8C98A", borderRadius: 6, padding: "2px 8px", marginBottom: 8 }}>
+                      Slightly over budget — {result.matchedListing.overBudget.symbol}{result.matchedListing.overBudget.amount.toLocaleString("en-IN")} above your {result.matchedListing.overBudget.symbol}{result.matchedListing.overBudget.budget.toLocaleString("en-IN")}
+                    </div>
+                  )}
                   <div style={{ fontSize: 12, color: "var(--color-text-secondary)", marginBottom: 10 }}>
                     {result.matchedListing.brand}
                     {/* Real shopper ratings from the feed — shown because they're
@@ -1050,6 +1055,11 @@ export default function ResearchTab({ maxSearches, searchCount, onSearchComplete
                       {m.brand}
                       {m.rating != null ? ` · ★ ${m.rating}${m.ratingCount ? ` (${Number(m.ratingCount).toLocaleString()})` : ""}` : ""}
                     </div>
+                    {m.overBudget && (
+                      <div style={{ fontSize: 10, fontWeight: 600, color: "#854F0B", marginBottom: 4 }}>
+                        Slightly over budget (+{m.overBudget.symbol}{m.overBudget.amount.toLocaleString("en-IN")})
+                      </div>
+                    )}
                     {/* Wraps onto two lines when the card is narrow (two
                         cards across on a phone is ~136px of content):
                         price and "View on …" together don't fit there, and

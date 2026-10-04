@@ -13,7 +13,7 @@ import { slugify } from "@/lib/slug";
 import { languageForModel, resolveLocale } from "@/lib/i18n";
 import { recordEvent, recordSearchQuery } from "@/lib/db";
 import { identifyProductFromImage } from "@/lib/visionSearch";
-import { findTopMatchingListings, buildClientListingPayload, extractQueryTerms } from "@/lib/listingMatcher";
+import { findTopMatchingListings, buildClientListingPayload, extractQueryTerms, extractBudget, priceValue } from "@/lib/listingMatcher";
 import { creditSearchPoints, getGuestDayPoints, hasPaymentCredit, hashIp, recordAndCheckIp, checkAndConsumeQuota } from "@/lib/db";
 import { getOrCreateGuestId } from "@/lib/guestId";
 import { PLANS, LOYALTY, dailyPickLimit } from "@/lib/constants";
@@ -356,7 +356,7 @@ export async function POST(req) {
     // is a ranker, so give it a wider shortlist to choose from. At ~30
     // tokens per candidate line this costs almost nothing, and it makes
     // "the real product was #5 in mechanical order" a non-event.
-    const topMatches = findTopMatchingListings(matchText, candidates, userCountry, 8, intent?.productType, {
+    const matchOpts = {
       // Colour is a hard requirement in browse categories (clothes,
       // shoes, bags...) — and nonsense in groceries/beauty, where "green"
       // or "cream" name a product. See the colour section in the matcher.
@@ -365,7 +365,38 @@ export async function POST(req) {
       // brand at two shortlist slots (no three-HRX shortlists).
       audienceMatching: intent?.choiceMode === "browse",
       maxPerBrand: intent?.choiceMode === "browse" ? 2 : 0,
-    });
+    };
+    let topMatches = findTopMatchingListings(matchText, candidates, userCountry, 8, intent?.productType, matchOpts);
+
+    // Near-miss (2026-10-04): a stated CEILING ("under ₹60,000") is a hard
+    // filter, so when the only matching products sit just above it the
+    // shopper used to get nothing at all. Retry once with the ceiling
+    // stretched to +30% and offer what comes back — every such product is
+    // labelled "over budget" in the UI and flagged to the model, never
+    // presented as if it fit. Ceilings only; a target ("around 1L") already
+    // carries its own window.
+    const statedBudget = extractBudget(matchText);
+    const budgetCeiling = statedBudget && !statedBudget.min ? statedBudget.max : null;
+    if (topMatches.length === 0 && budgetCeiling) {
+      topMatches = findTopMatchingListings(matchText, candidates, userCountry, 8, intent?.productType, { ...matchOpts, budgetStretch: 1.3 });
+    }
+    // How far over the stated ceiling a listing is, or null if within it.
+    // Drives the UI label and the model's note. Flagged from the price vs
+    // the ceiling itself, so it also covers the 0–15% sale-drift headroom
+    // the normal filter already allows.
+    const overBudgetInfo = (l) => {
+      if (!budgetCeiling || !l) return null;
+      const p = priceValue(l.price);
+      if (!p || p <= budgetCeiling) return null;
+      const symbol = (String(l.price).match(/^[^\d]+/) || [""])[0].trim();
+      return { amount: Math.round(p - budgetCeiling), pct: Math.round(((p - budgetCeiling) / budgetCeiling) * 100), budget: budgetCeiling, symbol };
+    };
+    const toClientPayload = (l) => {
+      const payload = buildClientListingPayload(l);
+      if (!payload) return payload;
+      const ob = overBudgetInfo(l);
+      return ob ? { ...payload, overBudget: ob } : payload;
+    };
 
     // A search with no relevant partner product is an inventory gap worth
     // measuring — it tells us which categories to go and get merchants for.
@@ -512,10 +543,20 @@ export async function POST(req) {
             .map(
               (m, i) =>
                 `${i + 1}. [id ${m.listing.id}] ${m.listing.product} by ${m.listing.brand}, ${m.listing.price}${
+                  overBudgetInfo(m.listing) ? ` [OVER BUDGET by ${overBudgetInfo(m.listing).symbol}${overBudgetInfo(m.listing).amount.toLocaleString("en-IN")}]` : ""
+                }${
                   m.listing.rating ? `, rated ${m.listing.rating}/5 by ${m.listing.ratingCount || "some"} shoppers` : ""
                 }${m.listing.description ? `. Retailer's description: ${m.listing.description}` : ""}`
             )
-            .join("\n")}\nWhere a retailer's description is given it states what the listing actually is — colour, fabric, fit — which titles often omit. Check it against every attribute the person asked for: a product whose description shows a different colour from the one requested does NOT fit, whatever its title says. ${partnerInstruction}`
+            .join("\n")}\nWhere a retailer's description is given it states what the listing actually is — colour, fabric, fit — which titles often omit. Check it against every attribute the person asked for: a product whose description shows a different colour from the one requested does NOT fit, whatever its title says.${
+            topMatches.some((m) => overBudgetInfo(m.listing))
+              ? ` Products marked [OVER BUDGET] cost more than the ceiling the person stated. Prefer any product that is within budget and genuinely fits. ${
+                  topMatches.every((m) => overBudgetInfo(m.listing))
+                    ? "Nothing in our inventory is within their budget, so these are the nearest options: you may pick one if it is genuinely right, but you MUST say plainly in your reasoning that it is over their budget and by roughly how much, and let them decide — never imply it fits the budget, and never recommend one that is not a good product for what they asked."
+                    : "Choose an over-budget product only if it is clearly better than every within-budget one, and if you do, say plainly that it is over budget and by roughly how much."
+                }`
+              : ""
+          } ${partnerInstruction}`
         : ""
     }${formatIntentContext(intent)}${searchContext}`;
 
@@ -739,8 +780,8 @@ export async function POST(req) {
                       pickSent = true;
                       send({
                         type: "pick",
-                        matchedListing: buildClientListingPayload(pickChosenMatch),
-                        moreChoices: earlyMoreChoices.map(buildClientListingPayload),
+                        matchedListing: toClientPayload(pickChosenMatch),
+                        moreChoices: earlyMoreChoices.map((l) => toClientPayload(l)),
                         alternatives: earlyAlternatives,
                         shopLinks: shopLinksEarly,
                       });
@@ -997,11 +1038,11 @@ export async function POST(req) {
             // the reader the product was irrelevant — showing a buy button
             // under an explanation of why not to buy it. A sponsored slot
             // we can't defend is worth less than an empty one.
-            matchedListing: buildClientListingPayload(chosenMatch),
+            matchedListing: toClientPayload(chosenMatch),
             // A few more real options for browse-style categories (clothes,
             // shoes, bags...) — empty array everywhere else. Chosen by the
             // model on fit and variety; it never sees commission data.
-            moreChoices: moreChoices.map(buildClientListingPayload),
+            moreChoices: moreChoices.map((l) => toClientPayload(l)),
             // Non-affiliate shop-search links — ONLY when no partner
             // product matched: when the genuine pick isn't in anything we
             // monetize, the honest fallback is to point at where it's
@@ -1078,7 +1119,19 @@ export async function POST(req) {
     });
 
     return new Response(outStream, {
-      headers: { "Content-Type": "application/x-ndjson; charset=utf-8" },
+      headers: {
+        "Content-Type": "application/x-ndjson; charset=utf-8",
+        // Streamed answer: ask intermediaries not to buffer or transform it.
+        // Seen live: the model's text reached the server on time but the
+        // browser got nothing for ~60s, then everything at once.
+        "Cache-Control": "no-cache, no-transform",
+        "X-Accel-Buffering": "no",
+        // Declaring an encoding makes the edge skip its own on-the-fly
+        // compression, which is what held the stream back: 5/5 clean
+        // runs with Accept-Encoding: identity vs 3/5 stalled of ~60s with
+        // the default. NDJSON deltas are tiny, so nothing is lost.
+        "Content-Encoding": "identity",
+      },
     });
   } catch (err) {
     console.error("Research route error:", err);
