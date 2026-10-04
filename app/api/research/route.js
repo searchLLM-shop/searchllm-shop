@@ -583,7 +583,15 @@ export async function POST(req) {
               : ""
           } ${partnerInstruction}`
         : ""
-    }${formatIntentContext(intent)}${searchContext}`;
+    }${formatIntentContext(intent)}${searchContext}${
+      // Last in the message on purpose: the budget wording in the intent
+      // context above says "ceiling", and the model followed that over an
+      // earlier, softer near-miss note — it set fits:false for being
+      // over budget (and for a modest rating count) every time.
+      topMatches.some((m) => overBudgetInfo(m.listing))
+        ? `\n\nNEAR-MISS RULE — this overrides any budget wording above. Some offered products are marked [OVER BUDGET]; the shopper sees each of those with a visible "slightly over budget" label and the exact amount, so being over budget alone must NOT make you mark a product fits:false. A modest rating count is likewise not a rejection reason — say it plainly in the answer instead. Work in this order: first judge every product on the OTHER things they asked for (size, resolution, colour, type, and so on). If a within-budget product meets them, prefer it. If none within budget does, but an [OVER BUDGET] product does, mark it fits:true, make the best such product your sponsoredChoiceId, and state in the reasoning that it is over budget and roughly by how much. Return null only if no product meets their other requirements.`
+        : ""
+    }`;
 
     // Server-side watchdog. This call is the one leg that can stall with no
     // error anywhere (observed: HTTP 200, a few deltas, then silence until
