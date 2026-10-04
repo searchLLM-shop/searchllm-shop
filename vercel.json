@@ -5,10 +5,6 @@
   "installCommand": "npm install",
   "crons": [
     {
-      "path": "/api/admin/sync",
-      "schedule": "0 * * * *"
-    },
-    {
       "path": "/api/admin/conversions",
       "schedule": "30 2 * * *"
     },
