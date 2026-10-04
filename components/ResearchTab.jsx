@@ -998,9 +998,13 @@ export default function ResearchTab({ maxSearches, searchCount, onSearchComplete
                       {m.brand}
                       {m.rating != null ? ` · ★ ${m.rating}${m.ratingCount ? ` (${Number(m.ratingCount).toLocaleString()})` : ""}` : ""}
                     </div>
-                    <div style={{ marginTop: "auto", display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 6 }}>
+                    {/* Wraps onto two lines when the card is narrow (two
+                        cards across on a phone is ~136px of content):
+                        price and "View on …" together don't fit there, and
+                        a nowrap link used to spill out past the card edge. */}
+                    <div style={{ marginTop: "auto", display: "flex", flexWrap: "wrap", justifyContent: "space-between", alignItems: "baseline", gap: "2px 6px" }}>
                       <span style={{ fontSize: 13, fontWeight: 500 }}>{m.price || ""}</span>
-                      <span style={{ fontSize: 11, color: "#854F0B", fontWeight: 500, whiteSpace: "nowrap" }}>
+                      <span style={{ fontSize: 11, color: "#854F0B", fontWeight: 500, whiteSpace: "nowrap", maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis" }}>
                         {m.merchantDomain ? `View on ${m.merchantDomain.replace(/^www\./, "")} →` : "View →"}
                       </span>
                     </div>
