@@ -366,6 +366,9 @@ export default function ResearchTab({ maxSearches, searchCount, onSearchComplete
                 id: "streaming",
                 ...fields,
                 matchedListing: evt.matchedListing,
+                // Browse-category extras (clothes, shoes...) — [] for
+                // everything else. See lib/moreChoices.js.
+                moreChoices: evt.moreChoices || [],
                 alternatives: evt.alternatives || [],
                 // The non-affiliate shop-search links — same field the
                 // "final" event carries, just also sent this early now: on
@@ -394,6 +397,10 @@ export default function ResearchTab({ maxSearches, searchCount, onSearchComplete
         trackEvent("search_completed", {
           matched_inventory: Boolean(data.matchedListing),
           sponsored_shown: Boolean(data.matchedListing),
+          // How many extra options a browse-style answer showed (0 for
+          // spec-driven categories) — pairs with affiliate_click's
+          // `position` to tell whether extras earn their screen space.
+          more_choices_shown: data.moreChoices?.length || 0,
         });
       } catch (e) {
         console.error(e);
@@ -902,7 +909,7 @@ export default function ResearchTab({ maxSearches, searchCount, onSearchComplete
                   <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
                     <a
                       href={`/out/${result.matchedListing.id}?ctx=research`}
-                  onClick={() => trackEvent("affiliate_click", { listing_id: result.matchedListing.id, network: result.matchedListing.network })}
+                  onClick={() => trackEvent("affiliate_click", { listing_id: result.matchedListing.id, network: result.matchedListing.network, position: "pick" })}
                       target="_blank"
                       rel="noopener noreferrer sponsored"
                       style={{ display: "inline-block", fontSize: 13, fontWeight: 500, color: "#fff", background: "#854F0B", padding: "8px 16px", borderRadius: 8, textDecoration: "none" }}>
@@ -948,6 +955,61 @@ export default function ResearchTab({ maxSearches, searchCount, onSearchComplete
                   ⭐ You may earn reward points if you purchase this — we get purchase confirmation from this platform and credit points once we do.
                 </div>
               )}
+            </div>
+          )}
+
+          {/* More options in this range — browse-style categories only
+              (clothes, shoes, bags, jewellery, decor, gifts), where
+              people want to scan a few real options. Empty for
+              spec-driven categories like electronics, which keep the one
+              sharp pick. Deliberately subordinate to the pick above:
+              small cards, a quiet label, hard-capped server-side at 3,
+              and only products that cleared the same fit bar as the pick
+              (see lib/moreChoices.js). The model that chose them never
+              sees commission data. */}
+          {result.matchedListing && result.moreChoices?.length > 0 && (
+            <div style={{ marginBottom: 14 }}>
+              <div style={{ fontSize: 11, fontWeight: 500, color: "var(--color-text-secondary)", letterSpacing: "0.04em", textTransform: "uppercase", margin: "0 2px 8px" }}>
+                More options in this range
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 10 }}>
+                {result.moreChoices.map((m) => (
+                  <a
+                    key={m.id}
+                    href={`/out/${m.id}?ctx=research`}
+                    onClick={() => trackEvent("affiliate_click", { listing_id: m.id, network: m.network, position: "more_choices" })}
+                    target="_blank"
+                    rel="noopener noreferrer sponsored"
+                    style={{ display: "flex", flexDirection: "column", textDecoration: "none", color: "inherit", background: "var(--color-background-secondary)", border: "0.5px solid var(--color-border-tertiary)", borderRadius: 10, padding: 10, minWidth: 0 }}
+                  >
+                    {m.imageUrl && (
+                      <img
+                        src={m.imageUrl}
+                        alt={m.product}
+                        loading="lazy"
+                        onError={(e) => { e.currentTarget.style.display = "none"; }}
+                        style={{ width: "100%", height: 120, objectFit: "contain", borderRadius: 6, background: "#fff", marginBottom: 8 }}
+                      />
+                    )}
+                    <div style={{ fontSize: 12, fontWeight: 500, lineHeight: 1.35, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden", marginBottom: 4 }}>
+                      {m.product}
+                    </div>
+                    <div style={{ fontSize: 11, color: "var(--color-text-secondary)", marginBottom: 6, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                      {m.brand}
+                      {m.rating != null ? ` · ★ ${m.rating}${m.ratingCount ? ` (${Number(m.ratingCount).toLocaleString()})` : ""}` : ""}
+                    </div>
+                    <div style={{ marginTop: "auto", display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 6 }}>
+                      <span style={{ fontSize: 13, fontWeight: 500 }}>{m.price || ""}</span>
+                      <span style={{ fontSize: 11, color: "#854F0B", fontWeight: 500, whiteSpace: "nowrap" }}>
+                        {m.merchantDomain ? `View on ${m.merchantDomain.replace(/^www\./, "")} →` : "View →"}
+                      </span>
+                    </div>
+                  </a>
+                ))}
+              </div>
+              <div style={{ fontSize: 10, color: "var(--color-text-tertiary)", marginTop: 8 }}>
+                Also sponsored — affiliate links, same price for you. Picked for fit and variety within your range, never for what they pay.
+              </div>
             </div>
           )}
 

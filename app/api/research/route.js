@@ -19,6 +19,7 @@ import { getOrCreateGuestId } from "@/lib/guestId";
 import { PLANS, LOYALTY, dailyPickLimit } from "@/lib/constants";
 import { shouldSearch, searchDepth, isFactSensitive, webSearch, contextSearchProvider, priceSearchProvider, reviewSearchProvider, formatSearchContext, THIN_RATING_COUNT } from "@/lib/search";
 import { extractIntent, formatIntentContext } from "@/lib/queryIntent";
+import { pickMoreChoices, maxExtrasForMode } from "@/lib/moreChoices";
 
 const SYSTEM_PROMPT = `You are SearchLLM, a shopping research assistant whose entire reputation rests on being honest, not on maximizing affiliate revenue.
 
@@ -30,6 +31,7 @@ Price is not quality. A cheap product that does the job well is a legitimate rec
   "whoShouldSkip": "one sentence",
   "confidence": "high|medium|low",
   "sponsoredChoiceId": the numeric id of the ONE offered partner product that genuinely answers the question, or null — ONLY when products were offered to you above. Null if none truly fits: wrong category, wrong product type, priced above what the person stated, or a product too poor for any reasonable shopper with this query to be satisfied buying. The bar is "would a knowledgeable friend be comfortable saying: this one is a solid buy for what you asked" — NOT "is this the single best product on the market at this price". Comparing the offered products to better market alternatives belongs in your answer text, where you should do it freely and honestly; it is not a reason to suppress a genuinely good offered product. Likewise a budget phrased as a maximum is a ceiling, not a target: priced-under still qualifies. Judge exactly as you would if no money were involved.,
+  "alsoConsiderIds": [numeric ids of OTHER offered partner products to show alongside your pick. Populate this ONLY when the request below explicitly says it is a browse-style purchase and tells you how many to list — in every other case it is ALWAYS an empty array [], and you never mention it. Never include the id you chose as sponsoredChoiceId.],
   "shoppingTerm": "The specific PRODUCT NAME to shop for — brand plus model or variant, as printed on the pack: 'Born Good Plant-Based Liquid Detergent', 'Logitech MK270 Wireless Keyboard Mouse Combo'. NOT a category ('plant based detergent') and never the question restated. If the honest answer is a category rather than one product, name the single best product in it.",
   "alternatives": [{"name": "a real alternative product relevant to THIS query", "note": "one short phrase on the trade-off vs the pick", "price": "see the price rule below — empty string is the correct answer whenever you are not confident"}],
   "micrositeTitle": "short title for the knowledge microsite",
@@ -84,7 +86,7 @@ Your entire response must be strictly valid JSON. NEVER use the double-quote inc
 
 When partner products are offered to you, decide honestly which single one — if any — answers the question, and return its id as sponsoredChoiceId. Two things are never rejection reasons: being cheaper than a stated budget, and not being the absolute best value on the wider market — both belong in your answer text as honest context, alongside the pick.
 
-CANDIDATE FITMENT — fill in candidateFitment for EVERY offered partner product, not just the one you pick. This is the explicit record of why each one was or wasn't a fit, judged against everything you know from the "What the person is asking for" section below — including why they want it and what they expect out of it, when given, not just the bare spec. A product can match every stated attribute and still not fit the underlying purpose; say so in reason when that's what's happening. fits should agree with sponsoredChoiceId: the product you selected must have fits:true, and any product you declined must have fits:false with a real, specific reason — never a placeholder like "not the best option". This is read by the team, not shown to the shopper, so be direct.
+CANDIDATE FITMENT — fill in candidateFitment for EVERY offered partner product, not just the one you pick. This is the explicit record of why each one was or wasn't a fit, judged against everything you know from the "What the person is asking for" section below — including why they want it and what they expect out of it, when given, not just the bare spec. A product can match every stated attribute and still not fit the underlying purpose; say so in reason when that's what's happening. fits should agree with your selections: the product you selected as sponsoredChoiceId, and every product you list in alsoConsiderIds, must have fits:true, and any product you declined must have fits:false with a real, specific reason — never a placeholder like "not the best option". This is read by the team, not shown to the shopper, so be direct.
 
 THE ANSWER TEXT NEVER MENTIONS THE MATCHING PROCESS — headline, reasoning, whoItsFor and whoShouldSkip are read by a shopper who has no idea a partner shortlist exists or was even checked. NEVER write anything like "none of the offered products fit", "nothing in our selection matches", "the partner options don't cover this", "of the offered products, this one…", or any other phrasing that references an internal list, a partner, a sponsor, or an affiliate relationship — that vocabulary belongs only in candidateFitment, which the shopper never sees. This applies identically whether sponsoredChoiceId ends up set or null: when it's null, still write a complete, standalone, generically-honest recommendation exactly as an independent expert would if asked the question cold — what to look for, or your own best answer — never a comment on why nothing was suggested. The shopper should never be able to tell from headline/reasoning/whoItsFor/whoShouldSkip whether a partner product existed for this query at all.
 
@@ -465,6 +467,18 @@ export async function POST(req) {
           .join("\n")}`
       : "";
 
+    // Browse-style categories (clothes, shoes, bags, jewellery, decor,
+    // gifts — see lib/queryIntent.js's choiceMode) get a few more real
+    // options alongside the pick; spec-driven ones (electronics,
+    // appliances) keep the single sharp pick. Needs at least two offered
+    // products to mean anything. Anything unclassified is "decide".
+    const maxExtras = maxExtrasForMode(intent?.choiceMode);
+    const browseMode = maxExtras > 0 && topMatches.length > 1;
+    const candidatesById = new Map(candidates.map((l) => [l.id, l]));
+    const partnerInstruction = browseMode
+      ? `Judge each exactly as you would if no money were involved. This is a browse-style purchase: people shopping this category want a few real options to choose between, not a single verdict. First choose your main pick as sponsoredChoiceId, exactly as you normally would. Then list up to ${maxExtras} OTHER offered products in alsoConsiderIds. Every one must clear the SAME bar as your pick — it satisfies every attribute the person stated, it respects their budget or the range their query implies, and it is genuinely worth buying — and together they must give real variety: a different style, colour, silhouette, brand or price point from your pick and from each other, never near-duplicates. Fewer is better than padding: if only one or two genuinely qualify, list only those, and if none do, return []. Choose them on fit and variety alone. Mark each one fits:true in candidateFitment. Do not mention or refer to these extra options anywhere in your answer text — the interface presents them on its own.`
+      : `Judge each exactly as you would if no money were involved. Choose the ONE that genuinely answers the question, or none. Return alsoConsiderIds as [].`;
+
     const userContent = `Query: ${query}${languageContext}${locationContext}${clarificationContext}${
       vision?.isProduct && vision.description
         ? `\n\nThe shopper attached a photo of a product. It shows: ${vision.description}${vision.visibleBrand ? ` (visible brand: ${vision.visibleBrand})` : ""}. Treat this as what they are looking for or looking to match, and say what you can see in it so they know you understood the photo.`
@@ -482,7 +496,7 @@ export async function POST(req) {
                   m.listing.rating ? `, rated ${m.listing.rating}/5 by ${m.listing.ratingCount || "some"} shoppers` : ""
                 }`
             )
-            .join("\n")}\nJudge each exactly as you would if no money were involved. Choose the ONE that genuinely answers the question, or none.`
+            .join("\n")}\n${partnerInstruction}`
         : ""
     }${formatIntentContext(intent)}${searchContext}`;
 
@@ -581,6 +595,29 @@ export async function POST(req) {
                       if (pickChosenId !== null && !offeredIdsEarly.has(pickChosenId)) pickChosenId = null;
                       const pickChosenMatch = pickChosenId ? candidates.find((l) => l.id === pickChosenId) || null : null;
 
+                      // Browse-category extras (lib/moreChoices.js). The
+                      // schema places alsoConsiderIds before alternatives,
+                      // so it has closed by now — same early-send trick as
+                      // the pick. Validated exactly as in the final event
+                      // below; a parse hiccup just means the extras arrive
+                      // with "final" instead.
+                      let earlyMoreChoices = [];
+                      if (browseMode && pickChosenMatch) {
+                        try {
+                          const extrasRaw = extractBalancedValue(raw, "alsoConsiderIds");
+                          const extrasIds = extrasRaw ? JSON.parse(extrasRaw) : [];
+                          earlyMoreChoices = pickMoreChoices({
+                            lead: pickChosenMatch,
+                            rawIds: extrasIds,
+                            offeredIds: offeredIdsEarly,
+                            candidatesById,
+                            max: maxExtras,
+                          });
+                        } catch {
+                          earlyMoreChoices = [];
+                        }
+                      }
+
                       // Non-affiliate fallback (2026-09-09, replacing the
                       // Amazon Associates single-link version, then
                       // 2026-09-09 again to source real matched result
@@ -617,6 +654,7 @@ export async function POST(req) {
                       send({
                         type: "pick",
                         matchedListing: buildClientListingPayload(pickChosenMatch),
+                        moreChoices: earlyMoreChoices.map(buildClientListingPayload),
                         alternatives: earlyAlternatives,
                         shopLinks: shopLinksEarly,
                       });
@@ -703,6 +741,20 @@ export async function POST(req) {
             chosenId = topMatches[0].listing.id;
           }
           const chosenMatch = chosenId ? candidates.find((l) => l.id === chosenId) || null : null;
+
+          // Browse-category extras — the same validation as the early
+          // pick event, run once more against the fully-parsed response,
+          // which is what the client ultimately keeps. Empty (and the
+          // field omitted from the UI) for every spec-driven category.
+          const moreChoices = browseMode
+            ? pickMoreChoices({
+                lead: chosenMatch,
+                rawIds: parsed.alsoConsiderIds,
+                offeredIds,
+                candidatesById,
+                max: maxExtras,
+              })
+            : [];
 
           // Validate taskType against the fixed taxonomy — microsite linking
           // (matching microsites by shared task type) depends on exact
@@ -835,6 +887,10 @@ export async function POST(req) {
             // under an explanation of why not to buy it. A sponsored slot
             // we can't defend is worth less than an empty one.
             matchedListing: buildClientListingPayload(chosenMatch),
+            // A few more real options for browse-style categories (clothes,
+            // shoes, bags...) — empty array everywhere else. Chosen by the
+            // model on fit and variety; it never sees commission data.
+            moreChoices: moreChoices.map(buildClientListingPayload),
             // Non-affiliate shop-search links — ONLY when no partner
             // product matched: when the genuine pick isn't in anything we
             // monetize, the honest fallback is to point at where it's
@@ -885,6 +941,12 @@ export async function POST(req) {
                   sponsoredDebug: {
                     offered: topMatches.map((m) => ({ id: m.listing.id, product: m.listing.product, price: m.listing.price, score: Number(m.score.toFixed(1)) })),
                     chosenId: chosenMatch?.id || null,
+                    // Browse/decide classification and which extras were
+                    // actually kept after validation, vs what the model
+                    // nominated — so a missing extras row is diagnosable.
+                    choiceMode: intent?.choiceMode || null,
+                    moreChoiceIds: moreChoices.map((l) => l.id),
+                    modelNominatedIds: Array.isArray(parsed.alsoConsiderIds) ? parsed.alsoConsiderIds : [],
                     // Fermionic/anyonic — why every offered candidate was or
                     // wasn't a fit, not just the one that was picked.
                     candidateFitment,
