@@ -348,7 +348,17 @@ export async function POST(req) {
     // cost is nil — the expensive part is the bounded seed ranking in
     // findCandidateListings, not the LIMIT, and the JS scorer handles a few
     // hundred rows in microseconds.
-    const candidates = await findCandidateListings(Array.from(new Set(queryTerms)), userCountry, 400, excludeMinors, matchText);
+    // A stated budget also bounds the SQL seed (see findCandidateListings'
+    // priceRange): ceiling → up to +30%, which covers the near-miss retry
+    // below; a target window → its own min/max.
+    const statedBudget = extractBudget(matchText);
+    const budgetCeiling = statedBudget && !statedBudget.min ? statedBudget.max : null;
+    const priceRange = !statedBudget
+      ? null
+      : statedBudget.min
+      ? { min: statedBudget.min, max: statedBudget.max }
+      : { min: null, max: statedBudget.max * 1.3 };
+    const candidates = await findCandidateListings(Array.from(new Set(queryTerms)), userCountry, 400, excludeMinors, matchText, priceRange);
     // Top few plausible candidates — the MODEL chooses which one (if any)
     // genuinely answers the question. Mechanical scoring is the recall gate;
     // the model is the precision gate. See findTopMatchingListings.
@@ -375,8 +385,6 @@ export async function POST(req) {
     // labelled "over budget" in the UI and flagged to the model, never
     // presented as if it fit. Ceilings only; a target ("around 1L") already
     // carries its own window.
-    const statedBudget = extractBudget(matchText);
-    const budgetCeiling = statedBudget && !statedBudget.min ? statedBudget.max : null;
     if (topMatches.length === 0 && budgetCeiling) {
       topMatches = findTopMatchingListings(matchText, candidates, userCountry, 8, intent?.productType, { ...matchOpts, budgetStretch: 1.3 });
     }
