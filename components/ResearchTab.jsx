@@ -1228,9 +1228,10 @@ export default function ResearchTab({ maxSearches, searchCount, onSearchComplete
           {/* The Terms require users to verify before buying; saying it once in
               a policy nobody reads isn't enough, so it appears with every answer. */}
           <p style={{ fontSize: 11, color: "var(--color-text-tertiary)", lineHeight: 1.6, margin: "0 0 14px" }}>
-            AI can make mistakes. Check the price, availability and specifications on the
-            retailer's own page before buying. We don't sell or ship anything — purchases,
-            delivery and returns are between you and the retailer.
+            AI can make mistakes. Prices can vary with live updates on the retailer&apos;s
+            platform, so check the price, availability and specifications on the
+            retailer&apos;s own page before buying. We don&apos;t sell or ship anything —
+            purchases, delivery and returns are between you and the retailer.
           </p>
 
           {saveNotice && (
