@@ -26,7 +26,7 @@ import { findCandidateListings, query as dbQuery, getUsageToday, getAndIncrement
 import { findTopMatchingListings, extractQueryTerms, buildClientListingPayload } from "@/lib/listingMatcher";
 import { extractIntent } from "@/lib/queryIntent";
 import { pickMoreChoices, maxExtrasForMode } from "@/lib/moreChoices";
-import { refreshPickPrice } from "@/lib/priceAlerts";
+import { refreshPickPrice } from "@/lib/livePrice";
 import { isProbeSupported } from "@/lib/priceProbe";
 
 // Public origin for links in replies. Set NEXT_PUBLIC_SITE_URL in Vercel;

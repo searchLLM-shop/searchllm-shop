@@ -17,7 +17,7 @@ import { findTopMatchingListings, buildClientListingPayload, extractQueryTerms, 
 import { creditSearchPoints, getGuestDayPoints, hasPaymentCredit, hashIp, recordAndCheckIp, checkAndConsumeQuota, refundQuota } from "@/lib/db";
 import { issueRetryTicket, verifyRetryTicket } from "@/lib/retryTicket";
 import { waitUntil } from "@vercel/functions";
-import { refreshPickPrice, getPriceHistorySummary } from "@/lib/priceAlerts";
+import { refreshPickPrice } from "@/lib/livePrice";
 import { isProbeSupported, formatInr } from "@/lib/priceProbe";
 import { getOrCreateGuestId } from "@/lib/guestId";
 import { PLANS, LOYALTY, dailyPickLimit } from "@/lib/constants";
@@ -1086,36 +1086,35 @@ export async function POST(req) {
             }
           }
 
-          // Live price for the pick, read from the merchant's own page when we
-          // can (lib/priceProbe.js) — the feed's price can be weeks old. Capped
-          // at 2.5s so it can never hold the answer up; extras are refreshed
-          // in the background so their price is current for the next shopper
-          // and recorded as price history. Everything here is best-effort.
+          // Live price for what we are about to show — the pick and its extras
+          // — read from the merchant's own page when we can (lib/priceProbe.js),
+          // because the feed's price can be weeks old. Only listings a shopper's
+          // question just surfaced are ever checked (nothing is scheduled or
+          // tracked over time). All checks run together, capped at 2.5s so they
+          // can never hold the answer up; one that misses the cap finishes in
+          // the background so the next shopper sees the right price.
+          // Everything here is best-effort.
           let priceInfo = null;
           try {
-            if (chosenMatch) {
-              const supported = isProbeSupported(chosenMatch.networkLink);
-              let verified = false;
-              if (supported) {
-                const r = await Promise.race([
-                  refreshPickPrice(chosenMatch.id, { maxAgeHours: 6 }),
-                  new Promise((resolve) => setTimeout(() => resolve(null), 2500)),
-                ]);
-                if (r && (r.status === "ok" || r.status === "out_of_stock" || r.status === "fresh")) {
-                  verified = true;
-                  if (r.price && r.changed) chosenMatch.price = formatInr(r.price);
+            const shown = [chosenMatch, ...moreChoices].filter((l) => l && isProbeSupported(l.networkLink));
+            if (shown.length) {
+              const jobs = shown.map((l) => refreshPickPrice(l.id, { maxAgeHours: 6 }));
+              waitUntil(Promise.allSettled(jobs));
+              const results = await Promise.race([
+                Promise.all(jobs),
+                new Promise((resolve) => setTimeout(() => resolve(null), 2500)),
+              ]);
+              if (results) {
+                shown.forEach((l, i) => {
+                  const r = results[i];
+                  if (r?.price && r.changed) l.price = formatInr(r.price);
+                });
+                const leadResult = chosenMatch ? results[shown.indexOf(chosenMatch)] : null;
+                if (leadResult && ["ok", "out_of_stock", "fresh"].includes(leadResult.status)) {
+                  priceInfo = { verified: true };
                 }
               }
-              const hist = (await getPriceHistorySummary([chosenMatch.id])).get(chosenMatch.id);
-              priceInfo = {
-                verified,
-                lowestSeen: hist && hist.points >= 2 ? hist.lowest : null,
-                highestSeen: hist && hist.points >= 2 ? hist.highest : null,
-                trackedSince: hist && hist.points >= 2 ? hist.firstAt : null,
-              };
             }
-            const bg = moreChoices.filter((l) => isProbeSupported(l.networkLink)).map((l) => refreshPickPrice(l.id));
-            if (bg.length) waitUntil(Promise.allSettled(bg));
           } catch (err) {
             console.error("Live price step failed (ignored):", err.message);
           }

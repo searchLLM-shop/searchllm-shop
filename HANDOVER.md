@@ -217,4 +217,4 @@ deck's financials again.
 5. Multi-retailer price comparison, verified-buyer trust layer, German
    locale reactivation (pending legal review) — all still just discussed,
    not built, per the original handover.
-6. Watchlist target-price input still isn't in the UI (backend supports it).
+6. The price-drop watchlist was REMOVED on 2026-10-04 (UI, API and hourly cron). The price_watches / price_alerts / price_history tables and their rows are intentionally left in place (still included in the DPDP data export). Live price checks now only run for listings shown as a research pick — see lib/livePrice.js and lib/priceProbe.js.

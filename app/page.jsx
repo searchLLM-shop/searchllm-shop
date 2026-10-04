@@ -22,7 +22,6 @@ import PrivacyRequestsAdmin from "@/components/PrivacyRequestsAdmin";
 import RewardsTab from "@/components/RewardsTab";
 import ReferralsTab from "@/components/ReferralsTab";
 import PrivacyTab from "@/components/PrivacyTab";
-import PriceAlerts from "@/components/PriceAlerts";
 import InstallApp from "@/components/InstallApp";
 import { trackEvent } from "@/lib/track";
 
@@ -153,7 +152,6 @@ export default function Home() {
     setExpandedPick((cur) => (cur === id ? null : cur));
   }
   const [usage, setUsage] = useState(null); // { limit, used, points }
-  const [watchlistUnseen, setWatchlistUnseen] = useState(0);
   // Redesign: shopper-facing tabs (Saved/Watchlist/Rewards) now live behind
   // an account drawer opened from the avatar, and admin tooling lives
   // behind its own console opened from the "Admin" nav link — mirrors
@@ -251,17 +249,6 @@ export default function Home() {
   useEffect(() => {
     if (consented) loadUsage();
   }, [consented, isSignedIn, loadUsage]);
-
-  // Badge count only — the Alerts tab itself loads the full list (and
-  // marks it seen) when opened. A separate lightweight call here so the
-  // badge shows up even if the shopper never opens the tab that session.
-  useEffect(() => {
-    if (!consented) return;
-    fetch("/api/watchlist")
-      .then((r) => r.json())
-      .then((d) => setWatchlistUnseen(d.unseen || 0))
-      .catch(() => {});
-  }, [consented, isSignedIn]);
 
   // Referral confirmation (2026-09-12) — fire-and-forget, once per signed-in
   // load, NOT gated on ever opening the Referrals tab: a referred friend
@@ -432,7 +419,7 @@ export default function Home() {
             <>
               <button
                 onClick={() => { setShowAdminConsole(false); setDrawerTab("saved"); setShowAccountDrawer(true); }}
-                title="Guest — saved picks and watchlist"
+                title="Guest — saved picks and rewards"
                 style={{ width: 32, height: 32, borderRadius: "50%", background: "var(--color-background-tertiary)", color: "var(--color-text-secondary)", border: "0.5px solid var(--color-border-secondary)", cursor: "pointer", fontSize: 13, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}
               >
                 ?
@@ -530,7 +517,7 @@ export default function Home() {
         </div>
       )}
 
-      {/* Account drawer: Saved picks / Watchlist / Rewards, opened from the
+      {/* Account drawer: Saved picks / Rewards / Refer / Privacy, opened from the
           avatar. Slide-over rather than a route change — keeps whatever
           research answer is on screen intact underneath. */}
       {showAccountDrawer && (
@@ -539,16 +526,13 @@ export default function Home() {
           <div style={{ position: "fixed", top: 0, right: 0, bottom: 0, width: "min(420px, 100vw)", background: "var(--color-background-primary)", boxShadow: "-8px 0 24px rgba(16,24,40,0.12)", zIndex: 41, display: "flex", flexDirection: "column" }}>
             <div style={{ padding: "16px 18px", borderBottom: "0.5px solid var(--color-border-tertiary)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
               <div className="sllm-tabs sllm-drawer-tabs" style={{ display: "flex", gap: 4 }}>
-                {["saved", "watchlist", "rewards", "referrals", "privacy"].map((dt) => (
+                {["saved", "rewards", "referrals", "privacy"].map((dt) => (
                   <button
                     key={dt}
                     onClick={() => setDrawerTab(dt)}
                     style={{ padding: "6px 11px", border: "none", borderRadius: 8, cursor: "pointer", fontSize: 12, fontWeight: drawerTab === dt ? 600 : 400, background: drawerTab === dt ? "var(--color-background-tertiary)" : "none", color: drawerTab === dt ? "var(--color-text-primary)" : "var(--color-text-secondary)", textTransform: "capitalize", position: "relative" }}
                   >
-                    {dt === "saved" ? tr("tabSaved") : dt === "watchlist" ? "Watchlist" : dt === "referrals" ? "Refer & Earn" : dt === "privacy" ? "Privacy" : "Rewards"}
-                    {dt === "watchlist" && watchlistUnseen > 0 && (
-                      <span style={{ marginLeft: 5, background: "#D85A30", color: "#fff", borderRadius: 10, fontSize: 9, fontWeight: 700, padding: "1px 5px" }}>{watchlistUnseen}</span>
-                    )}
+                    {dt === "saved" ? tr("tabSaved") : dt === "referrals" ? "Refer & Earn" : dt === "privacy" ? "Privacy" : "Rewards"}
                   </button>
                 ))}
               </div>
@@ -569,7 +553,6 @@ export default function Home() {
                 </div>
               )}
 
-              {drawerTab === "watchlist" && <PriceAlerts onMarkSeen={() => setWatchlistUnseen(0)} />}
               {drawerTab === "rewards" && <RewardsTab />}
               {drawerTab === "referrals" && <ReferralsTab />}
               {drawerTab === "privacy" && <PrivacyTab />}

@@ -204,33 +204,6 @@ export default function ResearchTab({ maxSearches, searchCount, onSearchComplete
   const [geoOverride, setGeoOverride] = useState("");
   const fileRef = useRef();
   const [attachment, setAttachment] = useState(null);
-  // Listing ids the shopper has already watched THIS session, so the button
-  // can flip to "Watching ✓" without a round trip. Not meant as the source
-  // of truth (the Alerts tab reads the real list from the server) — just
-  // enough to stop a double-click from firing two POSTs.
-  const [watchedIds, setWatchedIds] = useState(() => new Set());
-  const [watchBusyId, setWatchBusyId] = useState(null);
-
-  const handleWatchPrice = useCallback(async (listingId) => {
-    if (!listingId || watchedIds.has(listingId)) return;
-    setWatchBusyId(listingId);
-    try {
-      const resp = await fetch("/api/watchlist", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ listingId }),
-      });
-      if (resp.ok) {
-        setWatchedIds((prev) => new Set(prev).add(listingId));
-        trackEvent("watch_price", { listing_id: listingId });
-      }
-    } catch (e) {
-      console.error("Watch price failed:", e);
-    } finally {
-      setWatchBusyId(null);
-    }
-  }, [watchedIds]);
-
   // The actual research call — unchanged except it now also sends whatever
   // clarifying-question answers the shopper gave (or [] if they skipped, or
   // clarification never triggered). Called either straight from handleSearch
@@ -1002,11 +975,9 @@ export default function ResearchTab({ maxSearches, searchCount, onSearchComplete
                       Slightly over budget — {result.matchedListing.overBudget.symbol}{result.matchedListing.overBudget.amount.toLocaleString("en-IN")} above your {result.matchedListing.overBudget.symbol}{result.matchedListing.overBudget.budget.toLocaleString("en-IN")}
                     </div>
                   )}
-                  {(result.priceInfo?.verified || result.priceInfo?.lowestSeen != null) && (
+                  {result.priceInfo?.verified && (
                     <div style={{ fontSize: 10, color: "#0F6E56", marginBottom: 6 }}>
-                      {result.priceInfo.verified && "✓ Price checked on the retailer's page"}
-                      {result.priceInfo.verified && result.priceInfo.lowestSeen != null && " · "}
-                      {result.priceInfo.lowestSeen != null && `Lowest we've seen: ₹${Number(result.priceInfo.lowestSeen).toLocaleString("en-IN")}`}
+                      ✓ Price checked on the retailer&apos;s page
                     </div>
                   )}
                   <div style={{ fontSize: 12, color: "var(--color-text-secondary)", marginBottom: 10 }}>
@@ -1040,26 +1011,6 @@ export default function ResearchTab({ maxSearches, searchCount, onSearchComplete
                         ? `View on ${result.matchedListing.merchantDomain} →`
                         : "View and buy →"}
                     </a>
-                    {/* Notifies on a genuine drop (3%+, or the shopper's own
-                        target) via the hourly price-check cron — see
-                        lib/priceAlerts.js. Deliberately its own button, not
-                        folded into "save pick": saving is a note to self,
-                        watching is asking to be interrupted later. */}
-                    <button
-                      onClick={() => handleWatchPrice(result.matchedListing.id)}
-                      disabled={watchBusyId === result.matchedListing.id || watchedIds.has(result.matchedListing.id)}
-                      style={{
-                        display: "inline-flex", alignItems: "center", gap: 5, fontSize: 12, fontWeight: 500,
-                        color: watchedIds.has(result.matchedListing.id) ? "#0F6E56" : "#854F0B",
-                        background: "transparent", border: `0.5px solid ${watchedIds.has(result.matchedListing.id) ? "#0F6E5666" : "#854F0B66"}`,
-                        padding: "7px 14px", borderRadius: 8, cursor: watchedIds.has(result.matchedListing.id) ? "default" : "pointer",
-                      }}>
-                      {watchedIds.has(result.matchedListing.id)
-                        ? "🔔 Watching"
-                        : watchBusyId === result.matchedListing.id
-                        ? "…"
-                        : "🔔 Watch price"}
-                    </button>
                   </div>
                 </div>
               </div>

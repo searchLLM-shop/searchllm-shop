@@ -15,10 +15,6 @@
     {
       "path": "/api/admin/enrich-keywords",
       "schedule": "*/5 * * * *"
-    },
-    {
-      "path": "/api/admin/pricecheck",
-      "schedule": "15 * * * *"
     }
   ],
   "functions": {
@@ -31,9 +27,6 @@
     },
     "app/api/admin/conversions/route.js": {
       "maxDuration": 300
-    },
-    "app/api/admin/pricecheck/route.js": {
-      "maxDuration": 60
     }
   }
 }

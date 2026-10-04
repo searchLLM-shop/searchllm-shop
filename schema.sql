@@ -828,7 +828,11 @@ CREATE TABLE IF NOT EXISTS partner_order_status_checks (
 ALTER TABLE partner_order_status_checks ENABLE ROW LEVEL SECURITY;
 
 -- =========================================================================
--- Live price checks (2026-10-04). The affiliate feeds don't keep prices
+-- Live price checks (2026-10-04). NOTE: the price-drop watchlist that first
+-- motivated this was removed the same day; price_watches/price_alerts/
+-- price_history above are now dormant (kept for the data export), and checks
+-- run only for listings surfaced as a research pick (lib/livePrice.js).
+-- The affiliate feeds don't keep prices
 -- fresh (the vCommission feed is imported once; the hourly sync only adds
 -- new products), so watched and picked listings are re-priced by reading the
 -- merchant's own product page (lib/priceProbe.js). These two columns record
