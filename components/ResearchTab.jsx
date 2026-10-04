@@ -167,6 +167,9 @@ export default function ResearchTab({ maxSearches, searchCount, onSearchComplete
   // below for how entries get added.
   const [searchBlock, setSearchBlock] = useState([]);
   const [errorMsg, setErrorMsg] = useState(null);
+  // Set when a failure is worth retrying as-is (timeout, interrupted
+  // stream); drives the "Try again" button beside the error message.
+  const [retryInfo, setRetryInfo] = useState(null);
   // Pre-research clarifying loop (bosonic layer) — one question at a time
   // from /api/clarify, looping until it says done. clarifyQuery holds the
   // query the loop is currently attached to, separately from `query` (the
@@ -280,23 +283,50 @@ export default function ResearchTab({ maxSearches, searchCount, onSearchComplete
       setProcessing(true);
       archiveAndClearResult(enrichedQuery);
       setErrorMsg(null);
+      setRetryInfo(null);
       setStep(0);
 
       const stepTimer = setInterval(() => {
         setStep((s) => (s < STEPS.length - 1 ? s + 1 : s));
       }, 700);
 
+      // Client-side timeout. A normal answer streams its first bytes within
+      // ~10s and finishes in ~40s, but a stalled upstream used to leave the
+      // shopper watching the spinner until the platform cut the connection
+      // (observed: 90s+ of nothing). Two clocks: no bytes at all for
+      // IDLE_MS, or the whole search past TOTAL_MS, aborts the request and
+      // shows a plain retry message. The server runs its own, shorter
+      // watchdog (app/api/research/route.js) that normally fires first and
+      // sends a clean error; this is the backstop for when even that
+      // can't reach the browser.
+      const IDLE_MS = 50000;
+      const TOTAL_MS = 150000;
+      const ctrl = new AbortController();
+      let timedOut = false;
+      const trip = () => { timedOut = true; ctrl.abort(); };
+      let idleTimer = setTimeout(trip, IDLE_MS);
+      const totalTimer = setTimeout(trip, TOTAL_MS);
+      const touch = () => {
+        clearTimeout(idleTimer);
+        idleTimer = setTimeout(trip, IDLE_MS);
+      };
+      let retryable = false;
+
       try {
         const resp = await fetch("/api/research", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ query: searchQ, attachment, geoOverride: geoOverride || undefined, locale, clarifications }),
+          signal: ctrl.signal,
         });
+        touch();
 
         if (resp.status === 403) {
           const g = await resp.json().catch(() => null);
           if (g?.gate === "search") {
             setGate(g);
+            clearTimeout(idleTimer);
+            clearTimeout(totalTimer);
             return;
           }
         }
@@ -304,6 +334,8 @@ export default function ResearchTab({ maxSearches, searchCount, onSearchComplete
           setErrorMsg(
             "That's your 8 picks for today. The count resets at midnight UTC — come back tomorrow and we'll pick up where you left off. Your saved picks stay available in the meantime."
           );
+          clearTimeout(idleTimer);
+          clearTimeout(totalTimer);
           clearInterval(stepTimer);
           setStep(-1);
           setProcessing(false);
@@ -345,6 +377,7 @@ export default function ResearchTab({ maxSearches, searchCount, onSearchComplete
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
+          touch();
           buf += decoder.decode(value, { stream: true });
           const lines = buf.split("\n");
           buf = lines.pop(); // last (possibly partial) line stays buffered
@@ -386,11 +419,14 @@ export default function ResearchTab({ maxSearches, searchCount, onSearchComplete
         }
 
         if (streamError) {
+          retryable = Boolean(streamError.retryable);
           throw new Error(streamError.detail || streamError.error || "Research engine error");
         }
         if (!finalData) {
+          retryable = true;
           throw new Error("Connection closed before the answer finished.");
         }
+        setRetryInfo(null);
         const { type: _finalType, ...data } = finalData;
         setResult({ query: enrichedQuery, ...data, alternatives: data.alternatives || [], id: Date.now() });
         onSearchComplete?.();
@@ -410,13 +446,21 @@ export default function ResearchTab({ maxSearches, searchCount, onSearchComplete
         // answer next to "couldn't complete the research" reads as broken,
         // not as progress.
         setResult(null);
-        setErrorMsg(
-          e.message && e.message !== "Request failed"
-            ? `Couldn't complete the research: ${e.message}`
-            : tr("researchFailed")
-        );
+        if (timedOut) {
+          setErrorMsg("This is taking longer than usual, so we stopped it. Nothing is wrong with your question. Please try again.");
+          setRetryInfo({ q: searchQ, clarifications });
+        } else {
+          setErrorMsg(
+            e.message && e.message !== "Request failed"
+              ? `Couldn't complete the research: ${e.message}`
+              : tr("researchFailed")
+          );
+          setRetryInfo(retryable ? { q: searchQ, clarifications } : null);
+        }
       }
 
+      clearTimeout(idleTimer);
+      clearTimeout(totalTimer);
       clearInterval(stepTimer);
       setStep(-1);
       setProcessing(false);
@@ -683,6 +727,14 @@ export default function ResearchTab({ maxSearches, searchCount, onSearchComplete
       {errorMsg && (
         <div style={{ background: "#D85A3011", border: "1px solid #D85A3044", borderRadius: 9, padding: "10px 14px", marginBottom: 14, fontSize: 12, color: "#D85A30" }}>
           {errorMsg}
+          {retryInfo && !processing && (
+            <button
+              onClick={() => runResearch(retryInfo.q, retryInfo.clarifications)}
+              style={{ display: "block", marginTop: 8, background: "#D85A30", color: "#fff", border: "none", borderRadius: 7, padding: "6px 14px", fontSize: 12, fontWeight: 600, cursor: "pointer" }}
+            >
+              Try again
+            </button>
+          )}
         </div>
       )}
 

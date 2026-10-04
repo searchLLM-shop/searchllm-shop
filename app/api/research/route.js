@@ -361,6 +361,10 @@ export async function POST(req) {
       // shoes, bags...) — and nonsense in groceries/beauty, where "green"
       // or "cream" name a product. See the colour section in the matcher.
       colourMatching: intent?.choiceMode === "browse",
+      // Same gate for the men/women audience demotion and for capping any one
+      // brand at two shortlist slots (no three-HRX shortlists).
+      audienceMatching: intent?.choiceMode === "browse",
+      maxPerBrand: intent?.choiceMode === "browse" ? 2 : 0,
     });
 
     // A search with no relevant partner product is an inventory gap worth
@@ -487,7 +491,11 @@ export async function POST(req) {
     const browseMode = maxExtras > 0 && topMatches.length > 1;
     const candidatesById = new Map(candidates.map((l) => [l.id, l]));
     const partnerInstruction = browseMode
-      ? `Judge each exactly as you would if no money were involved. This is a browse-style purchase: people shopping this category want a few real options to choose between, not a single verdict. First choose your main pick as sponsoredChoiceId, exactly as you normally would. Then list up to ${maxExtras} OTHER offered products in alsoConsiderIds. Every one must clear the SAME bar as your pick — it satisfies every attribute the person stated, it respects their budget or the range their query implies, and it is genuinely worth buying — and together they must give real variety: a different style, colour, silhouette, brand or price point from your pick and from each other, never near-duplicates. Fewer is better than padding: if only one or two genuinely qualify, list only those, and if none do, return []. Choose them on fit and variety alone. Mark each one fits:true in candidateFitment. Do not mention or refer to these extra options anywhere in your answer text — the interface presents them on its own.`
+      ? `Judge each exactly as you would if no money were involved. This is a browse-style purchase: people shopping this category want a few real options to choose between, not a single verdict. First choose your main pick as sponsoredChoiceId, exactly as you normally would. Then list up to ${maxExtras} OTHER offered products in alsoConsiderIds. Every one must clear the SAME bar as your pick — it satisfies every attribute the person stated, it respects their budget or the range their query implies, and it is genuinely worth buying — and together they must give real variety: a different style, colour, silhouette, brand or price point from your pick and from each other, never near-duplicates.${
+          intent?.budgetStated
+            ? " The person gave a budget, so the pick and the extras together should span the price range up to it: when qualifying products sit in the upper part of the range, at least one of the options you show must be one of them — do not let the whole set cluster at the cheap end, and do not read a lower price as a better fit."
+            : ""
+        } Fewer is better than padding: if only one or two genuinely qualify, list only those, and if none do, return []. Choose them on fit and variety alone. Mark each one fits:true in candidateFitment. Do not mention or refer to these extra options anywhere in your answer text — the interface presents them on its own.`
       : `Judge each exactly as you would if no money were involved. Choose the ONE that genuinely answers the question, or none. Return alsoConsiderIds as [].`;
 
     const userContent = `Query: ${query}${languageContext}${locationContext}${clarificationContext}${
@@ -511,8 +519,42 @@ export async function POST(req) {
         : ""
     }${formatIntentContext(intent)}${searchContext}`;
 
-    const anthropicResp = await fetch("https://api.anthropic.com/v1/messages", {
+    // Server-side watchdog. This call is the one leg that can stall with no
+    // error anywhere (observed: HTTP 200, a few deltas, then silence until
+    // the connection was cut ~90s later, nothing logged). Three clocks, all
+    // feeding one AbortController so a trip surfaces as a clean error line
+    // rather than a hung stream:
+    //   - HEADER_MS: Anthropic never answers the request at all.
+    //   - IDLE_MS: headers arrived but no real event (pings don't count)
+    //     for this long — the stalled-stream case.
+    //   - TOTAL_MS: hard cap on the whole generation.
+    // A healthy answer takes ~10s to first token and ~40s in all.
+    const HEADER_MS = 30000;
+    const IDLE_MS = 30000;
+    const TOTAL_MS = 100000;
+    const upstreamAbort = new AbortController();
+    let watchdogReason = null;
+    const trip = (why) => {
+      if (watchdogReason) return;
+      watchdogReason = why;
+      upstreamAbort.abort();
+    };
+    let idleTimer = setTimeout(() => trip("no response from the research engine"), HEADER_MS);
+    const totalTimer = setTimeout(() => trip("the answer took too long"), TOTAL_MS);
+    const touchIdle = () => {
+      clearTimeout(idleTimer);
+      idleTimer = setTimeout(() => trip("the research engine stopped responding mid-answer"), IDLE_MS);
+    };
+    const stopWatchdog = () => {
+      clearTimeout(idleTimer);
+      clearTimeout(totalTimer);
+    };
+
+    let anthropicResp;
+    try {
+      anthropicResp = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
+      signal: upstreamAbort.signal,
       headers: {
         "Content-Type": "application/json",
         "x-api-key": process.env.ANTHROPIC_API_KEY,
@@ -547,13 +589,23 @@ export async function POST(req) {
         // exactly the same payload shape this route has always returned.
         stream: true,
       }),
-    });
+      });
+    } catch (err) {
+      stopWatchdog();
+      console.error("Anthropic request failed:", watchdogReason || err.message);
+      return Response.json(
+        { error: "Research engine error", detail: "The research engine didn't respond in time. Please try again.", retryable: true },
+        { status: 504 }
+      );
+    }
 
     if (!anthropicResp.ok) {
-      const errText = await anthropicResp.text();
+      stopWatchdog();
+      const errText = await anthropicResp.text().catch(() => "");
       console.error("Anthropic API error:", anthropicResp.status, errText);
       return Response.json({ error: "Research engine error" }, { status: 502 });
     }
+    touchIdle();
 
     const encoder = new TextEncoder();
     const outStream = new ReadableStream({
@@ -568,6 +620,7 @@ export async function POST(req) {
         // stop_reason (the max_tokens truncation check below).
         let raw = "";
         let stopReason = null;
+        let upstreamError = null;
         let pickSent = false;
         const offeredIdsEarly = new Set(topMatches.map((m) => m.listing.id));
         try {
@@ -586,6 +639,16 @@ export async function POST(req) {
               if (!payload || payload === "[DONE]") continue;
               let evt;
               try { evt = JSON.parse(payload); } catch { continue; }
+              // Keep-alive pings prove the connection is open, not that the
+              // model is producing anything, so they don't reset the idle clock.
+              if (evt.type !== "ping") touchIdle();
+              if (evt.type === "error") {
+                // Anthropic reports mid-stream failures (overloaded, api
+                // errors) as an `error` SSE event on an HTTP 200 — they
+                // were ignored before, surfacing as a truncated answer.
+                upstreamError = evt.error?.message || evt.error?.type || "upstream error";
+                break;
+              }
               if (evt.type === "content_block_delta" && evt.delta?.type === "text_delta") {
                 raw += evt.delta.text;
                 send({ type: "delta", text: evt.delta.text });
@@ -680,10 +743,35 @@ export async function POST(req) {
                 stopReason = evt.delta.stop_reason;
               }
             }
+            if (upstreamError) break;
           }
         } catch (err) {
-          console.error("Anthropic stream read failed:", err.message);
-          send({ type: "error", error: "Research engine error", detail: String(err?.message || err) });
+          stopWatchdog();
+          console.error("Anthropic stream read failed:", watchdogReason || err.message);
+          send({
+            type: "error",
+            error: "Research engine error",
+            detail: watchdogReason
+              ? "The answer stalled and was stopped. Please try again."
+              : String(err?.message || err),
+            retryable: true,
+          });
+          controller.close();
+          return;
+        }
+        stopWatchdog();
+
+        if (upstreamError) {
+          console.error("Anthropic stream error event:", upstreamError);
+          send({ type: "error", error: "Research engine error", detail: "The research engine hit a temporary problem. Please try again.", retryable: true });
+          controller.close();
+          return;
+        }
+        // A clean finish always carries a stop_reason; ending without one
+        // means the connection dropped mid-answer.
+        if (stopReason === null) {
+          console.error("Anthropic stream ended without a stop_reason (interrupted).");
+          send({ type: "error", error: "Research engine error", detail: "The answer was interrupted before it finished. Please try again.", retryable: true });
           controller.close();
           return;
         }
