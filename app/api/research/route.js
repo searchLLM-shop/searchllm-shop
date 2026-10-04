@@ -14,7 +14,8 @@ import { languageForModel, resolveLocale } from "@/lib/i18n";
 import { recordEvent, recordSearchQuery } from "@/lib/db";
 import { identifyProductFromImage } from "@/lib/visionSearch";
 import { findTopMatchingListings, buildClientListingPayload, extractQueryTerms, extractBudget, priceValue, strictSearchTerms } from "@/lib/listingMatcher";
-import { creditSearchPoints, getGuestDayPoints, hasPaymentCredit, hashIp, recordAndCheckIp, checkAndConsumeQuota } from "@/lib/db";
+import { creditSearchPoints, getGuestDayPoints, hasPaymentCredit, hashIp, recordAndCheckIp, checkAndConsumeQuota, refundQuota } from "@/lib/db";
+import { issueRetryTicket, verifyRetryTicket } from "@/lib/retryTicket";
 import { getOrCreateGuestId } from "@/lib/guestId";
 import { PLANS, LOYALTY, dailyPickLimit } from "@/lib/constants";
 import { shouldSearch, searchDepth, isFactSensitive, webSearch, contextSearchProvider, priceSearchProvider, reviewSearchProvider, formatSearchContext, THIN_RATING_COUNT } from "@/lib/search";
@@ -97,8 +98,18 @@ Worked example of the required calibration: the query is "tv around ₹1 lakh" a
 Null remains correct, and important, when every offered product is the wrong type, priced above what they stated, or too poorly made or rated for a knowledgeable friend to endorse. Never invent an id that was not in the offered list.`;
 
 export async function POST(req) {
+  // Gives the pick back if this search fails before delivering an answer.
+  // Declared out here so the outer catch can use it too. Once only, and only
+  // if a pick was actually spent.
+  let quotaHeld = false;
+  let quotaIdentity = null;
+  const refundQuotaOnce = () => {
+    if (!quotaHeld) return;
+    quotaHeld = false;
+    refundQuota(quotaIdentity).catch((e) => console.error("Quota refund failed:", e.message));
+  };
   try {
-    const { query, attachment, geoOverride, locale: requestedLocale, clarifications } = await req.json();
+    const { query, attachment, geoOverride, locale: requestedLocale, clarifications, retryTicket } = await req.json();
 
     // Enforce the acceptable-use rules from the Terms before doing anything
     // else — no model call, no quota consumed, no record written.
@@ -173,8 +184,13 @@ export async function POST(req) {
       isAdmin: admin,
     });
 
+    // A retry of a search whose answer never arrived (valid ticket from the
+    // previous attempt's first stream line — lib/retryTicket.js) doesn't
+    // spend a second pick, and doesn't earn search points a second time.
+    const isFreeRetry = verifyRetryTicket(retryTicket, identity, query);
+
     // Atomic quota check-and-consume.
-    if (limit !== -1) {
+    if (limit !== -1 && !isFreeRetry) {
       // ONE atomic statement (2026-07-27): the insert only increments while
       // under the limit, so a blocked request consumes nothing and two
       // simultaneous requests at the boundary can't both slip through —
@@ -186,6 +202,8 @@ export async function POST(req) {
         recordEvent({ eventType: "limit_reached", identity }).catch(() => {});
         return Response.json({ error: "Daily free limit reached" }, { status: 429 });
       }
+      quotaHeld = true;
+      quotaIdentity = identity;
     }
 
     // --- Listing match (runs in plain code, never inside the AI call) ---
@@ -667,6 +685,7 @@ export async function POST(req) {
     } catch (err) {
       stopWatchdog();
       console.error("Anthropic request failed:", watchdogReason || err.message);
+      refundQuotaOnce();
       return Response.json(
         { error: "Research engine error", detail: "The research engine didn't respond in time. Please try again.", retryable: true },
         { status: 504 }
@@ -677,6 +696,7 @@ export async function POST(req) {
       stopWatchdog();
       const errText = await anthropicResp.text().catch(() => "");
       console.error("Anthropic API error:", anthropicResp.status, errText);
+      refundQuotaOnce();
       return Response.json({ error: "Research engine error" }, { status: 502 });
     }
     touchIdle();
@@ -684,7 +704,15 @@ export async function POST(req) {
     const encoder = new TextEncoder();
     const outStream = new ReadableStream({
       async start(controller) {
-        const send = (obj) => controller.enqueue(encoder.encode(JSON.stringify(obj) + "\n"));
+        // Any error line means no answer was delivered, so give the pick back.
+        const send = (obj) => {
+          if (obj?.type === "error") refundQuotaOnce();
+          controller.enqueue(encoder.encode(JSON.stringify(obj) + "\n"));
+        };
+        // Hand the client a retry ticket straight away: if the answer never
+        // reaches it, a retry of this same query is free (lib/retryTicket.js).
+        const ticket = issueRetryTicket(identity, query);
+        if (ticket) send({ type: "ticket", ticket });
 
         // --- Relay Anthropic's SSE stream, accumulating the full text as
         // it arrives and forwarding each text delta to our own client
@@ -1092,6 +1120,9 @@ export async function POST(req) {
             rewards: await (async () => {
               try {
                 if (userId) {
+                  // A free retry never earns points: the first attempt may
+                  // have been credited already.
+                  if (isFreeRetry) return { kind: "user", earned: 0, todayTotal: null, capped: false };
                   const sp = await creditSearchPoints(userId);
                   return { kind: "user", ...sp };
                 }
@@ -1155,19 +1186,19 @@ export async function POST(req) {
       headers: {
         "Content-Type": "application/x-ndjson; charset=utf-8",
         // Streamed answer: ask intermediaries not to buffer or transform it.
-        // Seen live: the model's text reached the server on time but the
-        // browser got nothing for ~60s, then everything at once.
+        // NOTE: these headers did NOT cure the ~60s mid-stream freezes seen
+        // live (they reproduced afterwards, on mobile data too, with no
+        // upstream gap logged server-side — a delivery-path problem). They
+        // are harmless; the real mitigation is the client's idle timeout
+        // plus the free retry in lib/retryTicket.js.
         "Cache-Control": "no-cache, no-transform",
         "X-Accel-Buffering": "no",
-        // Declaring an encoding makes the edge skip its own on-the-fly
-        // compression, which is what held the stream back: 5/5 clean
-        // runs with Accept-Encoding: identity vs 3/5 stalled of ~60s with
-        // the default. NDJSON deltas are tiny, so nothing is lost.
         "Content-Encoding": "identity",
       },
     });
   } catch (err) {
     console.error("Research route error:", err);
+    refundQuotaOnce();
     // Include the real message so the UI can show what actually failed
     // instead of a generic "try rephrasing" that hides the cause.
     return Response.json(

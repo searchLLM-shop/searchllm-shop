@@ -170,6 +170,7 @@ export default function ResearchTab({ maxSearches, searchCount, onSearchComplete
   // Set when a failure is worth retrying as-is (timeout, interrupted
   // stream); drives the "Try again" button beside the error message.
   const [retryInfo, setRetryInfo] = useState(null);
+  const runRef = useRef(null);
   // Pre-research clarifying loop (bosonic layer) — one question at a time
   // from /api/clarify, looping until it says done. clarifyQuery holds the
   // query the loop is currently attached to, separately from `query` (the
@@ -260,7 +261,12 @@ export default function ResearchTab({ maxSearches, searchCount, onSearchComplete
   }, []);
 
   const runResearch = useCallback(
-    async (q, clarifications = []) => {
+    async (q, clarifications = [], retryOpts = {}) => {
+      // retryOpts.attempt: 0 for a shopper-initiated search, 1 for the one
+      // automatic retry after a stall. retryOpts.ticket: the previous
+      // attempt's free-retry ticket (see lib/retryTicket.js) so a retry of
+      // an answer that never arrived doesn't cost a second pick.
+      const attempt = retryOpts.attempt || 0;
       const searchQ = (q || query).trim();
       if (!searchQ) return;
       if (maxSearches !== -1 && searchCount >= maxSearches) return;
@@ -299,24 +305,42 @@ export default function ResearchTab({ maxSearches, searchCount, onSearchComplete
       // watchdog (app/api/research/route.js) that normally fires first and
       // sends a clean error; this is the backstop for when even that
       // can't reach the browser.
-      const IDLE_MS = 50000;
+      //
+      // Two idle limits: HEADER_IDLE_MS while waiting for the response to
+      // start (the server does retrieval and a model call first), then the
+      // much tighter STREAM_IDLE_MS once text is flowing — a healthy stream
+      // never goes quiet for more than a couple of seconds, while the
+      // delivery freezes seen live last 60s+ (also on mobile data). Cutting
+      // at 25s and retrying once turns a ~90s freeze into ~60s total.
+      const HEADER_IDLE_MS = 50000;
+      const STREAM_IDLE_MS = 25000;
       const TOTAL_MS = 150000;
       const ctrl = new AbortController();
       let timedOut = false;
       const trip = () => { timedOut = true; ctrl.abort(); };
-      let idleTimer = setTimeout(trip, IDLE_MS);
+      let idleTimer = setTimeout(trip, HEADER_IDLE_MS);
       const totalTimer = setTimeout(trip, TOTAL_MS);
       const touch = () => {
         clearTimeout(idleTimer);
-        idleTimer = setTimeout(trip, IDLE_MS);
+        idleTimer = setTimeout(trip, STREAM_IDLE_MS);
       };
       let retryable = false;
+      let serverTicket = null;   // free-retry ticket from this attempt's stream
+      let pickShown = false;     // the pick card was already revealed
+      let serverErrored = false; // the server reported the failure itself (and refunded the pick)
 
       try {
         const resp = await fetch("/api/research", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ query: searchQ, attachment, geoOverride: geoOverride || undefined, locale, clarifications }),
+          body: JSON.stringify({
+            query: searchQ,
+            attachment,
+            geoOverride: geoOverride || undefined,
+            locale,
+            clarifications,
+            retryTicket: retryOpts.ticket || undefined,
+          }),
           signal: ctrl.signal,
         });
         touch();
@@ -387,9 +411,12 @@ export default function ResearchTab({ maxSearches, searchCount, onSearchComplete
             let evt;
             try { evt = JSON.parse(line); } catch { continue; }
 
-            if (evt.type === "delta") {
+            if (evt.type === "ticket") {
+              serverTicket = evt.ticket || null;
+            } else if (evt.type === "delta") {
               rawText += evt.text; // accumulate only — no per-delta render
             } else if (evt.type === "pick") {
+              pickShown = true;
               clearInterval(stepTimer);
               setStep(-1);
               setProcessing(false);
@@ -420,6 +447,7 @@ export default function ResearchTab({ maxSearches, searchCount, onSearchComplete
 
         if (streamError) {
           retryable = Boolean(streamError.retryable);
+          serverErrored = true;
           throw new Error(streamError.detail || streamError.error || "Research engine error");
         }
         if (!finalData) {
@@ -440,22 +468,46 @@ export default function ResearchTab({ maxSearches, searchCount, onSearchComplete
         });
       } catch (e) {
         console.error(e);
-        // If streaming had already started revealing a partial pick before
-        // this failure, clear it — matching the pre-streaming behaviour of
-        // never showing a result alongside an error banner. A half-written
-        // answer next to "couldn't complete the research" reads as broken,
-        // not as progress.
-        setResult(null);
-        if (timedOut) {
-          setErrorMsg("This is taking longer than usual, so we stopped it. Nothing is wrong with your question. Please try again.");
-          setRetryInfo({ q: searchQ, clarifications });
+        // A stall (our own idle/total clock fired) or a server-flagged
+        // retryable failure, before anything was shown: retry once,
+        // automatically. After a stall the answer may have been generated
+        // and never arrived, so the retry carries this attempt's ticket and
+        // costs no second pick; after a server error the pick was already
+        // refunded server-side, so there is nothing to carry.
+        if (attempt === 0 && !pickShown && (timedOut || retryable)) {
+          clearTimeout(idleTimer);
+          clearTimeout(totalTimer);
+          clearInterval(stepTimer);
+          return runRef.current(searchQ, clarifications, { attempt: 1, ticket: serverErrored ? null : serverTicket });
+        }
+
+        if (timedOut && pickShown) {
+          // The pick card is already on screen; only the tail of the answer
+          // is missing. Keep what the shopper can already use rather than
+          // blanking it, and offer a free retry for the full write-up.
+          setErrorMsg("Part of the answer didn't finish loading, so some detail is missing. Try again for the full explanation.");
+          setRetryInfo({ q: searchQ, clarifications, ticket: serverTicket });
+        } else if (timedOut) {
+          setResult(null);
+          setErrorMsg(
+            "This is taking longer than usual, so we stopped it. Nothing is wrong with your question" +
+              (serverTicket ? ", and trying again won't use up another pick" : "") +
+              ". Please try again."
+          );
+          setRetryInfo({ q: searchQ, clarifications, ticket: serverTicket });
         } else {
+          // If streaming had already started revealing a partial pick before
+          // this failure, clear it — matching the pre-streaming behaviour of
+          // never showing a result alongside an error banner. A half-written
+          // answer next to "couldn't complete the research" reads as broken,
+          // not as progress.
+          setResult(null);
           setErrorMsg(
             e.message && e.message !== "Request failed"
               ? `Couldn't complete the research: ${e.message}`
               : tr("researchFailed")
           );
-          setRetryInfo(retryable ? { q: searchQ, clarifications } : null);
+          setRetryInfo(retryable ? { q: searchQ, clarifications, ticket: serverErrored ? null : serverTicket } : null);
         }
       }
 
@@ -467,6 +519,8 @@ export default function ResearchTab({ maxSearches, searchCount, onSearchComplete
     },
     [query, attachment, searchCount, maxSearches, onSearchComplete, archiveAndClearResult]
   );
+  // Lets runResearch call itself for its one automatic retry.
+  runRef.current = runResearch;
 
   // Fetches one round of the clarify loop and either shows the next
   // question or runs research. Shared by handleSearch (round 1, empty
@@ -729,7 +783,7 @@ export default function ResearchTab({ maxSearches, searchCount, onSearchComplete
           {errorMsg}
           {retryInfo && !processing && (
             <button
-              onClick={() => runResearch(retryInfo.q, retryInfo.clarifications)}
+              onClick={() => runResearch(retryInfo.q, retryInfo.clarifications, { ticket: retryInfo.ticket })}
               style={{ display: "block", marginTop: 8, background: "#D85A30", color: "#fff", border: "none", borderRadius: 7, padding: "6px 14px", fontSize: 12, fontWeight: 600, cursor: "pointer" }}
             >
               Try again
