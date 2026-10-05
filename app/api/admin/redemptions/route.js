@@ -18,7 +18,9 @@ import { issueVoucher, isConfigured as isVoucherApiConfigured } from "@/lib/vouc
 // PROCESSING (the NORMAL path on this account, not a rare edge case —
 // see lib/vouchers/qwikcilver.js's getOrderStatus() comment) before
 // falling back to "fulfil manually". 15s left no headroom for that.
-export const maxDuration = 30;
+// 60s (2026-10-05): the three Order Status checks are spaced ~3s/9s/19s
+// after the order (lib/vouchers/qwikcilver.js), so the call can run ~25s.
+export const maxDuration = 60;
 
 async function isAdmin() {
   const user = await currentUser();
