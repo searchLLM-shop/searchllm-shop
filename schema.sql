@@ -846,3 +846,40 @@ ALTER TABLE partner_order_status_checks ENABLE ROW LEVEL SECURITY;
 -- =========================================================================
 ALTER TABLE listings ADD COLUMN IF NOT EXISTS price_checked_at TIMESTAMPTZ;
 ALTER TABLE listings ADD COLUMN IF NOT EXISTS price_check_status TEXT;
+
+-- =========================================================================
+-- Payment documents (2026-10-14): a receipt or GST tax invoice per platform
+-- fee payment. doc_type is 'tax_invoice' only when GST_GSTIN is configured
+-- (lib/gst.js); otherwise 'receipt' with no tax shown. Numbers are
+-- consecutive per financial year and doc_type, as GST requires: seq is
+-- assigned in the same INSERT that creates the row, and UNIQUE (doc_type,
+-- fy, seq) means a concurrent duplicate loses instead of reusing a number.
+-- razorpay_payment_id is UNIQUE so a webhook retry can't issue a second
+-- document for one payment. Amounts are in paise.
+-- =========================================================================
+CREATE TABLE IF NOT EXISTS payment_documents (
+  id SERIAL PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  razorpay_payment_id TEXT NOT NULL UNIQUE,
+  razorpay_link_id TEXT,
+  kind TEXT NOT NULL DEFAULT 'platform_fee',
+  doc_type TEXT NOT NULL,               -- 'tax_invoice' | 'receipt'
+  fy TEXT NOT NULL,                     -- '26-27'
+  seq INTEGER NOT NULL,
+  doc_number TEXT NOT NULL,             -- 'SLM/26-27/000001' (<= 16 chars)
+  amount_paise INTEGER NOT NULL,        -- what the shopper paid (GST-inclusive)
+  taxable_paise INTEGER,
+  cgst_paise INTEGER,
+  sgst_paise INTEGER,
+  igst_paise INTEGER,
+  gst_rate NUMERIC(5,2),
+  supplier_gstin TEXT,
+  sac TEXT,
+  place_of_supply TEXT,                 -- GST state code
+  description TEXT NOT NULL,
+  paid_at TIMESTAMPTZ NOT NULL,
+  issued_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (doc_type, fy, seq)
+);
+CREATE INDEX IF NOT EXISTS idx_payment_documents_user ON payment_documents (user_id, issued_at DESC);
+ALTER TABLE payment_documents ENABLE ROW LEVEL SECURITY;

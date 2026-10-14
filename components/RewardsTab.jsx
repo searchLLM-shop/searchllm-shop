@@ -49,6 +49,39 @@ function VoucherShowcase({ caption }) {
   );
 }
 
+// The member's receipts / tax invoices for platform-fee payments. Renders
+// nothing until there is at least one, so it never adds clutter for members
+// who haven't paid. Each opens a printable page (/invoice/[id]).
+function PaymentDocuments() {
+  const [docs, setDocs] = useState([]);
+  useEffect(() => {
+    fetch("/api/payments")
+      .then((r) => (r.ok ? r.json() : { documents: [] }))
+      .then((d) => setDocs(d.documents || []))
+      .catch(() => {});
+  }, []);
+  if (!docs.length) return null;
+  return (
+    <div style={{ marginBottom: 20 }}>
+      <div style={{ fontSize: 13, fontWeight: 500, marginBottom: 8 }}>Payments &amp; invoices</div>
+      <div style={{ border: "0.5px solid var(--color-border-tertiary)", borderRadius: 10, overflow: "hidden" }}>
+        {docs.map((d, i) => (
+          <div key={d.id} style={{ display: "flex", gap: 10, alignItems: "center", padding: "8px 12px", fontSize: 12, borderTop: i === 0 ? "none" : "0.5px solid var(--color-border-tertiary)" }}>
+            <span style={{ flex: 1, minWidth: 0 }}>
+              {d.docType === "tax_invoice" ? "Tax invoice" : "Receipt"} · {d.docNumber}
+            </span>
+            <span style={{ fontWeight: 600 }}>₹{(d.amountPaise / 100).toLocaleString("en-IN")}</span>
+            <span style={{ fontSize: 11, color: "var(--color-text-tertiary)" }}>{new Date(d.paidAt).toLocaleDateString()}</span>
+            <a href={`/invoice/${d.id}`} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11, color: "#0F6E56", textDecoration: "underline", whiteSpace: "nowrap" }}>
+              View
+            </a>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function RewardsTab() {
   const { isSignedIn } = useUser();
   const [data, setData] = useState(null);
@@ -395,6 +428,8 @@ export default function RewardsTab() {
           </div>
         </div>
       )}
+
+      <PaymentDocuments />
 
       <div>
         <div style={{ fontSize: 13, fontWeight: 500, marginBottom: 8 }}>Points history</div>
