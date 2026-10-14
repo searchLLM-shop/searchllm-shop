@@ -181,13 +181,9 @@ Razorpay (INR-native, supports UPI/netbanking/cards).
 1. Create an account at dashboard.razorpay.com and complete KYC.
 2. Settings -> API Keys -> generate a key pair; put them in
    `RAZORPAY_KEY_ID` / `RAZORPAY_KEY_SECRET` (test keys first).
-3. Subscriptions -> Plans -> create a YEARLY plan for the Plus tier — ₹499
-   (must match `PLANS.plus` in lib/constants.js exactly); copy its
-   `plan_...` ID into `RAZORPAY_PLAN_ID`. Yearly, not monthly, is
-   deliberate: the business runs on affiliate revenue, Plus is priced
-   low-friction/annual rather than a real subscription line item — don't
-   "fix" this to monthly.
-4. Settings -> Webhooks -> add `https://searchllm.shop/api/razorpay/webhook`
+3. (No plan id — the Plus subscription was removed on 2026-08-25; the
+   platform fee is a one-off payment link, so `RAZORPAY_PLAN_ID` is unused.)
+4. Settings -> Webhooks -> add `https://www.searchllm.shop/api/razorpay/webhook`
    subscribed to `subscription.activated`, `subscription.charged`,
    `subscription.cancelled`, `subscription.halted`,
    `subscription.completed`, `subscription.paused`, `payment_link.paid`
