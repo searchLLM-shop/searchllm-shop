@@ -50,7 +50,9 @@ export async function POST() {
       body: JSON.stringify({
         amount: LOYALTY.PLATFORM_FEE_INR * 100, // paise
         currency: "INR",
-        description: `SearchLLM platform fee — unlock your next ${LOYALTY.POINTS_BLOCK_SIZE} points`,
+        // Shown on Razorpay's payment page: the amount is the final,
+        // GST-inclusive price, and the page should say so.
+        description: `SearchLLM platform fee ₹${LOYALTY.PLATFORM_FEE_INR} (inclusive of GST) — unlock your next ${LOYALTY.POINTS_BLOCK_SIZE} points`,
         customer: email ? { email } : undefined,
         // clerkUserId + type are how the webhook knows which user paid for
         // what — Razorpay echoes notes back on payment_link.paid.

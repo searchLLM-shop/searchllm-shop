@@ -10,7 +10,7 @@
 //
 // Flat platform-fee model (2026-08-25): there is no Plus plan. Points
 // accumulate free from 0, but earning pauses at every 250-point boundary
-// (0-250, 250-500, ...) until that block's ₹349 platform fee is paid — a
+// (0-250, 250-500, ...) until that block's ₹399 platform fee is paid — a
 // one-way ratchet, never re-locks. Paying a block both unlocks it for
 // redemption and lets earning resume into the next block. Redemption needs
 // no plan check: it's just a balance check against whatever's available.
@@ -74,6 +74,9 @@ function PaymentDocuments() {
             <span style={{ fontSize: 11, color: "var(--color-text-tertiary)" }}>{new Date(d.paidAt).toLocaleDateString()}</span>
             <a href={`/invoice/${d.id}`} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11, color: "#0F6E56", textDecoration: "underline", whiteSpace: "nowrap" }}>
               View
+            </a>
+            <a href={`/api/payments/${d.id}/pdf`} download style={{ fontSize: 11, color: "#0F6E56", textDecoration: "underline", whiteSpace: "nowrap" }}>
+              Download PDF
             </a>
           </div>
         ))}
@@ -272,7 +275,7 @@ export default function RewardsTab() {
         </div>
         <div style={{ fontSize: 12, color: "var(--color-text-secondary)", lineHeight: 1.7 }}>
           {data.atCeiling
-            ? <>You&apos;ve earned {n(data.totalPoints)} points — that&apos;s the cap for this block. <strong>Pay the ₹{feeInr} platform fee and avail your complimentary voucher</strong> for it, then earning carries on toward {n(data.ceiling + blockSize)}.</>
+            ? <>You&apos;ve earned {n(data.totalPoints)} points — that&apos;s the cap for this block. <strong>Pay the ₹{feeInr} platform fee (inclusive of GST) and avail your complimentary voucher</strong> for it, then earning carries on toward {n(data.ceiling + blockSize)}.</>
             : <>{n(data.totalPoints)} of {n(data.ceiling)} points — once you reach {n(data.ceiling)}, pay the ₹{feeInr} platform fee to avail your complimentary voucher for that block, and earning resumes.</>}
           <div style={{ marginTop: 8 }}>
             <button
@@ -280,7 +283,7 @@ export default function RewardsTab() {
               disabled={payingFee}
               style={{ background: "#0F6E56", color: "#fff", border: "none", borderRadius: 6, padding: "7px 14px", fontSize: 12, fontWeight: 500, cursor: payingFee ? "default" : "pointer", opacity: payingFee ? 0.6 : 1 }}
             >
-              {payingFee ? "Redirecting…" : `Pay ₹${feeInr} & avail your voucher`}
+              {payingFee ? "Redirecting…" : `Pay ₹${feeInr} (incl. GST) & avail your voucher`}
             </button>
           </div>
           <VoucherShowcase caption="What your points can become the moment you pay:" />
