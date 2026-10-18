@@ -20,6 +20,9 @@ import VcommissionPurchasesAdmin from "@/components/VcommissionPurchasesAdmin";
 import ReferralsAdmin from "@/components/ReferralsAdmin";
 import PrivacyRequestsAdmin from "@/components/PrivacyRequestsAdmin";
 import PaymentsAdmin from "@/components/PaymentsAdmin";
+import TestimonialsAdmin from "@/components/TestimonialsAdmin";
+import TestimonialForm from "@/components/TestimonialForm";
+import TestimonialsStrip from "@/components/TestimonialsStrip";
 import RewardsTab from "@/components/RewardsTab";
 import ReferralsTab from "@/components/ReferralsTab";
 import PrivacyTab from "@/components/PrivacyTab";
@@ -436,13 +439,13 @@ export default function Home() {
       {showAdminConsole ? (
         <>
           <div className="sllm-tabs" style={{ display: "flex", borderBottom: "0.5px solid var(--color-border-tertiary)", padding: "0 24px", background: "#fff" }}>
-            {["admin", "products", "queries", "performance", "vcommission-purchases", "referrals-admin", "privacy-requests", "payments", "answers", "reports", ...(SHOW_ADVERTISERS ? ["advertisers", "advertise"] : []), ...(SHOW_BRANDS_FORM ? ["brands"] : [])].map((tabKey) => (
+            {["admin", "products", "queries", "performance", "vcommission-purchases", "referrals-admin", "privacy-requests", "payments", "testimonials", "answers", "reports", ...(SHOW_ADVERTISERS ? ["advertisers", "advertise"] : []), ...(SHOW_BRANDS_FORM ? ["brands"] : [])].map((tabKey) => (
               <button
                 key={tabKey}
                 onClick={() => setActiveTab(tabKey)}
                 style={{ padding: "10px 14px", border: "none", background: "none", cursor: "pointer", fontSize: 13, fontWeight: activeTab === tabKey ? 500 : 400, color: activeTab === tabKey ? "#0F6E56" : "var(--color-text-secondary)", borderBottom: `2px solid ${activeTab === tabKey ? "#0F6E56" : "transparent"}` }}
               >
-                {tabKey === "admin" ? "Review queue" : tabKey === "brands" ? "For brands" : tabKey === "advertise" ? "Advertise" : tabKey === "vcommission-purchases" ? "vCommission purchases" : tabKey === "referrals-admin" ? "Referrals" : tabKey === "privacy-requests" ? "Privacy requests" : tabKey === "payments" ? "Platform fee payments" : tabKey}
+                {tabKey === "admin" ? "Review queue" : tabKey === "brands" ? "For brands" : tabKey === "advertise" ? "Advertise" : tabKey === "vcommission-purchases" ? "vCommission purchases" : tabKey === "referrals-admin" ? "Referrals" : tabKey === "privacy-requests" ? "Privacy requests" : tabKey === "payments" ? "Platform fee payments" : tabKey === "testimonials" ? "Testimonials" : tabKey}
               </button>
             ))}
           </div>
@@ -458,6 +461,7 @@ export default function Home() {
             {activeTab === "referrals-admin" && <ReferralsAdmin />}
             {activeTab === "privacy-requests" && <PrivacyRequestsAdmin />}
             {activeTab === "payments" && <PaymentsAdmin />}
+            {activeTab === "testimonials" && <TestimonialsAdmin />}
             {activeTab === "answers" && <AnswersAdmin />}
             {activeTab === "reports" && <ReportsPanel />}
           </div>
@@ -528,13 +532,13 @@ export default function Home() {
           <div style={{ position: "fixed", top: 0, right: 0, bottom: 0, width: "min(420px, 100vw)", background: "var(--color-background-primary)", boxShadow: "-8px 0 24px rgba(16,24,40,0.12)", zIndex: 41, display: "flex", flexDirection: "column" }}>
             <div style={{ padding: "16px 18px", borderBottom: "0.5px solid var(--color-border-tertiary)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
               <div className="sllm-tabs sllm-drawer-tabs" style={{ display: "flex", gap: 4 }}>
-                {["saved", "rewards", "referrals", "privacy"].map((dt) => (
+                {["saved", "rewards", "referrals", "review", "privacy"].map((dt) => (
                   <button
                     key={dt}
                     onClick={() => setDrawerTab(dt)}
                     style={{ padding: "6px 11px", border: "none", borderRadius: 8, cursor: "pointer", fontSize: 12, fontWeight: drawerTab === dt ? 600 : 400, background: drawerTab === dt ? "var(--color-background-tertiary)" : "none", color: drawerTab === dt ? "var(--color-text-primary)" : "var(--color-text-secondary)", textTransform: "capitalize", position: "relative" }}
                   >
-                    {dt === "saved" ? tr("tabSaved") : dt === "referrals" ? "Refer & Earn" : dt === "privacy" ? "Privacy" : "Rewards"}
+                    {dt === "saved" ? tr("tabSaved") : dt === "referrals" ? "Refer & Earn" : dt === "review" ? "Review us" : dt === "privacy" ? "Privacy" : "Rewards"}
                   </button>
                 ))}
               </div>
@@ -557,6 +561,7 @@ export default function Home() {
 
               {drawerTab === "rewards" && <RewardsTab />}
               {drawerTab === "referrals" && <ReferralsTab />}
+              {drawerTab === "review" && <TestimonialForm />}
               {drawerTab === "privacy" && <PrivacyTab />}
               {drawerTab === "saved" && (
           <div>
@@ -658,6 +663,8 @@ export default function Home() {
           </div>
         </>
       )}
+
+      <TestimonialsStrip />
 
       <div style={{ padding: "16px 24px", borderTop: "0.5px solid var(--color-border-tertiary)" }}>
         {/* Policy links must be reachable from the site itself — payment

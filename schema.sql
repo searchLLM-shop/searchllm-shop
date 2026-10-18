@@ -883,3 +883,26 @@ CREATE TABLE IF NOT EXISTS payment_documents (
 );
 CREATE INDEX IF NOT EXISTS idx_payment_documents_user ON payment_documents (user_id, issued_at DESC);
 ALTER TABLE payment_documents ENABLE ROW LEVEL SECURITY;
+
+-- =========================================================================
+-- Testimonials (2026-10-18): a signed-in member can leave ONE rating (1-5) and
+-- a short comment about the platform. It is hidden until an admin approves
+-- it; approved ones appear on the homepage for everyone. Editing a published
+-- testimonial sends it back to 'pending'. display_name is whatever the member
+-- chose to be shown as (never taken from their account), and publishing_consent
+-- records their explicit agreement to public display.
+-- =========================================================================
+CREATE TABLE IF NOT EXISTS testimonials (
+  id SERIAL PRIMARY KEY,
+  user_id TEXT NOT NULL UNIQUE,
+  rating SMALLINT NOT NULL CHECK (rating BETWEEN 1 AND 5),
+  comment TEXT NOT NULL,
+  display_name TEXT,
+  publishing_consent BOOLEAN NOT NULL DEFAULT false,
+  status TEXT NOT NULL DEFAULT 'pending',       -- 'pending' | 'approved' | 'rejected'
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  approved_at TIMESTAMPTZ
+);
+CREATE INDEX IF NOT EXISTS idx_testimonials_status ON testimonials (status, approved_at DESC);
+ALTER TABLE testimonials ENABLE ROW LEVEL SECURITY;
