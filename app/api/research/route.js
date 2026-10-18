@@ -13,7 +13,7 @@ import { slugify } from "@/lib/slug";
 import { languageForModel, resolveLocale } from "@/lib/i18n";
 import { recordEvent, recordSearchQuery } from "@/lib/db";
 import { identifyProductFromImage } from "@/lib/visionSearch";
-import { findTopMatchingListings, buildClientListingPayload, extractQueryTerms, extractBudget, priceValue, strictSearchTerms } from "@/lib/listingMatcher";
+import { findTopMatchingListings, buildClientListingPayload, extractQueryTerms, extractBudget, priceValue, strictSearchTerms, browseStrictTsquery } from "@/lib/listingMatcher";
 import { creditSearchPoints, getGuestDayPoints, hasPaymentCredit, hashIp, recordAndCheckIp, checkAndConsumeQuota, refundQuota } from "@/lib/db";
 import { issueRetryTicket, verifyRetryTicket } from "@/lib/retryTicket";
 import { waitUntil } from "@vercel/functions";
@@ -384,7 +384,12 @@ export async function POST(req) {
     // into the pool: the normal fetch OR's its terms over an unordered
     // slice, which is how a 55-inch TV query ended up shortlisting dust
     // covers and 32-inch sets. Capped at 3s so it can never slow a search.
-    const strictTerms = strictSearchTerms(matchText);
+    // Browse queries with a stated colour and product type ("maroon men's
+    // waistcoat") get the same treatment through a colour & type & audience
+    // text query — see browseStrictTsquery for the live failure behind it.
+    const strictTerms =
+      strictSearchTerms(matchText) ||
+      (intent?.choiceMode === "browse" ? browseStrictTsquery({ queryText: matchText, productType: intent?.productType }) : null);
     const strictFetch = strictTerms
       ? Promise.race([
           findStrictCandidates(strictTerms, userCountry, excludeMinors, priceRange),
