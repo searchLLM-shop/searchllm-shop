@@ -19,6 +19,7 @@ import PerformancePanel from "@/components/PerformancePanel";
 import VcommissionPurchasesAdmin from "@/components/VcommissionPurchasesAdmin";
 import ReferralsAdmin from "@/components/ReferralsAdmin";
 import PrivacyRequestsAdmin from "@/components/PrivacyRequestsAdmin";
+import PaymentsAdmin from "@/components/PaymentsAdmin";
 import RewardsTab from "@/components/RewardsTab";
 import ReferralsTab from "@/components/ReferralsTab";
 import PrivacyTab from "@/components/PrivacyTab";
@@ -435,13 +436,13 @@ export default function Home() {
       {showAdminConsole ? (
         <>
           <div className="sllm-tabs" style={{ display: "flex", borderBottom: "0.5px solid var(--color-border-tertiary)", padding: "0 24px", background: "#fff" }}>
-            {["admin", "products", "queries", "performance", "vcommission-purchases", "referrals-admin", "privacy-requests", "answers", "reports", ...(SHOW_ADVERTISERS ? ["advertisers", "advertise"] : []), ...(SHOW_BRANDS_FORM ? ["brands"] : [])].map((tabKey) => (
+            {["admin", "products", "queries", "performance", "vcommission-purchases", "referrals-admin", "privacy-requests", "payments", "answers", "reports", ...(SHOW_ADVERTISERS ? ["advertisers", "advertise"] : []), ...(SHOW_BRANDS_FORM ? ["brands"] : [])].map((tabKey) => (
               <button
                 key={tabKey}
                 onClick={() => setActiveTab(tabKey)}
                 style={{ padding: "10px 14px", border: "none", background: "none", cursor: "pointer", fontSize: 13, fontWeight: activeTab === tabKey ? 500 : 400, color: activeTab === tabKey ? "#0F6E56" : "var(--color-text-secondary)", borderBottom: `2px solid ${activeTab === tabKey ? "#0F6E56" : "transparent"}` }}
               >
-                {tabKey === "admin" ? "Review queue" : tabKey === "brands" ? "For brands" : tabKey === "advertise" ? "Advertise" : tabKey === "vcommission-purchases" ? "vCommission purchases" : tabKey === "referrals-admin" ? "Referrals" : tabKey === "privacy-requests" ? "Privacy requests" : tabKey}
+                {tabKey === "admin" ? "Review queue" : tabKey === "brands" ? "For brands" : tabKey === "advertise" ? "Advertise" : tabKey === "vcommission-purchases" ? "vCommission purchases" : tabKey === "referrals-admin" ? "Referrals" : tabKey === "privacy-requests" ? "Privacy requests" : tabKey === "payments" ? "Platform fee payments" : tabKey}
               </button>
             ))}
           </div>
@@ -456,6 +457,7 @@ export default function Home() {
             {activeTab === "vcommission-purchases" && <VcommissionPurchasesAdmin />}
             {activeTab === "referrals-admin" && <ReferralsAdmin />}
             {activeTab === "privacy-requests" && <PrivacyRequestsAdmin />}
+            {activeTab === "payments" && <PaymentsAdmin />}
             {activeTab === "answers" && <AnswersAdmin />}
             {activeTab === "reports" && <ReportsPanel />}
           </div>
