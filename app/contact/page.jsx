@@ -16,7 +16,7 @@ EMAIL
 
 Support, billing, privacy and legal: deploy@pibitsai.com
 
-For anything about a charge, a refund, or cancelling your subscription, please write from the email address on your account so we can find it quickly.
+For anything about a charge or your account, please write from the email address on your account so we can find it quickly.
 
 FOR BRANDS AND RETAILERS
 

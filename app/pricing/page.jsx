@@ -13,7 +13,7 @@ BILLING
 
 The platform fee is billed once per 250-point block, in Indian Rupees through Razorpay. There is no subscription, no auto-renewal, and no ongoing mandate — each payment is a one-off charge for the block you've just filled. Prices shown include applicable taxes where required. You will receive an email receipt from Razorpay for every payment, and a receipt or tax invoice for each payment is available under Payments & invoices in the Rewards tab of your account.
 
-There is no setup fee and no minimum term. Researching is always free — see our Cancellation & Refunds page for what's refundable.`;
+There is no setup fee and no minimum term. Researching is always free.`;
 
 export default function Page() {
   const block = LOYALTY.POINTS_BLOCK_SIZE;

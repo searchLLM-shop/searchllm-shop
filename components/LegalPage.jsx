@@ -28,7 +28,6 @@ export default function LegalPage({ title, updated, children }) {
         Questions? <Link href="/contact" style={{ color: "#0F6E56" }}>Contact us</Link> ·{" "}
         <Link href="/privacy" style={{ color: "#0F6E56" }}>Privacy</Link> ·{" "}
         <Link href="/terms" style={{ color: "#0F6E56" }}>Terms</Link> ·{" "}
-        <Link href="/refunds" style={{ color: "#0F6E56" }}>Refunds</Link> ·{" "}
         <Link href="/pricing" style={{ color: "#0F6E56" }}>Pricing</Link>
       </p>
     </main>

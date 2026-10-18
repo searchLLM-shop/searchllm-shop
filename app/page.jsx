@@ -666,7 +666,6 @@ export default function Home() {
           <a href="/help#how-we-decide" style={{ fontSize: 13, color: "#4F46E5", textDecoration: "none" }}>How we decide</a>
           <a href="/privacy" style={{ fontSize: 13, color: "#4F46E5", textDecoration: "none" }}>Privacy Policy</a>
           <a href="/terms" style={{ fontSize: 13, color: "#4F46E5", textDecoration: "none" }}>Terms of Use</a>
-          <a href="/refunds" style={{ fontSize: 13, color: "#4F46E5", textDecoration: "none" }}>Refunds</a>
           <a href="/pricing" style={{ fontSize: 13, color: "#4F46E5", textDecoration: "none" }}>Pricing</a>
           <a href="/contact" style={{ fontSize: 13, color: "#4F46E5", textDecoration: "none" }}>Contact</a>
           {isAdminHint && (
