@@ -7,7 +7,9 @@ import { auth, currentUser } from "@clerk/nextjs/server";
 import { getReportSummary } from "@/lib/db";
 import { isAdminUser } from "@/lib/isAdmin";
 
-export const maxDuration = 60;
+// 120s: the report runs ~16 queries, some of them scans of a multi-million-row
+// table; the handler itself answers (with JSON) at 100s at the latest.
+export const maxDuration = 120;
 
 export async function GET(req) {
   const { userId } = await auth();
@@ -27,7 +29,16 @@ export async function GET(req) {
     : null;
 
   try {
-    const report = await getReportSummary(days, range);
+    // Always answer with JSON before the platform's own limit: past
+    // maxDuration Vercel replaces the response with a plain-text error page,
+    // which the panel then reports as "Unexpected token 'A' ... is not valid
+    // JSON" instead of anything useful.
+    const report = await Promise.race([
+      getReportSummary(days, range),
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error("Reports took longer than 100 seconds to calculate. Try a shorter date range, or reload in a minute.")), 100000)
+      ),
+    ]);
     return Response.json(report);
   } catch (err) {
     console.error("Reports failed:", err);

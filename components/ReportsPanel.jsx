@@ -53,7 +53,16 @@ export default function ReportsPanel() {
     try {
       const rangeQ = customRange ? `&from=${customRange.from}&to=${customRange.to}` : "";
       const resp = await fetch(`/api/admin/reports?days=${days}${rangeQ}`);
-      const json = await resp.json();
+      // Read as text first: if the platform itself cut the request off (a
+      // timeout), the body is a plain-text error page, and parsing it as JSON
+      // used to surface as "Unexpected token 'A' ... is not valid JSON".
+      const raw = await resp.text();
+      let json;
+      try {
+        json = JSON.parse(raw);
+      } catch {
+        throw new Error(`The server didn't return a report (HTTP ${resp.status}): ${raw.replace(/\s+/g, " ").slice(0, 140)}`);
+      }
       if (!resp.ok) throw new Error(json.detail || json.error || "Failed to load");
       setData(json);
     } catch (e) {
@@ -481,6 +490,11 @@ export default function ReportsPanel() {
       )}
 
       <Section title="Inventory" note="Approved listings are what can actually be shown to a shopper.">
+        {(data.pendingSections || []).length > 0 && (
+          <div style={{ fontSize: 11, color: "#854F0B", background: "#FAEEDA", border: "0.5px solid #E8C98A", borderRadius: 8, padding: "7px 12px", marginBottom: 10 }}>
+            The listing counts are still being calculated (the listings table is very large). Reload in a minute — they&apos;ll appear then and stay quick for ten minutes.
+          </div>
+        )}
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           {data.inventory.map((x, i) => (
             <div key={i} style={{ background: "var(--color-background-secondary)", border: "0.5px solid var(--color-border-tertiary)", borderRadius: 8, padding: "7px 12px", fontSize: 11 }}>
