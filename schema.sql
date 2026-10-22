@@ -157,7 +157,7 @@ ALTER TABLE listings ADD COLUMN IF NOT EXISTS discount TEXT;
 -- searches that found no relevant partner product.
 CREATE TABLE IF NOT EXISTS events (
   id BIGSERIAL PRIMARY KEY,
-  event_type TEXT NOT NULL,          -- visit | affiliate_click | no_match | limit_reached
+  event_type TEXT NOT NULL,          -- visit | affiliate_click | no_match | limit_reached | qc_shown | qc_click
   identity TEXT,                     -- guest id or Clerk user id, for unique counts
   day DATE NOT NULL DEFAULT (now() AT TIME ZONE 'utc')::date,
   listing_id INTEGER,

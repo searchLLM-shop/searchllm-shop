@@ -18,6 +18,7 @@ import { recordEvent } from "@/lib/db";
 const ALLOWED = new Set([
   "visit",
   "affiliate_click",
+  "qc_shown",
   "pwa_installed",
   "pwa_standalone_visit",
   "pwa_prompt_dismissed",

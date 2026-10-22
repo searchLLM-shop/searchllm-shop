@@ -18,6 +18,7 @@ import { creditSearchPoints, getGuestDayPoints, hasPaymentCredit, hashIp, record
 import { issueRetryTicket, verifyRetryTicket } from "@/lib/retryTicket";
 import { waitUntil } from "@vercel/functions";
 import { refreshPickPrice } from "@/lib/livePrice";
+import { quickCommercePayload } from "@/lib/quickCommerce";
 import { isProbeSupported, formatInr } from "@/lib/priceProbe";
 import { getOrCreateGuestId } from "@/lib/guestId";
 import { PLANS, LOYALTY, dailyPickLimit } from "@/lib/constants";
@@ -850,6 +851,7 @@ export async function POST(req) {
                       send({
                         type: "pick",
                         matchedListing: toClientPayload(pickChosenMatch),
+                        quickCommerce: quickCommercePayload(intent),
                         moreChoices: earlyMoreChoices.map((l) => toClientPayload(l)),
                         alternatives: earlyAlternatives,
                         shopLinks: shopLinksEarly,
@@ -1127,6 +1129,7 @@ export async function POST(req) {
           send({
             type: "final",
             priceInfo,
+            quickCommerce: quickCommercePayload(intent),
             headline: parsed.headline,
             reasoning: parsed.reasoning,
             whoItsFor: parsed.whoItsFor,

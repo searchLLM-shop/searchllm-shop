@@ -489,6 +489,33 @@ export default function ReportsPanel() {
         </Section>
       )}
 
+
+      <Section title="Quick-commerce handoff" note="How often the 'Need it fast?' row was shown, and taps to each app. Plain search links with no affiliate revenue — this is demand evidence for partner conversations.">
+        {(() => {
+          const rows = data.quickCommerce || [];
+          const shown = rows.filter((r) => r.event_type === "qc_shown").reduce((s, r) => s + Number(r.n), 0);
+          const clicksBy = rows.filter((r) => r.event_type === "qc_click");
+          const clicks = clicksBy.reduce((s, r) => s + Number(r.n), 0);
+          if (!shown && !clicks) return <div style={{ fontSize: 12, color: "var(--color-text-tertiary)" }}>No quick-commerce handoffs yet in this period.</div>;
+          return (
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <div style={{ background: "var(--color-background-secondary)", border: "0.5px solid var(--color-border-tertiary)", borderRadius: 8, padding: "7px 12px", fontSize: 11 }}>
+                <span style={{ color: "var(--color-text-tertiary)" }}>Shown</span><span style={{ fontWeight: 600, marginLeft: 8 }}>{n(shown)}</span>
+              </div>
+              <div style={{ background: "var(--color-background-secondary)", border: "0.5px solid var(--color-border-tertiary)", borderRadius: 8, padding: "7px 12px", fontSize: 11 }}>
+                <span style={{ color: "var(--color-text-tertiary)" }}>Taps</span><span style={{ fontWeight: 600, marginLeft: 8 }}>{n(clicks)}</span>
+                <span style={{ color: "var(--color-text-tertiary)", marginLeft: 8 }}>{shown > 0 ? ((clicks / shown) * 100).toFixed(1) + "% of shown" : ""}</span>
+              </div>
+              {clicksBy.map((r, i) => (
+                <div key={i} style={{ background: "var(--color-background-secondary)", border: "0.5px solid var(--color-border-tertiary)", borderRadius: 8, padding: "7px 12px", fontSize: 11 }}>
+                  <span style={{ color: "var(--color-text-tertiary)", textTransform: "capitalize" }}>{r.platform}</span><span style={{ fontWeight: 600, marginLeft: 8 }}>{n(r.n)}</span>
+                  <span style={{ color: "var(--color-text-tertiary)", marginLeft: 6 }}>({n(r.people)} people)</span>
+                </div>
+              ))}
+            </div>
+          );
+        })()}
+      </Section>
     </div>
   );
 }

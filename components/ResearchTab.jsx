@@ -5,6 +5,7 @@ import { trackEvent } from "@/lib/track";
 import { LOYALTY } from "@/lib/constants";
 import { t } from "@/lib/i18n";
 import TrendingStrip from "./TrendingStrip";
+import QuickCommerceRow from "./QuickCommerceRow";
 
 // Physics-themed processing stages — cosmetic labels over the same four
 // real steps the backend actually performs (retrieval, matching, model
@@ -402,6 +403,7 @@ export default function ResearchTab({ maxSearches, searchCount, onSearchComplete
                 // Browse-category extras (clothes, shoes...) — [] for
                 // everything else. See lib/moreChoices.js.
                 moreChoices: evt.moreChoices || [],
+                quickCommerce: evt.quickCommerce || null,
                 alternatives: evt.alternatives || [],
                 // The non-affiliate shop-search links — same field the
                 // "final" event carries, just also sent this early now: on
@@ -1186,6 +1188,9 @@ export default function ResearchTab({ maxSearches, searchCount, onSearchComplete
               </div>
             </div>
           )}
+          {/* Only for everyday items quick-delivery apps stock (the server
+              decides — see lib/quickCommerce.js). Plain search links. */}
+          <QuickCommerceRow quickCommerce={result.quickCommerce} resultKey={result.query} />
           {result.alternatives?.length > 0 && (
             <div style={{ marginBottom: 16 }}>
               <div style={{ fontSize: 11, fontWeight: 500, color: "var(--color-text-secondary)", marginBottom: 10, letterSpacing: "0.04em", textTransform: "uppercase" }}>
