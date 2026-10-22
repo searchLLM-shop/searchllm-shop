@@ -22,6 +22,7 @@ import PrivacyRequestsAdmin from "@/components/PrivacyRequestsAdmin";
 import PaymentsAdmin from "@/components/PaymentsAdmin";
 import TestimonialsAdmin from "@/components/TestimonialsAdmin";
 import TestimonialForm from "@/components/TestimonialForm";
+import ShoppingList from "@/components/ShoppingList";
 import TestimonialsStrip from "@/components/TestimonialsStrip";
 import RewardsTab from "@/components/RewardsTab";
 import ReferralsTab from "@/components/ReferralsTab";
@@ -532,13 +533,13 @@ export default function Home() {
           <div style={{ position: "fixed", top: 0, right: 0, bottom: 0, width: "min(420px, 100vw)", background: "var(--color-background-primary)", boxShadow: "-8px 0 24px rgba(16,24,40,0.12)", zIndex: 41, display: "flex", flexDirection: "column" }}>
             <div style={{ padding: "16px 18px", borderBottom: "0.5px solid var(--color-border-tertiary)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
               <div className="sllm-tabs sllm-drawer-tabs" style={{ display: "flex", gap: 4 }}>
-                {["saved", "rewards", "referrals", "review", "privacy"].map((dt) => (
+                {["saved", "list", "rewards", "referrals", "review", "privacy"].map((dt) => (
                   <button
                     key={dt}
                     onClick={() => setDrawerTab(dt)}
                     style={{ padding: "6px 11px", border: "none", borderRadius: 8, cursor: "pointer", fontSize: 12, fontWeight: drawerTab === dt ? 600 : 400, background: drawerTab === dt ? "var(--color-background-tertiary)" : "none", color: drawerTab === dt ? "var(--color-text-primary)" : "var(--color-text-secondary)", textTransform: "capitalize", position: "relative" }}
                   >
-                    {dt === "saved" ? tr("tabSaved") : dt === "referrals" ? "Refer & Earn" : dt === "review" ? "Review us" : dt === "privacy" ? "Privacy" : "Rewards"}
+                    {dt === "saved" ? tr("tabSaved") : dt === "referrals" ? "Refer & Earn" : dt === "review" ? "Review us" : dt === "list" ? "Shopping list" : dt === "privacy" ? "Privacy" : "Rewards"}
                   </button>
                 ))}
               </div>
@@ -561,6 +562,7 @@ export default function Home() {
 
               {drawerTab === "rewards" && <RewardsTab />}
               {drawerTab === "referrals" && <ReferralsTab />}
+              {drawerTab === "list" && <ShoppingList />}
               {drawerTab === "review" && <TestimonialForm />}
               {drawerTab === "privacy" && <PrivacyTab />}
               {drawerTab === "saved" && (

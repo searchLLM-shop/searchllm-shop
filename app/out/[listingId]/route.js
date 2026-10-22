@@ -25,7 +25,7 @@ import { buildOutboundUrl } from "@/lib/outbound";
 // whatsapp / whatsapp_more: chat links (lead pick / extra options) — these
 // were previously dropped to null because the chat links used the wrong
 // query parameter name.
-const CONTEXTS = new Set(["research", "answer", "whatsapp", "whatsapp_more"]);
+const CONTEXTS = new Set(["research", "answer", "whatsapp", "whatsapp_more", "list"]);
 
 export async function GET(req, { params }) {
   const { listingId } = await params;

@@ -6,6 +6,7 @@ import { LOYALTY } from "@/lib/constants";
 import { t } from "@/lib/i18n";
 import TrendingStrip from "./TrendingStrip";
 import QuickCommerceRow from "./QuickCommerceRow";
+import AddToListButton from "./AddToListButton";
 
 // Physics-themed processing stages — cosmetic labels over the same four
 // real steps the backend actually performs (retrieval, matching, model
@@ -1013,6 +1014,10 @@ export default function ResearchTab({ maxSearches, searchCount, onSearchComplete
                         ? `View on ${result.matchedListing.merchantDomain} →`
                         : "View and buy →"}
                     </a>
+                    {/* Collects the pick (and, for everyday items, the
+                        quick-delivery term) on the shopping list in the
+                        account drawer. */}
+                    <AddToListButton listingId={result.matchedListing.id} qcTerm={result.quickCommerce?.term || null} />
                   </div>
                 </div>
               </div>

@@ -8,6 +8,7 @@
 
 import { useEffect } from "react";
 import { trackEvent } from "@/lib/track";
+import AddToListButton from "./AddToListButton";
 
 export default function QuickCommerceRow({ quickCommerce, resultKey }) {
   const term = quickCommerce?.term;
@@ -44,6 +45,7 @@ export default function QuickCommerceRow({ quickCommerce, resultKey }) {
             {p.name} →
           </a>
         ))}
+        <AddToListButton qcTerm={term} label="＋ Add to list" style={{ padding: "6px 14px" }} />
       </div>
       <div style={{ fontSize: 10, color: "var(--color-text-tertiary)", marginTop: 7, lineHeight: 1.5 }}>
         Plain search links to each app&apos;s own site — we earn nothing from them. Availability, price and delivery time depend on your location; check them in the app.

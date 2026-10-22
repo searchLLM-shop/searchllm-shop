@@ -906,3 +906,26 @@ CREATE TABLE IF NOT EXISTS testimonials (
 );
 CREATE INDEX IF NOT EXISTS idx_testimonials_status ON testimonials (status, approved_at DESC);
 ALTER TABLE testimonials ENABLE ROW LEVEL SECURITY;
+
+-- =========================================================================
+-- Shopping list (2026-10-22): items a shopper has decided to buy, collected
+-- across searches. An item is either an affiliate listing (listing_id, bought
+-- through the tracked /out link) and/or a generic product term (qc_term) that
+-- the quick-commerce handoff links search for ("whey protein"). Keyed by
+-- identity (Clerk user id, or the guest cookie id; a guest's items are merged
+-- into the account on sign-in). Max 50 items per identity (enforced in code).
+-- =========================================================================
+CREATE TABLE IF NOT EXISTS shopping_list_items (
+  id SERIAL PRIMARY KEY,
+  identity TEXT NOT NULL,
+  listing_id INTEGER REFERENCES listings(id) ON DELETE SET NULL,
+  qc_term TEXT,
+  title TEXT NOT NULL,
+  bought BOOLEAN NOT NULL DEFAULT false,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CHECK (listing_id IS NOT NULL OR qc_term IS NOT NULL)
+);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_shopping_list_listing ON shopping_list_items (identity, listing_id) WHERE listing_id IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_shopping_list_term ON shopping_list_items (identity, lower(qc_term)) WHERE listing_id IS NULL AND qc_term IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_shopping_list_identity ON shopping_list_items (identity, created_at DESC);
+ALTER TABLE shopping_list_items ENABLE ROW LEVEL SECURITY;
