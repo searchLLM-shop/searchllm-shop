@@ -188,7 +188,7 @@ export default function RewardsTab() {
       <div style={{ textAlign: "center", padding: "40px 16px" }}>
         <h2 style={{ fontSize: 18, fontWeight: 500, marginBottom: 8 }}>Earn points just by researching</h2>
         <p style={{ fontSize: 13, color: "var(--color-text-secondary)", maxWidth: 460, margin: "0 auto 16px", lineHeight: 1.7 }}>
-          Members earn points on every pick and every recommended-product link they click — redeemable for Amazon Pay, Flipkart, and Swiggy vouchers. Sign in to join, free.
+          Members earn points on every pick and every recommended-product link they click — redeemable for Nykaa, BigBasket, Zepto, MakeMyTrip and BookMyShow vouchers. Sign in to join, free.
         </p>
         <p style={{ fontSize: 12, color: "var(--color-text-tertiary)", maxWidth: 460, margin: "0 auto 16px", lineHeight: 1.7 }}>
           Separately, worth knowing: brands don&apos;t pay to be featured or clicked, and we only earn anything ourselves when you actually buy — that revenue never influences which product we recommend.
