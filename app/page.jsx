@@ -485,7 +485,7 @@ export default function Home() {
                 disabled={upgrading}
                 style={{ background: "#0F6E56", border: "none", borderRadius: 6, padding: "7px 16px", cursor: upgrading ? "default" : "pointer", fontSize: 12, color: "#fff", fontWeight: 500, opacity: upgrading ? 0.6 : 1, whiteSpace: "nowrap" }}
               >
-                {upgrading ? "Redirecting…" : `Pay ₹${usage.points.platformFeeInr} & avail your voucher`}
+                {upgrading ? "Redirecting…" : `Pay ₹${usage.points.platformFeeInr} (incl GST) & avail your gift voucher`}
               </button>
             </div>
           )}

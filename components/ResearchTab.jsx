@@ -1120,7 +1120,7 @@ export default function ResearchTab({ maxSearches, searchCount, onSearchComplete
                       disabled={payingFee}
                       style={{ background: "#0F6E56", color: "#fff", border: "none", borderRadius: 6, padding: "7px 14px", fontSize: 12, fontWeight: 500, cursor: payingFee ? "default" : "pointer", opacity: payingFee ? 0.6 : 1 }}
                     >
-                      {payingFee ? "Redirecting…" : `Pay ₹${LOYALTY.PLATFORM_FEE_INR} (incl. GST) & avail your voucher`}
+                      {payingFee ? "Redirecting…" : `Pay ₹${LOYALTY.PLATFORM_FEE_INR} (incl GST) & avail your gift voucher`}
                     </button>
                   </div>
                 )

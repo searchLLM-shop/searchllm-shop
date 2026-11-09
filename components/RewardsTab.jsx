@@ -283,7 +283,7 @@ export default function RewardsTab() {
               disabled={payingFee}
               style={{ background: "#0F6E56", color: "#fff", border: "none", borderRadius: 6, padding: "7px 14px", fontSize: 12, fontWeight: 500, cursor: payingFee ? "default" : "pointer", opacity: payingFee ? 0.6 : 1 }}
             >
-              {payingFee ? "Redirecting…" : `Pay ₹${feeInr} (incl. GST) & avail your voucher`}
+              {payingFee ? "Redirecting…" : `Pay ₹${feeInr} (incl GST) & avail your gift voucher`}
             </button>
           </div>
           <VoucherShowcase caption="What your points can become the moment you pay:" />
