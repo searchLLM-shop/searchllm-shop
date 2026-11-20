@@ -375,10 +375,13 @@ export async function POST(req) {
     // below; a target window → its own min/max.
     const statedBudget = extractBudget(matchText);
     const budgetCeiling = statedBudget && !statedBudget.min ? statedBudget.max : null;
+    // Only a CEILING goes into SQL. A target window's floor ("around 1L" ->
+    // 55k) made the database scan the whole matching set (43-58s live); the
+    // JS matcher still enforces the floor, so nothing changes in the results.
     const priceRange = !statedBudget
       ? null
       : statedBudget.min
-      ? { min: statedBudget.min, max: statedBudget.max }
+      ? { min: null, max: statedBudget.max }
       : { min: null, max: statedBudget.max * 1.3 };
     // Queries with a hard spec ("55 inch 4k tv", "8gb phone") also get a
     // STRICT fetch requiring every key word (findStrictCandidates), merged
