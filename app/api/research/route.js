@@ -36,7 +36,7 @@ Price is not quality. A cheap product that does the job well is a legitimate rec
   "whoShouldSkip": "one sentence",
   "confidence": "high|medium|low",
   "sponsoredChoiceId": the numeric id of the ONE offered partner product that genuinely answers the question, or null — ONLY when products were offered to you above. Null if none truly fits: wrong category, wrong product type, priced above what the person stated, or a product too poor for any reasonable shopper with this query to be satisfied buying. The bar is "would a knowledgeable friend be comfortable saying: this one is a solid buy for what you asked" — NOT "is this the single best product on the market at this price". Comparing the offered products to better market alternatives belongs in your answer text, where you should do it freely and honestly; it is not a reason to suppress a genuinely good offered product. Likewise a budget phrased as a maximum is a ceiling, not a target: priced-under still qualifies. Judge exactly as you would if no money were involved.,
-  "alsoConsiderIds": [numeric ids of OTHER offered partner products to show alongside your pick. Populate this ONLY when the request below explicitly says it is a browse-style purchase and tells you how many to list — in every other case it is ALWAYS an empty array [], and you never mention it. Never include the id you chose as sponsoredChoiceId.],
+  "alsoConsiderIds": [numeric ids of OTHER offered partner products to show alongside your pick. Populate it as the request below instructs (it says how many to list); when the request says nothing about it, return an empty array []. Never mention it in your answer text. Never include the id you chose as sponsoredChoiceId.],
   "shoppingTerm": "The specific PRODUCT NAME to shop for — brand plus model or variant, as printed on the pack: 'Born Good Plant-Based Liquid Detergent', 'Logitech MK270 Wireless Keyboard Mouse Combo'. NOT a category ('plant based detergent') and never the question restated. If the honest answer is a category rather than one product, name the single best product in it.",
   "alternatives": [{"name": "a real alternative product relevant to THIS query", "note": "one short phrase on the trade-off vs the pick", "price": "see the price rule below — empty string is the correct answer whenever you are not confident"}],
   "micrositeTitle": "short title for the knowledge microsite",
@@ -577,11 +577,11 @@ export async function POST(req) {
     const browseMode = maxExtras > 0 && topMatches.length > 1;
     const candidatesById = new Map(candidates.map((l) => [l.id, l]));
     const partnerInstruction = browseMode
-      ? `Judge each exactly as you would if no money were involved. This is a browse-style purchase: people shopping this category want a few real options to choose between, not a single verdict. First choose your main pick as sponsoredChoiceId, exactly as you normally would. Then list up to ${maxExtras} OTHER offered products in alsoConsiderIds. Every one must clear the SAME bar as your pick — it satisfies every attribute the person stated, it respects their budget or the range their query implies, and it is genuinely worth buying — and together they must give real variety: a different style, colour, silhouette, brand or price point from your pick and from each other, never near-duplicates.${
+      ? `Judge each exactly as you would if no money were involved. Show the shopper a few real options to choose between, not a single verdict. First choose your main pick as sponsoredChoiceId, exactly as you normally would. Then list up to ${maxExtras} OTHER offered products in alsoConsiderIds — AIM FOR AT LEAST 2 whenever that many genuinely qualify. Every one must clear the SAME bar as your pick — it satisfies every attribute the person stated (size, resolution, colour, type and so on), it respects their budget or the range their query implies, and it is genuinely worth buying — and together they must give real variety: a different brand, style, feature set or price point from your pick and from each other, never near-duplicates.${
           intent?.budgetStated
             ? " The person gave a budget, so the pick and the extras together should span the price range up to it: when qualifying products sit in the upper part of the range, at least one of the options you show must be one of them — do not let the whole set cluster at the cheap end, and do not read a lower price as a better fit."
             : ""
-        } Fewer is better than padding: if only one or two genuinely qualify, list only those, and if none do, return []. Choose them on fit and variety alone. Mark each one fits:true in candidateFitment. Do not mention or refer to these extra options anywhere in your answer text — the interface presents them on its own.`
+        } Never pad with a product that fails a stated requirement: if only one or two genuinely qualify, list only those, and if none do, return []. Choose them on fit and variety alone. Mark every product you would be comfortable showing as fits:true in candidateFitment. Do not mention or refer to these extra options anywhere in your answer text — the interface presents them on its own.`
       : `Judge each exactly as you would if no money were involved. Choose the ONE that genuinely answers the question, or none. Return alsoConsiderIds as [].`;
 
     const userContent = `Query: ${query}${languageContext}${locationContext}${clarificationContext}${
@@ -972,10 +972,18 @@ export async function POST(req) {
           // pick event, run once more against the fully-parsed response,
           // which is what the client ultimately keeps. Empty (and the
           // field omitted from the UI) for every spec-driven category.
+          // Backfill (2026-11-20): if the model nominated fewer than it could
+          // have, products it ITSELF marked fits:true in candidateFitment fill
+          // the remaining slots, in the order it offered them — so "at least
+          // three options" holds whenever enough genuinely fit. Nothing the
+          // model rejected is ever shown, and nothing here sees commission.
+          const fitIds = Array.isArray(parsed.candidateFitment)
+            ? parsed.candidateFitment.filter((c) => c && c.fits === true).map((c) => Number(c.id))
+            : [];
           const moreChoices = browseMode
             ? pickMoreChoices({
                 lead: chosenMatch,
-                rawIds: parsed.alsoConsiderIds,
+                rawIds: [...(Array.isArray(parsed.alsoConsiderIds) ? parsed.alsoConsiderIds : []), ...fitIds],
                 offeredIds,
                 candidatesById,
                 max: maxExtras,
