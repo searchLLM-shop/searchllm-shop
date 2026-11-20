@@ -34,17 +34,51 @@ export const viewport = {
   themeColor: "#0F6E56",
 };
 
+// Meta Pixel ID for the Facebook/Instagram campaign (2026-11-20). The ID is
+// public by design (it appears in every page's source). Disclosed in the
+// Privacy Policy's section on tag tooling: it only tells Meta that an ad click
+// led to a visit, and no query text or identifiers are ever sent from our code.
+const META_PIXEL_ID = "2473902933018957";
+
 export default function RootLayout({ children }) {
   const impactVerification = process.env.NEXT_PUBLIC_IMPACT_SITE_VERIFICATION;
   return (
     <ClerkProvider>
       <html lang="en">
+        <head>
+          {/* Meta Pixel Code — beforeInteractive places it in <head>, as Meta's
+              install instructions ask. The snippet itself only queues events and
+              loads fbevents.js asynchronously, so it does not block rendering. */}
+          <Script id="meta-pixel" strategy="beforeInteractive">
+            {`!function(f,b,e,v,n,t,s)
+{if(f.fbq)return;n=f.fbq=function(){n.callMethod?
+n.callMethod.apply(n,arguments):n.queue.push(arguments)};
+if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
+n.queue=[];t=b.createElement(e);t.async=!0;
+t.src=v;s=b.getElementsByTagName(e)[0];
+s.parentNode.insertBefore(t,s)}(window, document,'script',
+'https://connect.facebook.net/en_US/fbevents.js');
+fbq('init', '${META_PIXEL_ID}');
+fbq('track', 'PageView');`}
+          </Script>
+        </head>
         {/* Padding is now responsive via clamp() instead of a flat 24px,
             which alone ate ~13% of a 375px-wide phone screen before any
             content started. clamp(12px, 4vw, 24px) gives small phones
             12px, scales up smoothly, and caps at the original 24px on
             larger screens. */}
         <body style={{ margin: 0, fontFamily: "system-ui, -apple-system, sans-serif", padding: "clamp(12px, 4vw, 24px)", boxSizing: "border-box" }}>
+        {/* Meta Pixel (noscript) — counts the visit for browsers with scripts off */}
+        <noscript>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            height="1"
+            width="1"
+            style={{ display: "none" }}
+            alt=""
+            src={`https://www.facebook.com/tr?id=${META_PIXEL_ID}&ev=PageView&noscript=1`}
+          />
+        </noscript>
         {/* Google Tag Manager (noscript) — required fallback per Google */}
         <noscript>
           <iframe
